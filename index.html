@@ -997,15 +997,6 @@ function renderDashboard() {
       <div class="stat-card" onclick="navigate('milch')"><div class="stat-icon">🥛</div><div class="stat-num">${letztesMilch?letztesMilch.gesamt+'L':'–'}</div><div class="stat-label">Letzte Milch</div></div>
       <div class="stat-card" onclick="navigate('weide')"><div class="stat-icon">🌿</div><div class="stat-num">${heidiWeide?(heidiWeide.kuhIds?.length||0):'–'}</div><div class="stat-label">Heute Weide</div></div>
     </div>
-    <!-- Notfall-Kontakt -->
-    ${Object.values(kontakte).filter(k=>k.kategorie==='Tierarzt'&&k.tel).slice(0,1).map(k=>`
-    <div style="background:linear-gradient(135deg,rgba(200,60,60,.1),rgba(200,60,60,.05));border:1px solid rgba(200,60,60,.3);border-radius:var(--radius-sm);padding:.6rem 1rem;margin-bottom:.8rem;display:flex;align-items:center;justify-content:space-between">
-      <div>
-        <div style="font-size:.68rem;color:var(--text3);letter-spacing:1px">NOTFALL · TIERARZT</div>
-        <div style="font-size:.9rem;color:var(--text);font-weight:bold">${k.name}</div>
-      </div>
-      <a href="tel:${k.tel}" style="background:var(--red);color:#fff;border:none;border-radius:var(--radius-sm);padding:.45rem .9rem;font-size:.85rem;text-decoration:none;font-family:inherit">📞 Anrufen</a>
-    </div>`).join('')}
 
     ${alerts.length ? `
     <div class="section-title">⚠ Aktionen erforderlich</div>
@@ -1574,12 +1565,7 @@ function renderZaehlung() {
       <button class="filter-chip ${zaehTab==='fehlend'?'active':''}" style="${zaehTab!=='alle'&&zaehTab!=='fehlend'?'':''}color:${total-anwCount>0?'var(--red)':'inherit'}" onclick="setZaehTab('fehlend')">Fehlen (${total-anwCount})</button>
       <button class="filter-chip ${zaehTab==='anwesend'?'active':''}" onclick="setZaehTab('anwesend')">✓ (${anwCount})</button>
     </div>
-    <!-- Legende -->
-    <div style="display:flex;gap:.6rem;flex-wrap:wrap;margin-bottom:.5rem;font-size:.68rem;color:var(--text3)">
-      <span><span style="display:inline-block;width:8px;height:8px;background:var(--green);border-radius:1px;margin-right:3px"></span>Anwesend</span>
-      <span><span style="display:inline-block;width:8px;height:8px;background:var(--red);border-radius:1px;margin-right:3px"></span>In Behandlung</span>
-      <span><span style="display:inline-block;width:8px;height:8px;background:var(--blue);border-radius:1px;margin-right:3px"></span>Trächtig</span>
-    </div>
+
     <!-- Suchleiste -->
     <div class="search-bar" style="margin-bottom:.6rem">
       <input id="zaeh-search" class="search-inp" placeholder="Suche Nr, Name, Bauer…" oninput="filterZaehlung(this.value)" />
@@ -1590,7 +1576,7 @@ function renderZaehlung() {
         const da=!!anwesend[id];
         if(zaehTab==='fehlend'&&da) return '';
         if(zaehTab==='anwesend'&&!da) return '';
-        return `<div class="list-card list-card-sm zaeh-item" data-search="${(k.nr+' '+(k.name||'')+' '+(k.bauer||'')).toLowerCase()}" style="border-left:3px solid ${da?'var(--green)':Object.values(behandlungen).some(b=>b.kuhId===id&&b.aktiv)?'var(--red)':Object.values(besamungen).some(b=>b.kuhId===id&&b.status==='tragend')?'var(--blue)':'var(--border)'}">
+        return `<div class="list-card list-card-sm zaeh-item" data-search="${(k.nr+' '+(k.name||'')+' '+(k.bauer||'')).toLowerCase()}" style="border-left:3px solid ${da?'var(--green)':'var(--border)'}">
           <span class="nr-badge">#${k.nr}</span>
           <div style="flex:1;min-width:0">
             <div style="font-size:.88rem;color:${da?'var(--text)':'var(--text2)'}">${k.name||'–'}</div>
@@ -1659,7 +1645,7 @@ function behandlungCard(bid,b){
   ${(!b.wzMilchEnde&&!b.wzFleischEnde&&b.wartezeitEnde)?`<div class="wartezeit-bar"><span>WZ bis ${new Date(b.wartezeitEnde).toLocaleDateString('de-AT')}</span>${b.wartezeitEnde<=h?'<span class="tag tag-green">✓</span>':'<span class="tag tag-orange">läuft</span>'}</div>`:''}
   ${b.folgeTermin?`<div class="history-note">📅 Folgetermin: ${new Date(b.folgeTermin).toLocaleDateString('de-AT')}</div>`:''}
   <div style="display:flex;gap:.4rem;margin-top:.5rem;flex-wrap:wrap">
-    <button class="btn-xs" onclick="(function(){window._bStore=window._bStore||{};window._bStore['${bid}']=${JSON.stringify(b)};showBehandlungForm('${b.kuhId}','${bid}',window._bStore['${bid}']);})()">✎ Bearbeiten</button>
+    <button class="btn-xs" onclick="window.editBehandlung('${bid}')">✎ Bearbeiten</button>
     ${wzAb?`<button class="btn-xs" onclick="wartezeitAbschliessen('${bid}')">✓ WZ ok</button>`:''}
     <button class="btn-xs-danger" onclick="deleteBehandlung('${bid}')">löschen</button>
   </div>
@@ -1679,7 +1665,7 @@ function besamungCard(bsid,bs){
   ${bs.kalbDatum?`<div class="history-sub">✓ Kalbung: ${new Date(bs.kalbDatum).toLocaleDateString('de-AT')} · ${bs.kalbGeschlecht||''} ${bs.kalbNr?'#'+bs.kalbNr:''}</div>`:''}
   ${bs.notiz?`<div class="history-note">${bs.notiz}</div>`:''}
   <div style="display:flex;gap:.4rem;margin-top:.5rem;flex-wrap:wrap">
-    <button class="btn-xs" onclick="(function(){window._bsStore=window._bsStore||{};window._bsStore['${bsid}']=${JSON.stringify(bs)};showBesamungForm('${bs.kuhId}','${bsid}',window._bsStore['${bsid}']);})()">✎ Bearbeiten</button>
+    <button class="btn-xs" onclick="window.editBesamung('${bsid}')">✎ Bearbeiten</button>
     ${bs.status==='tragend'?`<button class="btn-xs" onclick="showKalbungForm('${bsid}','${bs.kuhId}')">🐄 Kalbung</button>`:''}
     <button class="btn-xs-danger" onclick="deleteBesamung('${bsid}')">löschen</button>
   </div>
@@ -3817,6 +3803,18 @@ window.saveVorzeitigAbtrieb = async function(kuhId) {
     alert(`✓ ${k?.name||'Kuh'} #${k?.nr||kuhId} wurde abgetrieben.`);
   }, 300);
 };
+
+// ── Edit helper functions ──
+window.editBehandlung = function(bid) {
+  const b = behandlungen[bid];
+  if(!b) { alert('Eintrag nicht gefunden'); return; }
+  showBehandlungForm(b.kuhId, bid, b);
+};
+window.editBesamung = function(bsid) {
+  const bs = besamungen[bsid];
+  if(!bs) { alert('Eintrag nicht gefunden'); return; }
+  showBesamungForm(bs.kuhId, bsid, bs);
+};
   initApp();
 
   // Alle verfügbaren Module
@@ -3963,39 +3961,74 @@ window.saveVorzeitigAbtrieb = async function(kuhId) {
 
 
   function renderMehrGrid() {
-    const grid = document.getElementById('mehr-grid');
+    var grid = document.getElementById('mehr-grid');
     if(!grid) return;
-    const imMenu = (window.ALLE_MODULE||[]).filter(m=>!(window._mainNav||_mainNav||[]).includes(m.id));
-    // Load saved mehr order
-const _mehrOrder = JSON.parse(localStorage.getItem('mehrOrder')||'null');
-const sortedMenu = _mehrOrder ? 
-  [..._mehrOrder.map(id=>imMenu.find(m=>m.id===id)).filter(Boolean), ...imMenu.filter(m=>!_mehrOrder.includes(m.id))] 
-  : imMenu;
-
-grid.innerHTML = sortedMenu.map((m,i)=>`
-  <button class="mehr-btn" draggable="true" data-mid="${m.id}" data-idx="${i}"
-    ondragstart="window._mehrDragId='${m.id}';event.dataTransfer.setData('text/plain','mehr:${m.id}');event.dataTransfer.effectAllowed='move';this.style.opacity='.4'"
-    ondragend="this.style.opacity=''"
-    ondragover="event.preventDefault()"
-    ondrop="window._dropMehrItem&&window._dropMehrItem('${m.id}',event)"
-    onclick="closeMehr();${m.id==='__drucken__'?'druckeHerde()':"navigate('"+m.id+"')"}">
-    <span>${m.icon}</span>${m.label}
-  </button>`).join('');
-
-window._dropMehrItem = function(targetId, e) {
-  e.preventDefault();
-  const srcId = window._mehrDragId;
-  if(!srcId || srcId===targetId) return;
-  // Handle drop from nav to mehr (srcId is nav item)
-  if((window._mainNav||[]).includes(srcId)) return; // handled by nav drop
-  const allIds = (window.ALLE_MODULE||[]).filter(m=>!(window._mainNav||[]).includes(m.id)&&m.id!=='__drucken__').map(m=>m.id);
-  const cur = JSON.parse(localStorage.getItem('mehrOrder')||'null') || allIds;
-  const a=cur.indexOf(srcId), b2=cur.indexOf(targetId);
-  if(a>-1&&b2>-1){
-    cur.splice(a,1);cur.splice(b2,0,srcId);
-    localStorage.setItem('mehrOrder',JSON.stringify(cur));
-    renderMehrGrid();
-    if(navigator.vibrate) navigator.vibrate(20);
+    var mainNavIds = window._mainNav || [];
+    var allMods = window.ALLE_MODULE || [];
+    var imMenu = allMods.filter(function(m){ return !mainNavIds.includes(m.id); });
+    
+    // Apply saved order
+    var savedOrder = JSON.parse(localStorage.getItem('mehrOrder')||'null');
+    if(savedOrder) {
+      imMenu.sort(function(a,b){
+        var ai = savedOrder.indexOf(a.id);
+        var bi = savedOrder.indexOf(b.id);
+        if(ai===-1) return 1;
+        if(bi===-1) return -1;
+        return ai-bi;
+      });
+    }
+    
+    var dragSrc = null;
+    
+    grid.innerHTML = imMenu.map(function(m) {
+      var onclick = m.id==='__drucken__' ? 'druckeHerde()' : "window.navigate&&window.navigate('"+m.id+"')";
+      return '<button class="mehr-btn" draggable="true" data-mid="'+m.id+'" onclick="closeMehr();'+onclick+'">' +
+        '<span>'+m.icon+'</span>'+m.label+'</button>';
+    }).join('');
+    
+    // Setup drag within mehr-grid
+    var btns = grid.querySelectorAll('.mehr-btn');
+    btns.forEach(function(btn) {
+      btn.addEventListener('dragstart', function(e) {
+        dragSrc = this.dataset.mid;
+        e.dataTransfer.effectAllowed = 'move';
+        e.dataTransfer.setData('text/plain', 'mehr:'+dragSrc);
+        this.style.opacity = '0.4';
+      });
+      btn.addEventListener('dragend', function() {
+        this.style.opacity = '';
+        dragSrc = null;
+      });
+      btn.addEventListener('dragover', function(e) { e.preventDefault(); });
+      btn.addEventListener('drop', function(e) {
+        e.preventDefault();
+        var targetId = this.dataset.mid;
+        if(!dragSrc || dragSrc===targetId) return;
+        var allIds = imMenu.map(function(m){return m.id;});
+        var cur = JSON.parse(localStorage.getItem('mehrOrder')||'null') || allIds;
+        // Add any missing
+        allIds.forEach(function(id){ if(!cur.includes(id)) cur.push(id); });
+        var a=cur.indexOf(dragSrc), b2=cur.indexOf(targetId);
+        if(a>-1&&b2>-1){
+          cur.splice(a,1);
+          cur.splice(b2,0,dragSrc);
+          localStorage.setItem('mehrOrder',JSON.stringify(cur));
+          renderMehrGrid();
+          if(navigator.vibrate) navigator.vibrate(20);
+        }
+      });
+    });
+    
+    // Also update alle-module-grid if open
+    var alleGrid = document.getElementById('alle-module-grid');
+    if(alleGrid) {
+      alleGrid.innerHTML = (window.ALLE_MODULE||[]).filter(function(m){return !['dashboard','mehr'].includes(m.id);}).map(function(m){
+        var inMain=(window._mainNav||[]).includes(m.id);
+        return '<button class="mehr-btn" style="'+(inMain?'border-color:var(--gold);color:var(--gold)':'')+'" onclick="toggleMainNav(''+m.id+'')">'+
+          '<span>'+m.icon+'</span>'+m.label+(inMain?'<span style="font-size:.6rem;color:var(--gold)">◆</span>':'')+'</button>';
+      }).join('');
+    }
   }
 };
     
