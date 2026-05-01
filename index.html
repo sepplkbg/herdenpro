@@ -4023,25 +4023,13 @@ window.editBesamung = function(bsid) {
     // Also update alle-module-grid if open
     var alleGrid = document.getElementById('alle-module-grid');
     if(alleGrid) {
-      alleGrid.innerHTML = (window.ALLE_MODULE||[]).filter(function(m){return !['dashboard','mehr'].includes(m.id);}).map(function(m){
-        var inMain=(window._mainNav||[]).includes(m.id);
-        return '<button class="mehr-btn" style="'+(inMain?'border-color:var(--gold);color:var(--gold)':'')+'" onclick="toggleMainNav(''+m.id+'')">'+
-          '<span>'+m.icon+'</span>'+m.label+(inMain?'<span style="font-size:.6rem;color:var(--gold)">◆</span>':'')+'</button>';
-      }).join('');
+        var allMods2=(window.ALLE_MODULE||[]).filter(function(m){return m.id!=='dashboard'&&m.id!=='mehr';});
+        var rows2=allMods2.map(function(m){
+          var inM=(window._mainNav||[]).includes(m.id);
+          return '<button class="mehr-btn"'+(inM?' style="border-color:var(--gold);color:var(--gold)"':'')+' onclick="window.toggleMainNav&&window.toggleMainNav(\''+m.id+'\')"><span>'+m.icon+'</span>'+m.label+(inM?' ◆':' ')+'</button>';
+        });
+        alleGrid.innerHTML=rows2.join('');
     }
-  }
-};
-    
-    const alleGrid = document.getElementById('alle-module-grid');
-    if(!alleGrid) return;
-    alleGrid.innerHTML = (window.ALLE_MODULE||[]).filter(m=>!['dashboard','mehr'].includes(m.id)).map(m=>{
-      const inMain = _mainNav.includes(m.id);
-      return `<button class="mehr-btn" style="${inMain?'border-color:var(--gold);color:var(--gold)':''}"
-        onclick="toggleMainNav('${m.id}')">
-        <span>${m.icon}</span>${m.label}
-        ${inMain?'<span style="font-size:.6rem;color:var(--gold)">◆ Haupt</span>':''}
-      </button>`;
-    }).join('');
   }
 
   window.toggleMainNav = function(id) {
