@@ -10,7 +10,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="apple-mobile-web-app-title" content="HerdenPro"/>
-<title>HerdenPro v25.20260502_051901</title>
+<title>HerdenPro v25</title>
 <link rel="manifest" href="manifest.json"/>
 
 <!-- ══════════════════════════════════════════════════════════════════════════
@@ -773,7 +773,7 @@ textarea.inp{resize:vertical;min-height:64px}
 
   <!-- Top Bar -->
   <div id="topbar">
-    <span id="topbar-title">🐄 HerdenPro</span><span style="font-size:.55rem;color:var(--text3);margin-left:.3rem">v25.20260502</span>
+    <span id="topbar-title">🐄 HerdenPro</span>
     <div class="sync-indicator" id="sync-dot" title="Verbunden"></div>
   </div>
 
@@ -792,25 +792,16 @@ textarea.inp{resize:vertical;min-height:64px}
   </nav>
 
   <!-- Mehr-Menü -->
-  <div id="mehr-menu" style="display:none;position:fixed;bottom:calc(var(--nav-h) + var(--safe-b));left:0;right:0;max-width:520px;margin:0 auto;background:var(--bg2);border-top:1px solid var(--border2);z-index:50;padding:.5rem">
-    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:.4rem">
-      <button class="mehr-btn" onclick="closeMehr();navigate('zaehlung')"><span>✓</span>Zählung</button>
-      <button class="mehr-btn" onclick="closeMehr();navigate('weide')"><span>🌿</span>Weide</button>
-      <button class="mehr-btn" onclick="closeMehr();navigate('behandlung')"><span>⚕</span>Behandlung</button>
-      <button class="mehr-btn" onclick="closeMehr();navigate('besamung')"><span>🐮</span>Besamung</button>
-      <button class="mehr-btn" onclick="closeMehr();navigate('bestandsbuch')"><span>📋</span>Bestandsbuch</button>
-      <button class="mehr-btn" onclick="closeMehr();navigate('einstellungen')"><span>⚙</span>Einstellungen</button>
-      <button class="mehr-btn" onclick="closeMehr();navigate('journal')"><span>📓</span>Journal</button>
-      <button class="mehr-btn" onclick="closeMehr();navigate('alpung')"><span>📊</span>Alpungstage</button>
-      <button class="mehr-btn" onclick="closeMehr();navigate('kontakte')"><span>📞</span>Kontakte</button>
-      <button class="mehr-btn" onclick="closeMehr();navigate('gruppen')"><span>🏷</span>Gruppen</button>
-      <button class="mehr-btn" onclick="closeMehr();navigate('kontrolle')"><span>🔍</span>Kontrolle</button>
-      <button class="mehr-btn" onclick="closeMehr();navigate('kalender')"><span>📅</span>Kalender</button>
-      <button class="mehr-btn" onclick="closeMehr();navigate('statistik')"><span>📊</span>Statistik</button>
-      <button class="mehr-btn" onclick="closeMehr();navigate('backup')"><span>💾</span>Backup</button>
-      <button class="mehr-btn" onclick="closeMehr();navigate('suche')"><span>🔎</span>Suche</button>
-      <button class="mehr-btn" onclick="closeMehr();navigate('chat')" id="nav-chat"><span>💬</span>Chat</button>
-      <button class="mehr-btn" onclick="closeMehr();druckeHerde()"><span>🖨</span>Drucken</button>
+  <div id="mehr-menu" style="display:none;position:fixed;bottom:calc(var(--nav-h) + var(--safe-b));left:0;right:0;max-width:540px;margin:0 auto;z-index:50;padding:.5rem;background:linear-gradient(180deg,var(--bg2),var(--bg));border-top:1px solid var(--border2);box-shadow:0 -8px 30px rgba(0,0,0,.4);max-height:80vh;overflow-y:auto">
+    <div id="mehr-grid" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:.4rem"></div>
+    <div style="text-align:center;margin-top:.5rem;display:flex;justify-content:center;gap:.5rem;flex-wrap:wrap">
+      <button id="mehr-edit-btn" onclick="toggleMehrEditMode()" style="background:none;border:1px solid var(--border);border-radius:20px;color:var(--text3);font-size:.72rem;cursor:pointer;font-family:inherit;padding:.25rem .8rem">⇅ Reihenfolge ändern</button>
+      <button onclick="toggleMehrAnpassen()" style="background:none;border:1px solid var(--border);border-radius:20px;color:var(--text3);font-size:.72rem;cursor:pointer;font-family:inherit;padding:.25rem .8rem">⚙ Anpassen</button>
+    </div>
+    <div id="mehr-edit-hint" style="display:none;text-align:center;font-size:.7rem;color:var(--gold);margin-top:.3rem">1. Element antippen → 2. Zielposition antippen</div>
+    <div id="mehr-anpassen" style="display:none;margin-top:.4rem;padding-top:.4rem;border-top:1px solid var(--border)">
+      <div style="font-size:.7rem;color:var(--text3);margin-bottom:.4rem;text-align:center">◆ = in Hauptnavigation · Antippen zum Wechseln</div>
+      <div id="alle-module-grid" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:.3rem"></div>
     </div>
   </div>
 </div>
