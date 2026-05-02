@@ -1213,7 +1213,7 @@ function renderMilch() {
             <div class="list-card-title">${new Date(e.datum).toLocaleDateString('de-AT',{weekday:'short',day:'numeric',month:'short'})}</div>
             <div class="list-card-sub">${e.art==='gesamt'?'Gesamtmenge':'Pro Kuh'} · ${e.zeit==='abend'?'🌇 Abends':'🌅 Morgens'}${e.molkerei?' · an Molkerei':''}</div>
           </div></div>
-          <div class="list-card-right"><span style="font-size:1.1rem;color:var(--gold);font-weight:bold">${e.gesamt} L</span><button class="btn-xs-danger" onclick="deleteMilch('${id}')">✕</button></div>
+          <div class="list-card-right"><span style="font-size:1.1rem;color:var(--gold);font-weight:bold">${Math.round(e.gesamt*10)/10} L</span><button class="btn-xs-danger" onclick="event.stopPropagation();deleteMilch('${id}')">✕</button></div>
         </div>`).join('') : `<div class="empty-state">Noch keine Einträge</div>`}
     </div>
     <div id="milch-form-overlay" class="form-overlay" style="display:none">
@@ -1229,7 +1229,7 @@ function renderMilch() {
           <label class="inp-label">Erfassungsart</label>
           <select id="m-art" class="inp" onchange="toggleMilchArt(this.value)">
             <option value="gesamt">Gesamtmenge (Alm)</option>
-            <option value="prokuh">Pro Kuh</option>
+            <option value="prokuh" selected>Pro Kuh (empfohlen)</option>
           </select>
           <div id="m-gesamt-block"><input id="m-gesamt" class="inp" placeholder="Liter gesamt" inputmode="decimal" /></div>
           <div id="m-prokuh-block" style="display:none">
@@ -1410,6 +1410,25 @@ function renderEinstellungen() {
         <label style="font-size:.8rem;color:var(--text3)">Saison-Jahr</label>
       </div>
       <button class="btn-secondary" style="width:100%;margin-top:.3rem" onclick="saveAlmEinstellungen()">💾 Alm-Einstellungen speichern</button>
+    </div>
+
+    <div class="card-section" style="margin-bottom:.8rem;border-color:var(--red)">
+      <div class="section-label" style="margin-bottom:.5rem;color:var(--red)">⚠ DATEN BEREINIGEN</div>
+      <p style="font-size:.8rem;color:var(--text2);margin-bottom:.8rem">
+        Löscht alle Daten die <b>nicht</b> in der aktuellen Bauern/Kühe-Liste sind.
+        Nützlich nach einem Rohdaten-Import wenn alte Testdaten entfernt werden sollen.
+      </p>
+      <div style="display:flex;flex-direction:column;gap:.4rem">
+        <button class="btn-secondary" style="border-color:var(--orange);color:var(--orange)" onclick="bereinigeMilch()">
+          🥛 Milcheinträge ohne Kuh löschen
+        </button>
+        <button class="btn-secondary" style="border-color:var(--orange);color:var(--orange)" onclick="bereinigeBeh()">
+          ⚕ Behandlungen ohne Kuh löschen
+        </button>
+        <button class="btn-secondary" style="border-color:var(--red);color:var(--red)" onclick="bereinigeFull()">
+          🗑 Alle Daten bereinigen (Milch + Behandlung + Kraftfutter)
+        </button>
+      </div>
     </div>
 
     <div class="card-section" style="margin-bottom:.8rem">
@@ -2739,7 +2758,7 @@ function renderBackup() {
           <span class="btn-primary" style="display:block;text-align:center;padding:.6rem;border-radius:var(--radius-sm);cursor:pointer;background:linear-gradient(135deg,var(--green),var(--green2))">
             📊 Rohdaten Excel importieren
           </span>
-          <input type="file" accept=".xlsx,.xls" style="display:none" onchange="importRohdatenExcel(this)" />
+          <input type="file" accept=".xlsx,.xls,.xlsm" style="display:none" onchange="importRohdatenExcel(this)" />
         </label>
       </div>
       <div id="rohdaten-status" style="margin-top:.5rem;font-size:.78rem;color:var(--text3)"></div>
@@ -4220,8 +4239,18 @@ window.importRohdatenExcel = async function(input) {
   }
 
   try {
+    // Check file type
+    const fname = file.name.toLowerCase();
+    if(!fname.endsWith('.xlsx') && !fname.endsWith('.xls') && !fname.endsWith('.xlsm')) {
+      statusEl.innerHTML = '✗ Falsches Format – bitte .xlsx oder .xlsm verwenden';
+      alert('Falsches Dateiformat.\nBitte speichere die Datei als .xlsx oder .xlsm');
+      input.value = ''; return;
+    }
+    if(fname.endsWith('.xlsm')) {
+      statusEl.innerHTML = '⚠ .xlsm erkannt – Makros werden ignoriert, Daten werden gelesen...';
+    }
     const buf = await file.arrayBuffer();
-    const wb = XLSX.read(buf, {type:'array', cellDates:true});
+    const wb = XLSX.read(buf, {type:'array', cellDates:true, bookVBA:false});
     
     let total = 0;
     const ts = Date.now();
@@ -4456,6 +4485,202 @@ function parseExcelDatum(val) {
   }
   return null;
 }
+
+window.showMilchDetail = function(id, e) {
+  if(typeof e === 'string') { try { e = JSON.parse(e); } catch(x) { return; } }
+  const datum = new Date(e.datum).toLocaleDateString('de-AT', {weekday:'short',day:'numeric',month:'short',year:'numeric'});
+  const zeit = e.zeit === 'abend' ? '🌇 Abends' : '🌅 Morgens';
+  
+  let kuhZeilen = '';
+  if(e.prokuh && Object.keys(e.prokuh).length > 0) {
+    const kuhEntries = Object.entries(e.prokuh)
+      .map(([kuhId, liter]) => {
+        const k = kuehe[kuhId];
+        return {nr: parseInt(k?.nr)||0, name: k?.name||'–', bauer: k?.bauer||'', liter};
+      })
+      .sort((a,b) => a.nr - b.nr);
+    
+    kuhZeilen = '<div style="margin-top:.8rem">' +
+      '<div style="font-size:.75rem;color:var(--text3);margin-bottom:.4rem;font-weight:bold">PRO KUH:</div>' +
+      '<div style="display:grid;grid-template-columns:auto 1fr auto;gap:.25rem .6rem;font-size:.82rem">' +
+      kuhEntries.map(k => 
+        '<span style="color:var(--text3)">#' + k.nr + '</span>' +
+        '<span>' + k.name + (k.bauer ? ' <span style="color:var(--text3);font-size:.72rem">· ' + k.bauer + '</span>' : '') + '</span>' +
+        '<span style="color:var(--gold);font-weight:bold;text-align:right">' + k.liter + ' L</span>'
+      ).join('') +
+      '</div>' +
+      '<div style="border-top:1px solid var(--border);margin-top:.5rem;padding-top:.5rem;display:flex;justify-content:space-between">' +
+        '<span style="font-weight:bold">Gesamt:</span>' +
+        '<span style="color:var(--gold);font-weight:bold">' + Math.round(e.gesamt*10)/10 + ' L</span>' +
+      '</div></div>';
+  } else {
+    kuhZeilen = '<div style="margin-top:.8rem;text-align:center;color:var(--gold);font-size:1.3rem;font-weight:bold">' +
+      Math.round(e.gesamt*10)/10 + ' L Gesamt</div>';
+  }
+  
+  window._milchDetailId = id;
+  showPopupHTML(
+    '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:.5rem">' +
+    '<div><div style="font-weight:bold;font-size:1rem">' + datum + '</div>' +
+    '<div style="font-size:.78rem;color:var(--text3)">' + zeit + (e.molkerei ? ' · an Molkerei' : '') + '</div></div>' +
+    '<div style="font-size:1.4rem;color:var(--gold);font-weight:bold">' + Math.round(e.gesamt*10)/10 + ' L</div>' +
+    '</div>' +
+    kuhZeilen +
+    '<div style="margin-top:1rem;display:flex;gap:.5rem">' +
+    '<button class="btn-secondary" style="flex:1" onclick="closePopup()">Schließen</button>' +
+    '<button class="btn-xs-danger" onclick="closePopup();window.deleteMilch(window._milchDetailId)">Löschen</button>' +
+    '</div>'
+  );
+};
+
+// ══════════════════════════════════════════════════════════════
+//  DATEN BEREINIGEN
+// ══════════════════════════════════════════════════════════════
+window.bereinigeMilch = async function() {
+  const kuhIds = new Set(Object.keys(kuehe));
+  let count = 0;
+  for(const [id, e] of Object.entries(milchEintraege)) {
+    if(e.prokuh) {
+      const hasValidKuh = Object.keys(e.prokuh).some(kid => kuhIds.has(kid));
+      if(!hasValidKuh) {
+        await remove(ref(db, 'milch/' + id));
+        count++;
+      }
+    }
+  }
+  alert('✓ ' + count + ' Milcheinträge ohne gültige Kuh gelöscht.');
+};
+
+window.bereinigeBeh = async function() {
+  const kuhIds = new Set(Object.keys(kuehe));
+  let count = 0;
+  for(const [id, b] of Object.entries(behandlungen)) {
+    if(b.kuhId && !kuhIds.has(b.kuhId)) {
+      await remove(ref(db, 'behandlungen/' + id));
+      count++;
+    }
+  }
+  alert('✓ ' + count + ' Behandlungen ohne gültige Kuh gelöscht.');
+};
+
+window.bereinigeFull = async function() {
+  if(!confirm('Alle Daten bereinigen?\nMilch, Behandlungen und Kraftfutter ohne gültige Kuh werden gelöscht.\n\nDieser Vorgang kann nicht rückgängig gemacht werden!')) return;
+  const kuhIds = new Set(Object.keys(kuehe));
+  let count = 0;
+  
+  for(const [id, e] of Object.entries(milchEintraege)) {
+    if(e.prokuh) {
+      const hasValid = Object.keys(e.prokuh).some(kid => kuhIds.has(kid));
+      if(!hasValid) { await remove(ref(db,'milch/'+id)); count++; }
+    }
+  }
+  for(const [id, b] of Object.entries(behandlungen)) {
+    if(b.kuhId && !kuhIds.has(b.kuhId)) { await remove(ref(db,'behandlungen/'+id)); count++; }
+  }
+  for(const [id, kf] of Object.entries(kraftfutter)) {
+    if(kf.kuhId && !kuhIds.has(kf.kuhId)) { await remove(ref(db,'kraftfutter/'+id)); count++; }
+  }
+  alert('✓ Bereinigung abgeschlossen: ' + count + ' verwaiste Einträge gelöscht.');
+};
+// ── Zählung Splash Animation ──
+let _zaehlAnimShown = false;
+
+window._showZaehlungAnim = function(cb) {
+  if(_zaehlAnimShown) { if(cb) cb(); return; }
+  _zaehlAnimShown = true;
+
+  const ov = document.createElement('div');
+  ov.style.cssText = [
+    'position:fixed;inset:0;z-index:9999',
+    'background:#0a1a04',
+    'display:flex;flex-direction:column',
+    'align-items:center;justify-content:center',
+    'overflow:hidden',
+  ].join(';');
+
+  ov.innerHTML = `
+    <style>
+      @keyframes zCount { 0%{opacity:0;transform:scale(2)} 30%{opacity:1;transform:scale(1)} 85%{opacity:1;transform:scale(1)} 100%{opacity:0;transform:scale(.8)} }
+      @keyframes zLine  { 0%{width:0} 100%{width:100%} }
+      @keyframes zFade  { 0%{opacity:0;transform:translateY(12px)} 100%{opacity:1;transform:translateY(0)} }
+      @keyframes zStar  { 0%,100%{opacity:.3;transform:scale(1)} 50%{opacity:1;transform:scale(1.4)} }
+      @keyframes zOut   { 0%{opacity:1;transform:scale(1)} 100%{opacity:0;transform:scale(1.08)} }
+      .za-out { animation: zOut .4s ease forwards !important; }
+    </style>
+
+    <!-- Bergsilhouette SVG -->
+    <svg viewBox="0 0 400 160" xmlns="http://www.w3.org/2000/svg"
+      style="position:absolute;bottom:0;left:0;right:0;width:100%;opacity:.18">
+      <polygon points="0,160 80,40 140,90 200,20 270,80 330,50 400,110 400,160" fill="#4db84e"/>
+      <polygon points="0,160 60,70 120,110 180,45 240,95 300,30 400,80 400,160" fill="#2e7a2f" opacity=".6"/>
+    </svg>
+
+    <!-- Sterne -->
+    <div style="position:absolute;inset:0;pointer-events:none">
+      ${Array.from({length:18},(_,i)=>{
+        const x=Math.random()*100, y=Math.random()*55;
+        const s=.4+Math.random()*.7, d=Math.random()*2;
+        return `<div style="position:absolute;left:${x}%;top:${y}%;width:${s*3}px;height:${s*3}px;border-radius:50%;background:#fff;animation:zStar ${1.5+d}s ease-in-out infinite;animation-delay:${d}s"></div>`;
+      }).join('')}
+    </div>
+
+    <!-- Hauptinhalt -->
+    <div id="za-main" style="position:relative;text-align:center;animation:zCount .9s cubic-bezier(.16,1,.3,1) forwards">
+      <div style="font-size:3.5rem;font-weight:900;letter-spacing:-.03em;color:#fff;line-height:1;text-shadow:0 0 40px rgba(77,184,78,.8)">
+        ZÄHLUNG
+      </div>
+      <div style="display:flex;align-items:center;gap:.6rem;justify-content:center;margin-top:.5rem">
+        <div style="height:1px;flex:1;max-width:60px;background:linear-gradient(90deg,transparent,#4db84e)"></div>
+        <div id="za-sub" style="font-size:.75rem;letter-spacing:.25em;color:#4db84e;animation:zFade .5s ease .3s both">NASSEREINALM</div>
+        <div style="height:1px;flex:1;max-width:60px;background:linear-gradient(90deg,#4db84e,transparent)"></div>
+      </div>
+    </div>
+
+    <!-- Ladebalken -->
+    <div style="position:absolute;bottom:0;left:0;right:0;height:3px;background:rgba(77,184,78,.15)">
+      <div id="za-bar" style="height:100%;width:0;background:linear-gradient(90deg,#2e7a2f,#4db84e,#a3e4a4);animation:zLine .85s cubic-bezier(.4,0,.2,1) .1s both;box-shadow:0 0 8px #4db84e"></div>
+    </div>
+
+    <!-- Kuhanzahl Counter -->
+    <div id="za-count" style="position:absolute;bottom:24px;font-size:.72rem;letter-spacing:.15em;color:rgba(77,184,78,.6);animation:zFade .4s ease .5s both">
+      ${Object.keys(kuehe).length} TIERE AUF DER ALM
+    </div>
+  `;
+
+  // Almname setzen
+  const subEl = ov.querySelector('#za-sub');
+  if(subEl && saisonInfo?.alm) subEl.textContent = saisonInfo.alm.toUpperCase();
+
+  document.body.appendChild(ov);
+
+  // Dismiss on tap
+  ov.addEventListener('pointerdown', () => dismiss());
+
+  const t = setTimeout(dismiss, 1100);
+
+  function dismiss() {
+    clearTimeout(t);
+    if(ov._dismissed) return;
+    ov._dismissed = true;
+    ov.classList.add('za-out');
+    setTimeout(() => {
+      ov.remove();
+      _zaehlAnimShown = false;
+      if(cb) cb();
+    }, 380);
+  }
+};
+
+const _origNav2 = window.navigate;
+window.navigate = function(view) {
+  if(view === 'zaehlung' && currentView !== 'zaehlung') {
+    window._showZaehlungAnim(() => _origNav2(view));
+    setTimeout(() => _origNav2(view), 300);
+    return;
+  }
+  _origNav2(view);
+};
+
   initApp();
 
   // Alle verfügbaren Module
