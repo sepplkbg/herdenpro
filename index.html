@@ -19,9 +19,11 @@
 ═══════════════════════════════════════════════════════════════════════════ -->
 <script>
 // Force clear cache if version changed
-if(localStorage.getItem('hp_version') !== 'v25') {
-  localStorage.clear();
-  localStorage.setItem('hp_version','v25');
+if(localStorage.getItem('hp_version') !== 'v25.1') {
+  // Keep Firebase auth but clear nav/order caches
+  localStorage.removeItem('mainNav');
+  localStorage.removeItem('mehrOrder');
+  localStorage.setItem('hp_version','v25.1');
 }
 window.FIREBASE_CONFIG = {
   apiKey:            "AIzaSyDw5u-SfQG0ibbzhv0SL_XnEdzSjJM835g",
@@ -34,6 +36,7 @@ window.FIREBASE_CONFIG = {
 };
   // ── ALLE_MODULE (muss vor renderNav verfügbar sein) ──
   window.ALLE_MODULE = [
+    {id:'saison',    icon:'▲',   label:'Saison'},
     {id:'zaehlung',  icon:'✓',   label:'Zählung'},
     {id:'weide',     icon:'🌿',  label:'Weide'},
     {id:'behandlung',icon:'⚕',   label:'Behandlung'},
@@ -51,6 +54,7 @@ window.FIREBASE_CONFIG = {
     {id:'suche',     icon:'🔎',  label:'Suche'},
     {id:'chat',       icon:'💬',  label:'Chat'},
     {id:'kraftfutter',icon:'🌾',  label:'Kraftfutter'},
+    {id:'wetter',    icon:'⛅',  label:'Wetter'},
     {id:'bauern_menu',icon:'👥',  label:'Bauern'},
     {id:'__drucken__',icon:'🖨',  label:'Drucken'},
   ];
@@ -960,6 +964,7 @@ function render() {
     suche:        renderSuche,
     chat:         renderChatPage,
     kraftfutter:  renderKraftfutter,
+    wetter:       renderWetter,
     bauern_menu:  renderBauernMenu,
     bauer_detail: renderBauerDetail,
   };
@@ -1088,13 +1093,7 @@ function renderDashboard() {
       </div>
     </div>
 
-    <!-- Milch Status heute -->
-    <div style="background:var(--bg2);border-radius:var(--radius-sm);padding:.6rem 1rem;margin-bottom:.8rem;display:flex;gap:1rem;align-items:center">
-      <span style="font-size:.78rem;color:var(--text3)">Heute gemolken:</span>
-      <span style="font-size:.82rem" class="${heuteMorgens?'':'opacity: .4'}">🌅 ${heuteMorgens?'✓ Morgens':'– Morgens'}</span>
-      <span style="font-size:.82rem" class="${heuteAbends?'':'opacity: .4'}">🌇 ${heuteAbends?'✓ Abends':'– Abends'}</span>
-      <button class="btn-xs" style="margin-left:auto" onclick="showMilchForm()">+ Milch</button>
-    </div>
+
 
     <!-- Nicht gemolken heute -->
     ${nochNichtGemolken.length > 0 && heuteMilch.length > 0 ? `
@@ -1179,7 +1178,7 @@ function renderKuhDetail() {
         <input type="file" accept="image/*" style="display:none" onchange="uploadFoto('${id}',this)" />
       </label>
       ${fotos[id]?`<button class="btn-xs-danger" style="margin-left:.4rem" onclick="deleteFoto('${id}')">Foto löschen</button>`:''}
-      ${k.almStatus==='oben'?`<button class="btn-xs-danger" style="margin-left:.4rem;margin-top:.3rem" onclick="showVorzeitigAbtrieb('${id}')">↓ Vorzeitig abtreiben</button>`:''}
+      ${(k.almStatus==='oben'||!k.almStatus)?`<button class="btn-xs-danger" style="margin-left:.4rem;margin-top:.3rem" onclick="showVorzeitigAbtrieb('${id}')">↓ Vorzeitig abtreiben</button>`:''}
     </div>
     <div class="detail-tabs"><button class="tab-btn active" onclick="switchTab('tab-b','tab-r,tab-m',this)">Behandlung</button><button class="tab-btn" onclick="switchTab('tab-r','tab-b,tab-m',this)">Besamung</button><button class="tab-btn" onclick="switchTab('tab-m','tab-b,tab-r',this)">Milch</button></div>
     <div id="tab-b"><button class="btn-primary btn-block" onclick="showBehandlungForm('${id}')">+ Behandlung</button>${bList.map(([bid,b])=>behandlungCard(bid,b)).join('')||'<div class="empty-state">Keine Behandlungen</div>'}</div>
@@ -3998,12 +3997,12 @@ window.importRohdatenExcel = async function(input) {
            isNaN(parseInt(nr))) continue;
         const data = {
           nr, name,
-          bauer: String(row[2]||'').trim(),
-          rasse: String(row[3]||'').trim(),
-          gruppe: String(row[4]||'').trim(),
-          laktation: String(row[6]||'').trim().toLowerCase()||'melkend',
-          notiz: String(row[7]||'').trim(),
-          ohrmarke: String(row[8]||'').trim(),  // AT59 4700 432
+          bauer:    String(row[2]||'').trim(),
+          ohrmarke: String(row[3]||'').trim(),
+          rasse:    String(row[4]||'').trim(),
+          gruppe:   String(row[5]||'').trim(),
+          laktation:String(row[7]||'').trim().toLowerCase()||'melkend',
+          notiz:    String(row[8]||'').trim(),
           updatedAt: ts
         };
         // Extract gruppe from data
@@ -5340,11 +5339,7 @@ function renderEinstellungen() {
       <div class="info-row"><span>🌿 Weidetage</span><b>${Object.keys(weideTage).length}</b></div>
     </div>
 
-    <div class="section-title">Bauern</div>
-    <div class="card-section" style="margin-bottom:.8rem">
-      <p style="font-size:.82rem;color:var(--text2);margin-bottom:.6rem">Bauern werden im Bauernmenü verwaltet.</p>
-      <button class="btn-primary" onclick="navigate('bauern_menu')">👥 Zum Bauernmenü</button>
-    </div>
+
 
     <div class="section-title">Molkerei-Export</div>
     <div class="card-section" style="margin-bottom:.8rem">
@@ -5658,10 +5653,154 @@ window.setAlpTab = function(tab, btn) {
     if(listeEl) listeEl.style.display='';
   }
 };
+
+window.showMilchForm = function() {
+  const ov = document.getElementById('milch-form-overlay');
+  if(!ov) { navigate('milch'); setTimeout(showMilchForm, 300); return; }
+  // Reset
+  document.getElementById('m-datum').value = isoDate(new Date());
+  document.getElementById('m-zeit').value = 'morgen';
+  const molkereiEl = document.getElementById('m-molkerei');
+  if(molkereiEl) molkereiEl.checked = false;
+  const notizEl = document.getElementById('m-notiz');
+  if(notizEl) notizEl.value = '';
+  document.querySelectorAll('.kuh-liter').forEach(inp => {
+    inp.value = '';
+    const row = inp.closest('.milch-kuh-row');
+    if(row) { row.style.background=''; const badge=row.querySelector('.nr-badge'); if(badge) badge.style.background=''; }
+  });
+  const sumEl=document.getElementById('m-summe'); if(sumEl) sumEl.textContent='0';
+  const cntEl=document.getElementById('m-count'); if(cntEl) cntEl.textContent='0';
+  document.querySelector('#m-zeit-morgen')?.classList.add('active');
+  document.querySelector('#m-zeit-abend')?.classList.remove('active');
+  if(window.setMilchModus) setMilchModus('prokuh');
+  document.querySelectorAll('.milch-kuh-row').forEach(r=>r.style.display='');
+  // Last entry hint
+  const letzteEintraege = Object.values(milchEintraege).sort((a,b)=>b.datum-a.datum);
+  const letzte = letzteEintraege[0];
+  let hintEl = document.getElementById('m-letzte-hint');
+  if(!hintEl) {
+    hintEl = document.createElement('div');
+    hintEl.id = 'm-letzte-hint';
+    hintEl.style.cssText = 'font-size:.72rem;color:var(--text3);margin:.2rem 0 .4rem;text-align:center';
+    const body = ov.querySelector('.form-body');
+    if(body) body.insertBefore(hintEl, body.firstChild);
+  }
+  if(letzte) {
+    const diff = Math.floor((Date.now()-letzte.datum)/86400000);
+    const wann = diff===0?'heute':diff===1?'gestern':diff+' Tage zuvor';
+    hintEl.textContent = 'Letzter: '+Math.round(letzte.gesamt*10)/10+'L · '+(letzte.zeit==='abend'?'🌇':'🌅')+' '+wann;
+  }
+  // Edit ID reset
+  const eid = document.getElementById('m-edit-id'); if(eid) eid.value='';
+  const titleEl = document.getElementById('m-form-title'); if(titleEl) titleEl.textContent='🥛 Milch erfassen';
+  ov.style.display='flex';
+  setTimeout(()=>{ document.querySelector('.kuh-liter')?.focus(); }, 150);
+};
+
+function renderWetter() {
+  const w = window._wetterData;
+  const ort = localStorage.getItem('wetterOrt') || 'Innsbruck';
+  
+  // Trigger fresh load
+  setTimeout(() => {
+    if(!window._wetterForecast) ladeWetterPrognose();
+  }, 100);
+  
+  return `
+    <div class="page-header">
+      <h2>⛅ Wetter</h2>
+      <button class="btn-xs" onclick="ladeWetter();ladeWetterPrognose()">↻ Aktualisieren</button>
+    </div>
+    
+    <!-- Aktuelles Wetter -->
+    ${w ? `
+    <div style="background:linear-gradient(135deg,rgba(30,80,140,.3),rgba(30,80,140,.1));border:1px solid rgba(80,140,200,.3);border-radius:var(--radius-sm);padding:1rem;margin-bottom:.8rem;text-align:center">
+      <div style="font-size:.75rem;color:var(--text3);margin-bottom:.3rem">${w.ort} · Aktuell · ${w.updated}</div>
+      <div style="font-size:3.5rem;margin-bottom:.3rem">${w.icon}</div>
+      <div style="font-size:2.2rem;font-weight:900;color:#7acbff">${w.temp}°C</div>
+      <div style="font-size:.9rem;color:var(--text2)">${w.desc}</div>
+      <div style="font-size:.78rem;color:var(--text3);margin-top:.3rem">Gefühlt ${w.feels}°C · Wind ${w.wind} km/h</div>
+    </div>` : `
+    <div style="text-align:center;padding:1rem;color:var(--text3)">⏳ Wetterdaten werden geladen…</div>`}
+    
+    <!-- Prognose -->
+    <div class="section-title">7-Tage Prognose</div>
+    <div id="wetter-prognose">
+      <div style="text-align:center;color:var(--text3);padding:1rem">⏳ Prognose wird geladen…</div>
+    </div>
+    
+    <!-- Ort wechseln -->
+    <div class="section-title" style="margin-top:.8rem">Ort</div>
+    <select class="inp" onchange="localStorage.setItem('wetterOrt',this.value);ladeWetter();ladeWetterPrognose();navigate('wetter')">
+      ${['Innsbruck','Lienz','Imst','Landeck','Kitzbühel','Reutte','Schwaz','Bregenz','Feldkirch','Bludenz','Klagenfurt','Villach','Salzburg','Zell am See','St. Johann'].map(o=>`<option value="${o}" ${ort===o?'selected':''}>${o}</option>`).join('')}
+    </select>
+  `;
+}
+
+window.ladeWetterPrognose = async function() {
+  const ort = localStorage.getItem('wetterOrt') || 'Innsbruck';
+  const ORTE = {
+    'Innsbruck':{lat:47.2692,lon:11.4041},'Lienz':{lat:46.8289,lon:12.7693},
+    'Imst':{lat:47.2448,lon:10.7397},'Landeck':{lat:47.1408,lon:10.5650},
+    'Kitzbühel':{lat:47.4467,lon:12.3926},'Reutte':{lat:47.4833,lon:10.7167},
+    'Schwaz':{lat:47.3531,lon:11.7092},'Bregenz':{lat:47.5031,lon:9.7471},
+    'Feldkirch':{lat:47.2372,lon:9.5973},'Bludenz':{lat:47.1528,lon:9.8218},
+    'Klagenfurt':{lat:46.6228,lon:14.3053},'Villach':{lat:46.6133,lon:13.8558},
+    'Salzburg':{lat:47.8095,lon:13.0550},'Zell am See':{lat:47.3256,lon:12.7956},
+    'St. Johann':{lat:47.5261,lon:12.4228},
+  };
+  const WMO_ICONS = {0:'☀️',1:'🌤️',2:'⛅',3:'☁️',45:'🌫️',48:'🌫️',51:'🌦️',53:'🌦️',55:'🌦️',61:'🌧️',63:'🌧️',65:'🌧️',71:'🌨️',73:'🌨️',75:'❄️',80:'🌦️',81:'🌧️',82:'⛈️',95:'⛈️',99:'⛈️'};
+  const WMO_DESC = {0:'Klar',1:'Klar',2:'Teils bewölkt',3:'Bedeckt',45:'Nebel',48:'Nebel',51:'Nieselregen',53:'Nieselregen',55:'Nieselregen',61:'Leichter Regen',63:'Regen',65:'Starker Regen',71:'Leichter Schnee',73:'Schnee',75:'Starker Schnee',80:'Schauer',81:'Schauer',82:'Starke Schauer',95:'Gewitter',99:'Gewitter'};
+  
+  const coords = ORTE[ort];
+  if(!coords) return;
+  
+  try {
+    const url = `https://api.open-meteo.com/v1/forecast?latitude=${coords.lat}&longitude=${coords.lon}&daily=temperature_2m_max,temperature_2m_min,weather_code,precipitation_sum,wind_speed_10m_max&wind_speed_unit=kmh&timezone=Europe%2FVienna&forecast_days=7`;
+    const res = await fetch(url);
+    const data = await res.json();
+    const d = data.daily;
+    window._wetterForecast = d;
+    
+    const el = document.getElementById('wetter-prognose');
+    if(!el) return;
+    
+    const heute = new Date().toISOString().slice(0,10);
+    el.innerHTML = d.time.map((day, i) => {
+      const isHeute = day === heute;
+      const datum = new Date(day);
+      const tagName = isHeute ? 'Heute' : datum.toLocaleDateString('de-AT', {weekday:'short', day:'numeric', month:'short'});
+      const icon = WMO_ICONS[d.weather_code[i]] || '⛅';
+      const desc = WMO_DESC[d.weather_code[i]] || '';
+      const tmax = Math.round(d.temperature_2m_max[i]);
+      const tmin = Math.round(d.temperature_2m_min[i]);
+      const regen = d.precipitation_sum[i];
+      const wind = Math.round(d.wind_speed_10m_max[i]);
+      
+      return `<div style="display:flex;align-items:center;gap:.6rem;padding:.6rem .8rem;background:${isHeute?'rgba(80,140,200,.12)':'var(--bg2)'};border-radius:var(--radius-sm);margin-bottom:.3rem;border:${isHeute?'1px solid rgba(80,140,200,.3)':'1px solid var(--border)'}">
+        <div style="width:72px;font-size:.78rem;color:${isHeute?'#7acbff':'var(--text3)'};font-weight:${isHeute?'bold':'normal'}">${tagName}</div>
+        <div style="font-size:1.5rem;width:32px;text-align:center">${icon}</div>
+        <div style="flex:1">
+          <div style="font-size:.8rem;color:var(--text2)">${desc}</div>
+          <div style="font-size:.68rem;color:var(--text3)">${regen>0?'🌧 '+regen+'mm · ':''} 💨 ${wind} km/h</div>
+        </div>
+        <div style="text-align:right">
+          <div style="font-size:.9rem;font-weight:bold;color:#ff7a7a">${tmax}°</div>
+          <div style="font-size:.78rem;color:#7acbff">${tmin}°</div>
+        </div>
+      </div>`;
+    }).join('');
+  } catch(e) {
+    const el = document.getElementById('wetter-prognose');
+    if(el) el.innerHTML = '<div style="color:var(--text3);text-align:center;padding:1rem">Prognose nicht verfügbar</div>';
+  }
+};
   initApp();
 
   // Alle verfügbaren Module
   const ALLE_MODULE = [
+    {id:'saison',    icon:'▲',   label:'Saison'},
     {id:'zaehlung',  icon:'✓',   label:'Zählung'},
     {id:'weide',     icon:'🌿',  label:'Weide'},
     {id:'behandlung',icon:'⚕',   label:'Behandlung'},
@@ -5679,6 +5818,7 @@ window.setAlpTab = function(tab, btn) {
     {id:'suche',     icon:'🔎',  label:'Suche'},
     {id:'chat',       icon:'💬',  label:'Chat'},
     {id:'kraftfutter',icon:'🌾',  label:'Kraftfutter'},
+    {id:'wetter',    icon:'⛅',  label:'Wetter'},
     {id:'bauern_menu',icon:'👥',  label:'Bauern'},
     {id:'__drucken__',icon:'🖨',  label:'Drucken'},
   ];
