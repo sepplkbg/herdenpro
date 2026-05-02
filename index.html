@@ -3905,9 +3905,11 @@ window.editBesamung = function(bsid) {
       var mod = (window.ALLE_MODULE||[]).find(function(m){return m.id===id;});
       var info = navMap[id] || (mod ? {icon:mod.icon,label:mod.label} : {icon:'•',label:id});
       var isActive = currentView===id;
+      var isEditSelected = window._mehrEditMode && window._mehrSelected===id;
       var isDraggable = id!=='dashboard' && id!=='mehr';
       var onclick = id==='mehr' ? "window.toggleMehrMenu&&window.toggleMehrMenu()" : "window.navigate&&window.navigate(\'"+id+"\')";
-      return '<button class="nav-item '+(isActive?'active':'')+'" data-view="'+id+'" data-navid="'+(isDraggable?id:'')+'" '+
+      var navStyle = isEditSelected ? 'outline:2px solid var(--gold);border-radius:8px;' : '';
+      return '<button class="nav-item '+(isActive?'active':'')+'" data-view="'+id+'" data-navid="'+(isDraggable?id:'')+'" style="'+navStyle+'" '+
         (isDraggable?'draggable="true"':'')+
         ' onclick="'+onclick+'"'+
         (isDraggable?' onpointerdown="startNavLongPress(\''+id+'\',this,event)" onpointerup="cancelNavLongPress()" onpointerleave="cancelNavLongPress()"':'')+'>'+
@@ -4020,10 +4022,11 @@ window.editBesamung = function(bsid) {
     grid.innerHTML = imMenu.map(function(m) {
       var isSelected = selected === m.id;
       var style = isSelected ? 'border:2px solid var(--gold);background:rgba(212,168,75,.15);' : '';
-      var eid = m.id.replace(/'/g,"\'");
+      var eid = m.id;
+      var navCall = m.id==='__drucken__' ? 'druckeHerde()' : "navigate('"+eid+"')";
       var onclick = editMode
-        ? 'window.mehrItemTap("'+eid+'")'
-        : 'closeMehr();'+(m.id==='__drucken__'?'druckeHerde()':'window.navigate&&window.navigate("'+eid+'")');
+        ? "mehrItemTap('"+eid+"')"
+        : 'closeMehr();'+navCall;
       return '<button class="mehr-btn" data-mid="'+m.id+'" style="'+style+'" onclick="'+onclick+'"><span>'+m.icon+'</span>'+m.label+'</button>';
     }).join('');
 
@@ -4049,25 +4052,35 @@ window.editBesamung = function(bsid) {
   }
 
   window.mehrItemTap = function(id) {
+    if(!window._mehrEditMode) {
+      // Not in edit mode - navigate normally
+      if(id==='__drucken__') { closeMehr(); druckeHerde(); return; }
+      closeMehr(); if(typeof navigate==='function') navigate(id);
+      return;
+    }
     if(!window._mehrSelected) {
-      // First tap: select item
       window._mehrSelected = id;
       renderMehrGrid();
+      if(navigator.vibrate) navigator.vibrate(40);
     } else if(window._mehrSelected === id) {
-      // Tap same: deselect
       window._mehrSelected = null;
       renderMehrGrid();
     } else {
-      // Tap different: swap
+      // Swap the two selected items
       var allMods = window.ALLE_MODULE || [];
       var mainNavIds = window._mainNav || [];
       var imMenu = allMods.filter(function(m){ return !mainNavIds.includes(m.id); });
-      var ids = imMenu.map(function(m){ return m.id; });
+      var savedOrder = JSON.parse(localStorage.getItem('mehrOrder')||'null');
+      var ids = savedOrder || imMenu.map(function(m){ return m.id; });
+      // Ensure all imMenu ids are present
+      imMenu.forEach(function(m){ if(!ids.includes(m.id)) ids.push(m.id); });
       var a = ids.indexOf(window._mehrSelected);
       var b = ids.indexOf(id);
-      if(a>-1&&b>-1){ ids.splice(a,1); ids.splice(b,0,window._mehrSelected); localStorage.setItem('mehrOrder',JSON.stringify(ids)); }
+      if(a>-1&&b>-1){ 
+        var tmp=ids[a]; ids[a]=ids[b]; ids[b]=tmp;
+        localStorage.setItem('mehrOrder',JSON.stringify(ids)); 
+      }
       window._mehrSelected = null;
-      window._mehrEditMode = true;
       renderMehrGrid();
       if(navigator.vibrate) navigator.vibrate([20,10,20]);
     }
