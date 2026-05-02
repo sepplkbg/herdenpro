@@ -2028,7 +2028,7 @@ function attachListeners(){document.querySelectorAll('.form-overlay').forEach(el
 function statusLabel(s){return{besamt:'Besamt',tragend:'Trächtig',leer:'Leer',kalbung:'Gekälbert'}[s]||s;}
 function isoDate(d){return d.toISOString().split('T')[0];}
 function parseTable(text){if(!text)return null;const lines=text.trim().split(/\r?\n/).filter(l=>l.trim());if(lines.length<2)return null;const sep=lines[0].includes('\t')?'\t':lines[0].includes(';')?';':',';const hdr=lines[0].split(sep).map(h=>h.trim().toLowerCase());const iN=hdr.findIndex(h=>/nr|num|ohr|marke|id/.test(h));const iK=hdr.findIndex(h=>/kuh|tier|name/.test(h));const iB=hdr.findIndex(h=>/bauer|landwirt|besitz|owner/.test(h));const iR=hdr.findIndex(h=>/rasse|breed/.test(h));const iG=hdr.findIndex(h=>/gruppe|group|abt/.test(h));if(iN<0)return null;return lines.slice(1).map(l=>{const c=l.split(sep).map(x=>x.trim());return{nr:c[iN]||'',name:iK>=0?c[iK]||'':'',bauer:iB>=0?c[iB]||'':'',rasse:iR>=0?(c[iR]||''):'',gruppe:iG>=0?(c[iG]||''):''};}).filter(r=>r.nr);}
-function registerSW(){if('serviceWorker' in navigator)navigator.serviceWorker.register('/sw.js').catch(()=>{});}
+function registerSW(){if('serviceWorker' in navigator)navigator.serviceWorker.register('./sw.js').catch(()=>{});}
 function requestNotificationPermission(){if('Notification' in window&&Notification.permission==='default')Notification.requestPermission();}
 function checkWartezeiten(){
   const h=Date.now();
