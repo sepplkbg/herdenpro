@@ -43,6 +43,7 @@ window.FIREBASE_CONFIG = {
     {id:'besamung',  icon:'🐮',  label:'Besamung'},
     {id:'bestandsbuch',icon:'📋',label:'Bestandsbuch'},
     {id:'einstellungen',icon:'⚙',label:'Einstellungen'},
+    {id:'benutzer',    icon:'👤', label:'Benutzer'},
     {id:'journal',   icon:'📓',  label:'Journal'},
     {id:'alpung',    icon:'📊',  label:'Alpungstage'},
     {id:'kontakte',  icon:'📞',  label:'Kontakte'},
@@ -759,6 +760,30 @@ textarea.inp{resize:vertical;min-height:64px}
   touch-action: none !important;
 }
 
+/* ── Login Screen ── */
+#login-screen {
+  position:fixed;inset:0;z-index:10000;
+  background:linear-gradient(160deg,#0a1a04 0%,#1a3a0a 50%,#0d2e03 100%);
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  padding:1.5rem;
+}
+.login-card {
+  background:var(--bg2);border:1px solid var(--border2);
+  border-radius:16px;padding:2rem 1.5rem;width:100%;max-width:360px;
+  box-shadow:0 8px 40px rgba(0,0,0,.6);
+}
+.login-logo { font-size:3rem;text-align:center;margin-bottom:.5rem; }
+.login-title { text-align:center;font-size:1.4rem;font-weight:bold;color:var(--gold);margin-bottom:.3rem; }
+.login-sub { text-align:center;font-size:.8rem;color:var(--text3);margin-bottom:1.5rem; }
+.login-error { background:rgba(200,60,60,.15);border:1px solid rgba(200,60,60,.4);border-radius:8px;padding:.5rem .8rem;font-size:.8rem;color:var(--red);margin-bottom:.8rem;display:none; }
+
+/* ── Role Badge ── */
+.role-badge { display:inline-block;padding:.15rem .5rem;border-radius:10px;font-size:.65rem;font-weight:bold;letter-spacing:.05em; }
+.role-admin    { background:rgba(212,168,75,.2);color:var(--gold); }
+.role-hirte    { background:rgba(77,184,78,.2);color:var(--green); }
+.role-molkerei { background:rgba(80,140,200,.2);color:#7acbff; }
+.role-milchmesser { background:rgba(180,100,200,.2);color:#c87ee8; }
+
 /* ── Print ── */
 @media print{
   #topbar,#bottom-nav,#mehr-menu,#offline-banner{display:none!important}
@@ -769,6 +794,7 @@ textarea.inp{resize:vertical;min-height:64px}
 <!-- Firebase Compat SDK -->
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
 <!-- SheetJS für Excel-Export -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 </head>
@@ -886,6 +912,8 @@ let _kalbungIds={};
 //  INIT
 // ══════════════════════════════════════════════════════════════════════════════
 function initApp() {
+  // Apply role permissions to visible modules
+  applyRoleToModules();
   // Sofort rendern ohne Firebase
   render();
   try {
@@ -953,6 +981,7 @@ function render() {
     saison:       renderSaison,
     bestandsbuch: renderBestandsbuch,
     einstellungen:renderEinstellungen,
+    benutzer:     renderBenutzer,
     journal:      renderJournal,
     alpung:       renderAlpung,
     kontakte:     renderKontakte,
@@ -2516,6 +2545,7 @@ window.exportSaisonPDF = function() {
     <button id="fab-main" onclick="toggleFab()" style="width:56px;height:56px;border-radius:50%;background:linear-gradient(135deg,var(--gold2),var(--gold));border:none;font-size:1.6rem;cursor:pointer;box-shadow:0 4px 16px rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center;transition:transform .2s">+</button>
   </div>
 
+  </div><!-- /app -->
 </body></html>`);
   w.document.close();
 };
@@ -5322,6 +5352,18 @@ function renderEinstellungen() {
     </div>
 
     <div class="card-section" style="margin-bottom:.8rem">
+      <div class="section-label" style="margin-bottom:.5rem">ANGEMELDET ALS</div>
+      <div class="info-row">
+        <span>E-Mail</span>
+        <b>${window._currentUser?.email||'–'}</b>
+      </div>
+      <div class="info-row">
+        <span>Rolle</span>
+        <span class="role-badge role-${window._currentRole||'hirte'}">${{admin:'Admin',hirte:'Hirte',molkerei:'Molkerei',milchmesser:'Milchmesser'}[window._currentRole]||window._currentRole||'–'}</span>
+      </div>
+      <button class="btn-secondary" style="width:100%;margin-top:.5rem;border-color:var(--red);color:var(--red)" onclick="doLogout()">⎋ Abmelden</button>
+    </div>
+    <div class="card-section" style="margin-bottom:.8rem">
       <div class="section-label" style="margin-bottom:.5rem">APP INFO</div>
       <div class="info-row"><span>Version</span><b>HerdenPro v2</b></div>
       <div class="info-row"><span>Datenbank</span><b style="color:var(--green)">● Firebase verbunden</b></div>
@@ -5796,7 +5838,306 @@ window.ladeWetterPrognose = async function() {
     if(el) el.innerHTML = '<div style="color:var(--text3);text-align:center;padding:1rem">Prognose nicht verfügbar</div>';
   }
 };
+
+// ══════════════════════════════════════════════════════════════
+//  AUTHENTICATION & ROLES
+// ══════════════════════════════════════════════════════════════
+
+// Role definitions: what each role can do
+const ROLE_PERMISSIONS = {
+  admin:       {read:true, write:true, milch:true, behandlung:true, zaehlung:true, benutzer:true, alles:true},
+  hirte:       {read:true, write:true, milch:true, behandlung:true, zaehlung:true, benutzer:false, alles:false},
+  milchmesser: {read:false, write:false, milch:true, behandlung:false, zaehlung:false, benutzer:false, alles:false},
+  molkerei:    {read:true, write:false, milch:true, behandlung:false, zaehlung:false, benutzer:false, alles:false},
+};
+
+// Hidden modules per role
+const ROLE_HIDDEN_MODULES = {
+  milchmesser: ['zaehlung','weide','behandlung','besamung','bestandsbuch','einstellungen','journal','alpung','kontakte','gruppen','kontrolle','kalender','statistik','backup','suche','chat','kraftfutter','wetter','bauern_menu','saison','__drucken__'],
+  molkerei:    ['behandlung','besamung','bestandsbuch','einstellungen','journal','alpung','kontakte','gruppen','kontrolle','chat','kraftfutter','wetter','bauern_menu','zaehlung','__drucken__'],
+  hirte:       ['einstellungen','benutzer'],
+  admin:       [],
+};
+
+window._currentUser = null;
+window._currentRole = null;
+window._auth = null;
+
+function initAuth() {
+  if(!firebase.auth) { console.error('Auth not loaded'); return; }
+  window._auth = firebase.auth();
+  
+  // Show login screen immediately
+  document.getElementById('login-screen').style.display = 'flex';
+  document.getElementById('app').style.display = 'none';
+  
+  firebase.auth().onAuthStateChanged(async function(user) {
+    if(user) {
+      // Load role from DB
+      try {
+        const snap = await firebase.database().ref('benutzer/' + user.uid).get();
+        const userData = snap.val() || {};
+        window._currentUser = {...user, ...userData};
+        window._currentRole = userData.rolle || 'hirte';
+        
+        // Check if approved
+        if(userData.aktiv === false) {
+          await firebase.auth().signOut();
+          showLoginError('Dein Konto wurde noch nicht freigegeben. Bitte Admin kontaktieren.');
+          return;
+        }
+        
+        // Show app
+        document.getElementById('login-screen').style.display = 'none';
+        document.getElementById('app').style.display = '';
+        
+        // Update topbar with user info
+        updateUserDisplay();
+        
+        // Init app
+        if(typeof initApp === 'function' && !window._appInitialized) {
+          window._appInitialized = true;
+        
+window.alleAuftreiben = async function() {
+  if(!confirm('Alle Kühe als aufgetrieben markieren?')) return;
+  const updates = {};
+  Object.entries(kuehe).forEach(([id, k]) => {
+    if(k.almStatus !== 'oben') updates['kuehe/' + id + '/almStatus'] = 'oben';
+  });
+  if(Object.keys(updates).length === 0) { alert('Alle Kühe sind bereits aufgetrieben.'); return; }
+  await update(ref(db, '/'), updates);
+  showSaveToast && showSaveToast(Object.keys(updates).length + ' Kühe aufgetrieben');
+};
   initApp();
+        }
+      } catch(e) {
+        console.error('Role load error:', e);
+        showLoginError('Fehler beim Laden. Bitte neu laden.');
+      }
+    } else {
+      // Not logged in
+      document.getElementById('login-screen').style.display = 'flex';
+      document.getElementById('app').style.display = 'none';
+      window._appInitialized = false;
+    }
+  });
+}
+
+function updateUserDisplay() {
+  const role = window._currentRole || 'hirte';
+  const roleLabels = {admin:'Admin',hirte:'Hirte',molkerei:'Molkerei',milchmesser:'Milchmesser'};
+  const dot = document.getElementById('status-dot');
+  if(dot && dot.parentElement) {
+    // Add role badge next to status dot
+    let badge = document.getElementById('role-badge');
+    if(!badge) {
+      badge = document.createElement('span');
+      badge.id = 'role-badge';
+      badge.style.cssText = 'font-size:.62rem;padding:.1rem .4rem;border-radius:8px;font-weight:bold;margin-right:.3rem';
+      dot.parentElement.insertBefore(badge, dot);
+    }
+    badge.textContent = roleLabels[role] || role;
+    badge.className = 'role-' + role;
+  }
+}
+
+window.doLogin = async function() {
+  const email = document.getElementById('login-email')?.value.trim();
+  const pw = document.getElementById('login-pw')?.value;
+  if(!email || !pw) { showLoginError('Bitte E-Mail und Passwort eingeben.'); return; }
+  
+  const btn = document.querySelector('#login-form .btn-primary');
+  if(btn) { btn.textContent = '⏳ Anmelden…'; btn.disabled = true; }
+  
+  try {
+    await firebase.auth().signInWithEmailAndPassword(email, pw);
+    // onAuthStateChanged handles the rest
+  } catch(e) {
+    const msgs = {
+      'auth/user-not-found': 'E-Mail nicht gefunden.',
+      'auth/wrong-password': 'Falsches Passwort.',
+      'auth/invalid-email': 'Ungültige E-Mail-Adresse.',
+      'auth/too-many-requests': 'Zu viele Versuche. Bitte warte kurz.',
+      'auth/invalid-credential': 'E-Mail oder Passwort falsch.',
+    };
+    showLoginError(msgs[e.code] || 'Anmeldung fehlgeschlagen: ' + e.message);
+  } finally {
+    if(btn) { btn.textContent = 'Anmelden'; btn.disabled = false; }
+  }
+};
+
+window.doLogout = async function() {
+  if(!confirm('Abmelden?')) return;
+  await firebase.auth().signOut();
+  window._currentUser = null;
+  window._currentRole = null;
+  window._appInitialized = false;
+};
+
+window.showPwReset = async function() {
+  const email = document.getElementById('login-email')?.value.trim() || 
+    prompt('E-Mail-Adresse für Passwort-Reset:');
+  if(!email) return;
+  try {
+    await firebase.auth().sendPasswordResetEmail(email);
+    alert('✓ Reset-E-Mail gesendet an: ' + email);
+  } catch(e) {
+    showLoginError('Fehler: ' + e.message);
+  }
+};
+
+function showLoginError(msg) {
+  const el = document.getElementById('login-error');
+  if(el) { el.textContent = msg; el.style.display = ''; }
+}
+
+// ── Permission check ──
+window.hasPermission = function(perm) {
+  const role = window._currentRole || 'hirte';
+  return (ROLE_PERMISSIONS[role] || ROLE_PERMISSIONS.hirte)[perm] === true;
+};
+
+// ── Filter modules by role ──
+window._origAlleModule = null;
+function applyRoleToModules() {
+  if(!window._origAlleModule) window._origAlleModule = window.ALLE_MODULE.slice();
+  const role = window._currentRole || 'hirte';
+  const hidden = ROLE_HIDDEN_MODULES[role] || [];
+  window.ALLE_MODULE = window._origAlleModule.filter(m => !hidden.includes(m.id));
+  // Also filter DEFAULT_MAIN_NAV
+  if(role === 'milchmesser') {
+    window._mainNav = ['dashboard','milch'];
+    localStorage.setItem('mainNav', JSON.stringify(window._mainNav));
+  }
+}
+
+// ══════════════════════════════════════════════════════════════
+//  ADMIN: BENUTZERVERWALTUNG
+// ══════════════════════════════════════════════════════════════
+window.renderBenutzer = function() {
+  if(!hasPermission('benutzer')) return '<div class="empty-state">Kein Zugriff</div>';
+  
+  return `
+    <div class="page-header"><h2>👤 Benutzer</h2></div>
+    <div id="benutzer-liste">
+      <div style="text-align:center;color:var(--text3)">⏳ Lade Benutzer…</div>
+    </div>
+    <div class="section-title" style="margin-top:.8rem">Neuen Benutzer anlegen</div>
+    <div class="card-section">
+      <input id="nb-email" class="inp" type="email" placeholder="E-Mail *" style="margin-bottom:.4rem" />
+      <input id="nb-pw" class="inp" type="password" placeholder="Passwort (min. 6 Zeichen) *" style="margin-bottom:.4rem" />
+      <input id="nb-name" class="inp" placeholder="Name / Anzeigename" style="margin-bottom:.4rem" />
+      <select id="nb-rolle" class="inp" style="margin-bottom:.8rem">
+        <option value="hirte">🌿 Hirte – Zählung, Milch, Behandlung</option>
+        <option value="milchmesser">🥛 Milchmesser – nur Milch eintragen</option>
+        <option value="molkerei">🧀 Molkerei – Milchdaten lesen</option>
+        <option value="admin">⚙ Admin – voller Zugriff</option>
+      </select>
+      <button class="btn-primary" style="width:100%" onclick="createBenutzer()">+ Benutzer anlegen</button>
+    </div>
+  `;
+};
+
+window.loadBenutzerListe = async function() {
+  const el = document.getElementById('benutzer-liste');
+  if(!el) return;
+  try {
+    const snap = await firebase.database().ref('benutzer').get();
+    const data = snap.val() || {};
+    const roleLabels = {admin:'Admin',hirte:'Hirte',molkerei:'Molkerei',milchmesser:'Milchmesser'};
+    const roleColors = {admin:'var(--gold)',hirte:'var(--green)',molkerei:'#7acbff',milchmesser:'#c87ee8'};
+    
+    if(Object.keys(data).length === 0) {
+      el.innerHTML = '<div class="empty-state">Noch keine Benutzer angelegt</div>';
+      return;
+    }
+    
+    el.innerHTML = Object.entries(data).map(([uid, u]) => `
+      <div class="list-card">
+        <div class="list-card-left">
+          <div style="width:36px;height:36px;border-radius:50%;background:var(--bg3);display:flex;align-items:center;justify-content:center;font-size:1.1rem">👤</div>
+          <div>
+            <div class="list-card-title">${u.name||u.email||'–'}</div>
+            <div class="list-card-sub">${u.email||''}</div>
+          </div>
+        </div>
+        <div style="display:flex;align-items:center;gap:.4rem">
+          <span class="role-badge role-${u.rolle||'hirte'}">${roleLabels[u.rolle]||u.rolle}</span>
+          ${uid !== firebase.auth().currentUser?.uid ? 
+            `<button class="btn-xs-danger" onclick="deleteBenutzer('${uid}','${u.email||''}')">✕</button>` : 
+            '<span style="font-size:.7rem;color:var(--text3)">(du)</span>'}
+        </div>
+      </div>`).join('');
+  } catch(e) {
+    el.innerHTML = '<div class="empty-state">Fehler beim Laden</div>';
+  }
+};
+
+window.createBenutzer = async function() {
+  const email = document.getElementById('nb-email')?.value.trim();
+  const pw = document.getElementById('nb-pw')?.value;
+  const name = document.getElementById('nb-name')?.value.trim();
+  const rolle = document.getElementById('nb-rolle')?.value;
+  
+  if(!email || !pw) { alert('E-Mail und Passwort sind Pflicht.'); return; }
+  if(pw.length < 6) { alert('Passwort muss mindestens 6 Zeichen haben.'); return; }
+  
+  // Create user via Firebase Admin API is not available client-side
+  // Use a workaround: create secondary auth instance
+  try {
+    // Save current user
+    const currentUser = firebase.auth().currentUser;
+    
+    // Create new user (this signs out current user in default app!)
+    // Better: use a secondary app instance
+    let secondApp;
+    try {
+      secondApp = firebase.app('secondary');
+    } catch(e) {
+      secondApp = firebase.initializeApp(window.FIREBASE_CONFIG, 'secondary');
+    }
+    const secondAuth = firebase.auth(secondApp);
+    
+    const cred = await secondAuth.createUserWithEmailAndPassword(email, pw);
+    const newUid = cred.user.uid;
+    
+    // Sign out from secondary app
+    await secondAuth.signOut();
+    
+    // Save role in DB
+    await firebase.database().ref('benutzer/' + newUid).set({
+      email, name: name||email, rolle: rolle||'hirte',
+      aktiv: true, createdAt: Date.now(),
+      createdBy: currentUser?.uid||'admin'
+    });
+    
+    // Clear form
+    ['nb-email','nb-pw','nb-name'].forEach(id => { const el=document.getElementById(id); if(el) el.value=''; });
+    
+    showSaveToast&&showSaveToast('Benutzer angelegt');
+    loadBenutzerListe();
+  } catch(e) {
+    const msgs = {
+      'auth/email-already-in-use': 'Diese E-Mail ist bereits registriert.',
+      'auth/invalid-email': 'Ungültige E-Mail.',
+      'auth/weak-password': 'Passwort zu schwach (min. 6 Zeichen).',
+    };
+    alert(msgs[e.code] || 'Fehler: ' + e.message);
+  }
+};
+
+window.deleteBenutzer = async function(uid, email) {
+  if(!confirm('Benutzer ' + email + ' löschen?')) return;
+  await firebase.database().ref('benutzer/' + uid).remove();
+  // Note: Firebase Auth user remains - must be deleted via console
+  // Add note
+  alert('✓ Benutzer aus der App entfernt.\nHinweis: Für vollständige Löschung auch in Firebase Console → Authentication löschen.');
+  loadBenutzerListe();
+};
+  // initApp is now called by initAuth after login
+  window.addEventListener('load', function() {
+    setTimeout(function() { if(firebase.auth) initAuth(); else initApp(); }, 500);
+  });
 
   // Alle verfügbaren Module
   const ALLE_MODULE = [
@@ -5807,6 +6148,7 @@ window.ladeWetterPrognose = async function() {
     {id:'besamung',  icon:'🐮',  label:'Besamung'},
     {id:'bestandsbuch',icon:'📋',label:'Bestandsbuch'},
     {id:'einstellungen',icon:'⚙',label:'Einstellungen'},
+    {id:'benutzer',    icon:'👤', label:'Benutzer'},
     {id:'journal',   icon:'📓',  label:'Journal'},
     {id:'alpung',    icon:'📊',  label:'Alpungstage'},
     {id:'kontakte',  icon:'📞',  label:'Kontakte'},
