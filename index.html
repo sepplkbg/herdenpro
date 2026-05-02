@@ -1366,7 +1366,7 @@ function renderBestandsbuch() {
       <tbody>${bListe.map(([,b])=>{const k=kuehe[b.kuhId];return(function(){
         const dat=new Date(b.datum).toLocaleDateString('de-AT');
         const zeit=b.behandlungZeit==='abend'?'🌇 Ab.':'🌅 Mo.';
-        const tier='#'+(k?.nr||'?')+' '+(k?.name||'');
+        const tier='#'+(k?.nr||'?')+' '+(k?.name||'')+(k?.ohrmarke?' ('+k.ohrmarke+')':'');
         const wzMEnde=b.wzMilchEnde?new Date(b.wzMilchEnde).toLocaleDateString('de-AT')+'('+zeit+')':'–';
         const wzFEnde=b.wzFleischEnde?new Date(b.wzFleischEnde).toLocaleDateString('de-AT')+'('+zeit+')':'–';
         const abgabe=b.abgabeDatum?new Date(b.abgabeDatum).toLocaleDateString('de-AT'):'–';
@@ -1380,7 +1380,7 @@ window.druckeBestandsbuch=function(){
   const z=Object.values(behandlungen).filter(b=>b.medikament).sort((a,b)=>a.datum-b.datum).map(b=>{const k=kuehe[b.kuhId];return(function(){
         const dat=new Date(b.datum).toLocaleDateString('de-AT');
         const zeit=b.behandlungZeit==='abend'?'🌇 Ab.':'🌅 Mo.';
-        const tier='#'+(k?.nr||'?')+' '+(k?.name||'');
+        const tier='#'+(k?.nr||'?')+' '+(k?.name||'')+(k?.ohrmarke?' ('+k.ohrmarke+')':'');
         const wzMEnde=b.wzMilchEnde?new Date(b.wzMilchEnde).toLocaleDateString('de-AT')+'('+zeit+')':'–';
         const wzFEnde=b.wzFleischEnde?new Date(b.wzFleischEnde).toLocaleDateString('de-AT')+'('+zeit+')':'–';
         const abgabe=b.abgabeDatum?new Date(b.abgabeDatum).toLocaleDateString('de-AT'):'–';
@@ -1523,11 +1523,14 @@ function renderHerde() {
       ${Object.values(gruppen).sort((a,b)=>a.name?.localeCompare(b.name)).map(g=>`<button class="filter-chip" onclick="filterHerde('gruppe:${g.name}',this)">🏷 ${g.name}</button>`).join('')}
     </div>`:''}
     <div class="card-list" id="kuh-list">
-      ${liste.length?liste.map(([id,k])=>`<div class="list-card" data-bauer="${k.bauer||''}" data-gruppe="${k.gruppe||''}" onclick="showKuhDetail('${id}')"><div class="list-card-left"><span class="nr-badge">#${k.nr}</span><div><div class="list-card-title">${k.name||'–'} ${k.almStatus==='oben'?'<span class="tag tag-green" style="font-size:.6rem">⛰</span>':''}</div><div class="list-card-sub">${k.bauer||''} ${k.rasse?'· '+k.rasse:''} ${k.gruppe?'· '+k.gruppe:''}</div>
+      ${liste.length?liste.map(([id,k])=>`<div class="list-card" data-bauer="${k.bauer||''}" data-gruppe="${k.gruppe||''}" onclick="showKuhDetail('${id}')"><div class="list-card-left"><span class="nr-badge">#${k.nr}</span><div><div class="list-card-title">${k.name||'–'} ${k.almStatus==='oben'?'<span class="tag tag-green" style="font-size:.6rem">⛰</span>':''}</div><div class="list-card-sub">${k.bauer||''} ${k.rasse?'· '+k.rasse:''} ${k.gruppe?'· '+k.gruppe:''} ${k.ohrmarke?'· '+k.ohrmarke:''}</div>
               ${k.laktation?`<div style="font-size:.65rem;color:var(--text3)">${{melkend:'🥛',trocken:'💧',tragend:'🐄',jung:'🌱',trockengestellt:'⏸'}[k.laktation]||''} ${k.laktation}</div>`:''}</div></div><div class="list-card-right">${Object.values(behandlungen).some(b=>b.kuhId===id&&b.aktiv)?'<span class="tag tag-red">⚕</span>':''}${Object.values(besamungen).some(b=>b.kuhId===id&&b.status==='tragend')?'<span class="tag tag-blue">🐮</span>':''}<span class="chevron">›</span></div></div>`).join(''):`<div class="empty-state">Noch keine Kühe erfasst</div>`}
     </div>
     <div id="csv-import-overlay" class="form-overlay" style="display:none"><div class="form-sheet"><div class="form-header"><h3>Kühe importieren</h3><button class="close-btn" onclick="closeForm('csv-import-overlay')">✕</button></div><div class="form-body"><p class="hint">Excel-Tabelle einfügen. Spalten: Nr · Name · Bauer · Rasse (erste Zeile = Überschrift)</p><textarea id="import-text" class="inp" rows="7" placeholder="Nr&#9;Name&#9;Bauer&#9;Rasse&#10;1&#9;Elsa&#9;Mayr&#9;Fleckvieh"></textarea><div id="import-err" style="color:var(--red);font-size:.78rem"></div><div class="form-actions"><button class="btn-secondary" onclick="closeForm('csv-import-overlay')">Abbrechen</button><button class="btn-primary" onclick="doImport()">Importieren</button></div></div></div></div>
-    <div id="kuh-form-overlay" class="form-overlay" style="display:none"><div class="form-sheet"><div class="form-header"><h3 id="kuh-form-title">Kuh erfassen</h3><button class="close-btn" onclick="closeForm('kuh-form-overlay')">✕</button></div><div class="form-body"><input id="f-nr" class="inp" placeholder="Ohrmarkennummer *" /><input id="f-name" class="inp" placeholder="Kuhname" /><select id="f-bauer" class="inp"><option value="">Bauer wählen</option>${bauernListe.map(([,b])=>`<option value="${b.name}">${b.name}</option>`).join('')}<option value="__neu__">+ Freitext</option></select><input id="f-bauer-text" class="inp" placeholder="Bauer (Freitext)" style="display:none" /><input id="f-rasse" class="inp" placeholder="Rasse" />
+    <div id="kuh-form-overlay" class="form-overlay" style="display:none"><div class="form-sheet"><div class="form-header"><h3 id="kuh-form-title">Kuh erfassen</h3><button class="close-btn" onclick="closeForm('kuh-form-overlay')">✕</button></div><div class="form-body"><label class="inp-label">Kuhnummer * (interne Nr., z.B. 1–90)</label>
+          <input id="f-nr" class="inp" placeholder="z.B. 1" inputmode="numeric" />
+          <label class="inp-label">Ohrmarkennummer (z.B. AT59 4700 432)</label>
+          <input id="f-ohrmarke" class="inp" placeholder="AT59 4700 432" /><input id="f-name" class="inp" placeholder="Kuhname" /><select id="f-bauer" class="inp"><option value="">Bauer wählen</option>${bauernListe.map(([,b])=>`<option value="${b.name}">${b.name}</option>`).join('')}<option value="__neu__">+ Freitext</option></select><input id="f-bauer-text" class="inp" placeholder="Bauer (Freitext)" style="display:none" /><input id="f-rasse" class="inp" placeholder="Rasse" />
           <select id="f-gruppe" class="inp">
             <option value="">Gruppe (optional)</option>
             ${Object.entries(gruppen).sort((a,b)=>a[1].name?.localeCompare(b[1].name)).map(([id,g])=>`<option value="${g.name}">${g.name}</option>`).join('')}
@@ -1545,7 +1548,7 @@ function renderKuhDetail() {
     <div class="page-header"><button class="back-btn" onclick="navigate('herde')">‹ Herde</button><div style="display:flex;gap:.5rem"><button class="btn-ghost" onclick="showKuhForm('${id}')">✎</button><button class="btn-xs-danger" onclick="deleteKuh('${id}')">Löschen</button></div></div>
     <div class="detail-hero">
       ${fotos[id]?`<img src="${fotos[id].data}" style="width:80px;height:80px;border-radius:50%;object-fit:cover;border:2px solid var(--gold2);margin-bottom:.5rem" />`:`<div style="width:80px;height:80px;border-radius:50%;background:var(--bg3);border:2px dashed var(--border2);display:flex;align-items:center;justify-content:center;font-size:2rem;margin:0 auto .5rem">🐄</div>`}
-      <div class="detail-nr">#${k.nr} ${k.almStatus==='oben'?'· ⛰ auf Alm':''}</div>
+      <div class="detail-nr">#${k.nr} ${k.ohrmarke?'· <span style="font-size:.75rem;color:var(--text3)">'+k.ohrmarke+'</span>':''} ${k.almStatus==='oben'?'· ⛰ auf Alm':''}</div>
       <div class="detail-name">${k.name||'–'}</div>
       <div class="detail-meta">${[k.bauer,k.rasse,k.gruppe].filter(Boolean).join(' · ')}</div>
       ${k.laktation?`<div style="margin-top:4px"><span class="tag tag-blue">${{melkend:'🥛 Melkend',trocken:'💧 Trocken',tragend:'🐄 Tragend',jung:'🌱 Jungtier',trockengestellt:'⏸ Trockengestellt'}[k.laktation]||k.laktation}</span></div>`:''}
@@ -1846,6 +1849,8 @@ window.showKuhForm=function(id=null){
     // Set notiz
     const notizEl=document.getElementById('f-notiz');
     if(notizEl)notizEl.value=k.notiz||'';
+    const ohrmarkeEl=document.getElementById('f-ohrmarke');
+    if(ohrmarkeEl)ohrmarkeEl.value=k.ohrmarke||'';
   } else {
     document.getElementById('f-nr').value='';
     document.getElementById('f-name').value='';
@@ -1857,6 +1862,7 @@ window.showKuhForm=function(id=null){
 };
 window.saveKuh=async function(){const nr=document.getElementById('f-nr')?.value.trim();if(!nr){alert('Nr Pflicht');return;}const bs=document.getElementById('f-bauer')?.value;const bauer=bs==='__neu__'?(document.getElementById('f-bauer-text')?.value.trim()||''):bs;const data={
     nr,
+    ohrmarke:   document.getElementById('f-ohrmarke')?.value.trim()||'',
     name:       document.getElementById('f-name')?.value.trim(),
     bauer,
     rasse:      document.getElementById('f-rasse')?.value.trim(),
@@ -2033,7 +2039,7 @@ window.switchTab=function(show,hide,btn){show.split(',').forEach(id=>{const el=d
 function attachListeners(){document.querySelectorAll('.form-overlay').forEach(el=>{el.onclick=e=>{if(e.target===el)closeForm(el.id);};});}
 function statusLabel(s){return{besamt:'Besamt',tragend:'Trächtig',leer:'Leer',kalbung:'Gekälbert'}[s]||s;}
 function isoDate(d){return d.toISOString().split('T')[0];}
-function parseTable(text){if(!text)return null;const lines=text.trim().split(/\r?\n/).filter(l=>l.trim());if(lines.length<2)return null;const sep=lines[0].includes('\t')?'\t':lines[0].includes(';')?';':',';const hdr=lines[0].split(sep).map(h=>h.trim().toLowerCase());const iN=hdr.findIndex(h=>/nr|num|ohr|marke|id/.test(h));const iK=hdr.findIndex(h=>/kuh|tier|name/.test(h));const iB=hdr.findIndex(h=>/bauer|landwirt|besitz|owner/.test(h));const iR=hdr.findIndex(h=>/rasse|breed/.test(h));const iG=hdr.findIndex(h=>/gruppe|group|abt/.test(h));if(iN<0)return null;return lines.slice(1).map(l=>{const c=l.split(sep).map(x=>x.trim());return{nr:c[iN]||'',name:iK>=0?c[iK]||'':'',bauer:iB>=0?c[iB]||'':'',rasse:iR>=0?(c[iR]||''):'',gruppe:iG>=0?(c[iG]||''):''};}).filter(r=>r.nr);}
+function parseTable(text){if(!text)return null;const lines=text.trim().split(/\r?\n/).filter(l=>l.trim());if(lines.length<2)return null;const sep=lines[0].includes('\t')?'\t':lines[0].includes(';')?';':',';const hdr=lines[0].split(sep).map(h=>h.trim().toLowerCase());const iN=hdr.findIndex(h=>/nr|num|ohr|marke|id/.test(h));const iK=hdr.findIndex(h=>/kuh|tier|name/.test(h));const iB=hdr.findIndex(h=>/bauer|landwirt|besitz|owner/.test(h));const iR=hdr.findIndex(h=>/rasse|breed/.test(h));const iG=hdr.findIndex(h=>/gruppe|group|abt/.test(h));const iO=hdr.findIndex(h=>/ohr|ear|mark/.test(h));if(iN<0)return null;return lines.slice(1).map(l=>{const c=l.split(sep).map(x=>x.trim());return{nr:c[iN]||'',name:iK>=0?c[iK]||'':'',bauer:iB>=0?c[iB]||'':'',rasse:iR>=0?(c[iR]||''):'',gruppe:iG>=0?(c[iG]||''):'',ohrmarke:iO>=0?(c[iO]||''):''};}).filter(r=>r.nr);}
 function registerSW(){if('serviceWorker' in navigator)navigator.serviceWorker.register('./sw.js').catch(()=>{});}
 function requestNotificationPermission(){if('Notification' in window&&Notification.permission==='default')Notification.requestPermission();}
 function checkWartezeiten(){
@@ -2207,9 +2213,9 @@ window.exportAlpung = function() {
   const rows = Object.values(kuehe).sort((a,b)=>a.nr?.localeCompare(b.nr,undefined,{numeric:true})).map(k => {
     let tage = 0;
     if(auftriebTs && saisonEnde) tage = Math.max(0, Math.floor((saisonEnde - auftriebTs) / 86400000));
-    return [k.nr, k.name||'', k.bauer||'', tage, saisonInfo?.alm||'', saisonInfo?.jahr||''];
+    return [k.nr, k.ohrmarke||'', k.name||'', k.bauer||'', tage, saisonInfo?.alm||'', saisonInfo?.jahr||''];
   });
-  const csv = 'Ohrmarke;Name;Bauer;Alpungstage;Alm;Jahr\n' + rows.map(r=>r.join(';')).join('\n');
+  const csv = 'Kuhnummer;Ohrmarke;Name;Bauer;Alpungstage;Alm;Jahr\n' + rows.map(r=>r.join(';')).join('\n');
   const a = document.createElement('a');
   a.href = URL.createObjectURL(new Blob(['﻿'+csv],{type:'text/csv;charset=utf-8'}));
   a.download = `Alpungstage_${saisonInfo?.jahr||new Date().getFullYear()}.csv`;
@@ -2700,32 +2706,73 @@ function renderStatistik() {
 function renderBackup() {
   return `
     <div class="page-header"><h2>💾 Backup & Export</h2></div>
-    
+
+    <!-- SYNC with Excel -->
+    <div class="section-title" style="color:var(--gold)">🔄 Sennerei Excel Sync</div>
+    <div class="card-section" style="margin-bottom:.8rem;border-color:var(--gold2)">
+      <p style="font-size:.82rem;color:var(--text2);margin-bottom:.8rem;line-height:1.6">
+        Synchronisiere Daten zwischen HerdenPro und dem Sennerei-Excel über OneDrive.
+        <br><b style="color:var(--gold)">App → Excel:</b> Export → in OneDrive speichern → Excel öffnet automatisch
+        <br><b style="color:var(--gold)">Excel → App:</b> In Excel „Sync zur App" klicken → hier importieren
+      </p>
+      <div style="display:flex;flex-direction:column;gap:.5rem">
+        <button class="btn-primary btn-block" onclick="exportSyncJSON()" style="font-size:.9rem">
+          📤 Sync Export (App → Excel)
+        </button>
+        <label style="cursor:pointer;display:block">
+          <span class="btn-secondary" style="display:block;text-align:center;padding:.5rem;border-radius:var(--radius-sm);cursor:pointer">
+            📥 Sync Import (Excel → App)
+          </span>
+          <input type="file" accept=".json" style="display:none" onchange="importSyncJSON(this)" />
+        </label>
+      </div>
+    </div>
+
+    <div class="section-title" style="color:var(--green)">📋 Rohdaten Import</div>
+    <div class="card-section" style="margin-bottom:.8rem;border-color:var(--green)">
+      <p style="font-size:.82rem;color:var(--text2);margin-bottom:.8rem;line-height:1.6">
+        Importiere die ausgefüllte <b>HerdenPro_Rohdaten.xlsx</b> direkt in die App.<br>
+        Bauern, Kühe, Milch, Behandlungen und Kraftfutter werden automatisch übernommen.
+      </p>
+      <div style="display:flex;flex-direction:column;gap:.5rem">
+        <label style="cursor:pointer;display:block">
+          <span class="btn-primary" style="display:block;text-align:center;padding:.6rem;border-radius:var(--radius-sm);cursor:pointer;background:linear-gradient(135deg,var(--green),var(--green2))">
+            📊 Rohdaten Excel importieren
+          </span>
+          <input type="file" accept=".xlsx,.xls" style="display:none" onchange="importRohdatenExcel(this)" />
+        </label>
+      </div>
+      <div id="rohdaten-status" style="margin-top:.5rem;font-size:.78rem;color:var(--text3)"></div>
+    </div>
+
+
+      </div>
+      <div id="sync-status" style="margin-top:.5rem;font-size:.78rem;color:var(--text3)"></div>
+    </div>
+
     <div class="section-title">Vollständiges Backup</div>
     <div class="card-section" style="margin-bottom:.8rem">
-      <p style="font-size:.82rem;color:var(--text2);margin-bottom:.8rem">Alle Daten als JSON-Datei exportieren. Kann als Backup aufbewahrt oder später wieder importiert werden.</p>
+      <p style="font-size:.82rem;color:var(--text2);margin-bottom:.8rem">Alle Daten als JSON-Datei exportieren.</p>
       <button class="btn-primary btn-block" onclick="exportJSON()">📥 Alle Daten als JSON exportieren</button>
     </div>
     
     <div class="section-title">CSV Exporte</div>
     <div class="card-section">
-      <p style="font-size:.82rem;color:var(--text2);margin-bottom:.8rem">Einzelne Datenbereiche als CSV – direkt in Excel öffnen.</p>
       <div style="display:flex;flex-direction:column;gap:.5rem">
         <button class="btn-secondary" onclick="exportKueheCSV()">🐄 Kühe exportieren</button>
         <button class="btn-secondary" onclick="exportBehandlungenCSV()">⚕ Behandlungen exportieren</button>
         <button class="btn-secondary" onclick="exportMilchCSV()">🥛 Milchdaten exportieren</button>
         <button class="btn-secondary" onclick="exportAlpung()">📊 Alpungstage exportieren</button>
+        <button class="btn-primary" onclick="exportMolkereiExcel()">🧀 Molkerei Excel exportieren</button>
       </div>
     </div>
     
     <div class="section-title" style="margin-top:1rem">PDF Saisonbericht</div>
     <div class="card-section">
-      <p style="font-size:.82rem;color:var(--text2);margin-bottom:.8rem">Vollständiger Bericht am Saisonende – druckbar als PDF.</p>
       <button class="btn-primary" onclick="exportSaisonPDF()">🖨 Saisonbericht als PDF</button>
     </div>
   `;
 }
-
 window.exportJSON = function() {
   const data = { kuehe, behandlungen, besamungen, milchEintraege, weideTage, weiden, bauern, gruppen, saison: saisonInfo, journal, kontakte, exportDatum: new Date().toISOString() };
   const blob = new Blob([JSON.stringify(data,null,2)],{type:'application/json'});
@@ -2735,7 +2782,7 @@ window.exportJSON = function() {
 
 window.exportKueheCSV = function() {
   const rows = Object.values(kuehe).sort((a,b)=>parseInt(a.nr)-parseInt(b.nr)).map(k=>[k.nr,k.name||'',k.bauer||'',k.rasse||'',k.gruppe||'',k.almStatus==='oben'?'Ja':'Nein']);
-  const csv = 'Nr;Name;Bauer;Rasse;Gruppe;Auf Alm\n' + rows.map(r=>r.join(';')).join('\n');
+  const csv = 'Kuhnr;Ohrmarke;Name;Bauer;Rasse;Gruppe;Auf Alm\n' + rows.map(r=>r.join(';')).join('\n');
   const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob(['﻿'+csv],{type:'text/csv;charset=utf-8'}));
   a.download=`Kuehe_${isoDate(new Date())}.csv`; a.click();
 };
@@ -3993,6 +4040,421 @@ function setupNavMehrDrag() {
   document.addEventListener('touchmove',function(e){if(navGhost){e.preventDefault();moveNavDrag(e.touches[0].clientX,e.touches[0].clientY);}},{passive:false});
   document.addEventListener('touchend',function(e){if(navGhost){clearTimeout(longTimer);endNavDrag(e.changedTouches[0].clientX,e.changedTouches[0].clientY);}else clearTimeout(longTimer);});
   document.addEventListener('touchcancel',function(){if(navGhost)cancelNavDrag();clearTimeout(longTimer);});
+}
+
+// ══════════════════════════════════════════════════════════════
+//  SYNC EXPORT/IMPORT (App ↔ Sennerei Excel via OneDrive)
+// ══════════════════════════════════════════════════════════════
+window.exportSyncJSON = function() {
+  const ts = Date.now();
+  const saisonStart = saisonInfo?.auftriebDatum || null;
+
+  // Milch nach Wochen gruppieren pro Kuh
+  const milchWochen = {};
+  Object.values(milchEintraege).forEach(m => {
+    if(!m.datum || !saisonStart) return;
+    const tageSeit = Math.floor((m.datum - saisonStart) / 86400000);
+    const woche = Math.min(14, Math.max(1, Math.floor(tageSeit/7) + 1));
+    const wKey = 'w' + woche;
+    if(m.art === 'prokuh' && m.prokuh) {
+      Object.entries(m.prokuh).forEach(([kuhId, liter]) => {
+        if(!milchWochen[kuhId]) milchWochen[kuhId] = {};
+        milchWochen[kuhId][wKey] = (milchWochen[kuhId][wKey]||0) + liter;
+      });
+    }
+  });
+
+  // Kühe mit Milchdaten
+  const milchArray = Object.entries(kuehe).map(([id,k]) => {
+    const w = milchWochen[id] || {};
+    const obj = {nr: k.nr, name: k.name||'', bauer: k.bauer||'', updatedAt: k.updatedAt||0};
+    for(let i=1;i<=14;i++) obj['w'+i] = Math.round((w['w'+i]||0)*10)/10;
+    return obj;
+  });
+
+  // Behandlungen mit Kuh-Info
+  const behandlArray = Object.entries(behandlungen).map(([id,b]) => {
+    const k = kuehe[b.kuhId];
+    return {...b, id, kuhNr: k?.nr||'', kuhName: k?.name||''};
+  });
+
+  // Kraftfutter mit Kuh-Info
+  const kfArray = Object.entries(kraftfutter).map(([id,kf]) => {
+    const k = kuehe[kf.kuhId];
+    const heute = Date.now();
+    const saisonEnde = saisonInfo?.abtriebtDatum || (saisonInfo?.aktiv ? heute : heute);
+    const tage = kf.datum ? Math.max(0, Math.floor((saisonEnde - kf.datum) / 86400000)) : 0;
+    return {...kf, id, kuhNr: k?.nr||'', kuhName: k?.name||'', tage};
+  });
+
+  // Bauern
+  const bauernArray = Object.values(bauern);
+
+  const sync = {
+    exportiert_von: 'herdenpro',
+    exportiert_am: ts,
+    version: '1.0',
+    saison: saisonInfo,
+    bauern: bauernArray,
+    kuehe: Object.values(kuehe),
+    milch_wochen: milchArray,
+    behandlungen: behandlArray,
+    kraftfutter: kfArray,
+    besamungen: Object.values(besamungen),
+  };
+
+  const blob = new Blob([JSON.stringify(sync, null, 2)], {type:'application/json'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  const datum = new Date().toISOString().slice(0,10);
+  a.download = 'herdenpro_sync_' + datum + '.json';
+  a.click();
+
+  document.getElementById('sync-status').innerHTML = 
+    '✓ Exportiert: ' + datum + ' · Jetzt Datei in OneDrive speichern';
+};
+
+window.importSyncJSON = async function(input) {
+  const file = input.files[0];
+  if(!file) return;
+  const statusEl = document.getElementById('sync-status');
+  statusEl.innerHTML = '⏳ Importiere...';
+
+  try {
+    const text = await file.text();
+    const data = JSON.parse(text);
+
+    if(!data.exportiert_von) {
+      statusEl.innerHTML = '✗ Ungültige Sync-Datei';
+      return;
+    }
+
+    let imported = 0;
+    const myTs = Date.now();
+
+    // Bauern synchronisieren (neuester Stand gewinnt)
+    if(data.bauern && Array.isArray(data.bauern)) {
+      for(const b of data.bauern) {
+        if(!b.name) continue;
+        // Suche bestehenden Bauer
+        const existing = Object.entries(bauern).find(([,v])=>v.name===b.name);
+        if(existing) {
+          const [bid, bv] = existing;
+          if((b.updatedAt||0) > (bv.updatedAt||0)) {
+            await update(ref(db,'bauern/'+bid), {...b, updatedAt: b.updatedAt||myTs});
+            imported++;
+          }
+        } else {
+          await push(ref(db,'bauern'), {...b, updatedAt: b.updatedAt||myTs});
+          imported++;
+        }
+      }
+    }
+
+    // Milchdaten synchronisieren
+    if(data.milch_wochen && Array.isArray(data.milch_wochen)) {
+      for(const mw of data.milch_wochen) {
+        if(!mw.nr || !saisonInfo?.auftriebDatum) continue;
+        // Finde Kuh
+        const kuhEntry = Object.entries(kuehe).find(([,k])=>k.nr===mw.nr);
+        if(!kuhEntry) continue;
+        const kuhId = kuhEntry[0];
+        
+        // Erstelle Milcheintrag pro Woche
+        for(let w=1; w<=14; w++) {
+          const liter = mw['w'+w];
+          if(!liter || liter <= 0) continue;
+          
+          // Prüfe ob bereits vorhanden
+          const wocheDatum = new Date(saisonInfo.auftriebDatum + (w-1)*7*86400000);
+          const wocheKey = wocheDatum.toISOString().slice(0,10);
+          
+          const exists = Object.values(milchEintraege).find(m => 
+            m.art==='prokuh' && m.prokuh?.[kuhId] && 
+            Math.abs(m.datum - wocheDatum.getTime()) < 7*86400000
+          );
+          
+          if(!exists) {
+            const prokuh = {};
+            prokuh[kuhId] = liter;
+            await push(ref(db,'milch'), {
+              datum: wocheDatum.getTime(),
+              art: 'prokuh',
+              prokuh,
+              gesamt: liter,
+              zeit: 'morgen',
+              quelle: 'excel_sync',
+              createdAt: myTs
+            });
+            imported++;
+          }
+        }
+      }
+    }
+
+    statusEl.innerHTML = '✓ Import abgeschlossen: ' + imported + ' Datensätze synchronisiert';
+    alert('✓ Sync Import abgeschlossen\n' + imported + ' Datensätze importiert.');
+  } catch(e) {
+    statusEl.innerHTML = '✗ Fehler: ' + e.message;
+    alert('Fehler beim Import: ' + e.message);
+  }
+  input.value = '';
+};
+
+// ══════════════════════════════════════════════════════════════
+//  ROHDATEN EXCEL IMPORT
+// ══════════════════════════════════════════════════════════════
+window.importRohdatenExcel = async function(input) {
+  const file = input.files[0];
+  if(!file) return;
+  const statusEl = document.getElementById('rohdaten-status');
+  statusEl.innerHTML = '⏳ Lese Excel-Datei...';
+
+  // Need SheetJS
+  if(typeof XLSX === 'undefined') {
+    const s=document.createElement('script');
+    s.src='https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
+    s.onload = () => importRohdatenExcel(input);
+    document.head.appendChild(s);
+    return;
+  }
+
+  try {
+    const buf = await file.arrayBuffer();
+    const wb = XLSX.read(buf, {type:'array', cellDates:true});
+    
+    let total = 0;
+    const ts = Date.now();
+
+    // ── Saison ──
+    const wsSaison = wb.Sheets['Saison'];
+    if(wsSaison) {
+      const sd = XLSX.utils.sheet_to_json(wsSaison, {header:1, defval:''});
+      const saisonUpdate = {};
+      sd.forEach(row => {
+        if(!row[0] || !row[1]) return;
+        const key = String(row[0]).toLowerCase();
+        if(key.includes('almname')) saisonUpdate.alm = String(row[1]);
+        if(key.includes('jahr')) saisonUpdate.jahr = parseInt(row[1]);
+        if(key.includes('auftrieb')) {
+          const d = parseExcelDatum(row[1]);
+          if(d) { saisonUpdate.auftriebDatum = d; saisonUpdate.aktiv = true; }
+        }
+        if(key.includes('preis pro kuh')) saisonUpdate.preisProKuh = parseFloat(row[1])||0;
+        if(key.includes('kraftfutter bio')) saisonUpdate.kraftfutterBioGesamt = parseFloat(row[1])||0;
+        if(key.includes('kraftfutter konv')) saisonUpdate.kraftfutterKonvGesamt = parseFloat(row[1])||0;
+        if(key.includes('heu gesamt')) saisonUpdate.heuGesamt = parseFloat(row[1])||0;
+        if(key.includes('käsepreis')) saisonUpdate.kaesepreis = parseFloat(row[1])||0;
+        if(key.includes('butterpreis')) saisonUpdate.butterpreis = parseFloat(row[1])||0;
+      });
+      if(Object.keys(saisonUpdate).length > 0) {
+        await update(ref(db,'saison'), saisonUpdate);
+        total++;
+      }
+    }
+
+    // ── Bauern ──
+    const wsBauern = wb.Sheets['Bauern'];
+    if(wsBauern) {
+      const rows = XLSX.utils.sheet_to_json(wsBauern, {header:1, defval:'', range:3});
+      for(const row of rows) {
+        const name = String(row[0]||'').trim();
+        if(!name) continue;
+        const data = {
+          name,
+          anzahl: parseInt(row[1])||0,
+          bio: String(row[2]||'').toLowerCase().includes('ja'),
+          verkKase: parseFloat(row[3])||0,
+          verkButter: parseFloat(row[4])||0,
+          strasse: String(row[5]||'').trim(),
+          plzOrt: String(row[6]||'').trim(),
+          tel: String(row[7]||'').trim(),
+          email: String(row[8]||'').trim(),
+          kuhStartNr: String(row[9]||'').trim(),
+          kuhNamen: String(row[10]||'').trim(),
+          updatedAt: ts
+        };
+        // Check if exists
+        const existing = Object.entries(bauern).find(([,b])=>b.name===name);
+        if(existing) {
+          await update(ref(db,'bauern/'+existing[0]), data);
+        } else {
+          await push(ref(db,'bauern'), data);
+        }
+        total++;
+      }
+    }
+
+    // ── Kühe ──
+    const wsKuehe = wb.Sheets['Kühe'];
+    if(wsKuehe) {
+      const rows = XLSX.utils.sheet_to_json(wsKuehe, {header:1, defval:'', range:2});
+      for(const row of rows) {
+        const nr = String(row[0]||'').trim();
+        const name = String(row[1]||'').trim();
+        if(!nr) continue;
+        const data = {
+          nr, name,
+          bauer: String(row[2]||'').trim(),
+          rasse: String(row[3]||'').trim(),
+          gruppe: String(row[4]||'').trim(),
+          laktation: String(row[6]||'').trim().toLowerCase()||'melkend',
+          notiz: String(row[7]||'').trim(),
+          ohrmarke: String(row[8]||'').trim(),  // AT59 4700 432
+          updatedAt: ts
+        };
+        // Check if exists
+        const existing = Object.entries(kuehe).find(([,k])=>k.nr===nr);
+        if(existing) {
+          await update(ref(db,'kuehe/'+existing[0]), data);
+        } else {
+          await push(ref(db,'kuehe'), data);
+        }
+        total++;
+      }
+    }
+
+    // ── Milch ──
+    const wsMilch = wb.Sheets['Milch'];
+    if(wsMilch) {
+      const rows = XLSX.utils.sheet_to_json(wsMilch, {header:1, defval:'', range:3});
+      for(const row of rows) {
+        const datumRaw = row[0];
+        const kuhNr = String(row[1]||'').trim();
+        const liter = parseFloat(row[2])||0;
+        if(!datumRaw || !kuhNr || !liter) continue;
+        
+        const datum = parseExcelDatum(datumRaw);
+        if(!datum) continue;
+        
+        const zeit = String(row[3]||'morgen').toLowerCase().includes('abend') ? 'abend' : 'morgen';
+        
+        // Find kuh ID
+        const kuhEntry = Object.entries(kuehe).find(([,k])=>k.nr===kuhNr);
+        if(!kuhEntry) continue;
+        const kuhId = kuhEntry[0];
+        
+        // Check if already exists
+        const exists = Object.values(milchEintraege).find(m =>
+          m.art==='prokuh' && m.prokuh?.[kuhId] && 
+          m.datum && Math.abs(m.datum - datum) < 12*3600000 &&
+          m.zeit === zeit
+        );
+        if(exists) continue;
+        
+        const prokuh = {}; prokuh[kuhId] = liter;
+        await push(ref(db,'milch'), {
+          datum, art:'prokuh', prokuh,
+          gesamt: liter, zeit,
+          quelle:'rohdaten_import', createdAt: ts
+        });
+        total++;
+      }
+    }
+
+    // ── Behandlungen ──
+    const wsBeh = wb.Sheets['Behandlungen'];
+    if(wsBeh) {
+      const rows = XLSX.utils.sheet_to_json(wsBeh, {header:1, defval:'', range:2});
+      for(const row of rows) {
+        const datumRaw = row[0];
+        const kuhNr = String(row[1]||'').trim();
+        if(!datumRaw || !kuhNr) continue;
+        
+        const datum = parseExcelDatum(datumRaw);
+        if(!datum) continue;
+        
+        const kuhEntry = Object.entries(kuehe).find(([,k])=>k.nr===kuhNr);
+        const kuhId = kuhEntry ? kuhEntry[0] : null;
+        
+        const data = {
+          kuhId: kuhId||kuhNr,
+          datum,
+          diagnose: String(row[3]||'').trim(),
+          medikament: String(row[4]||'').trim(),
+          dosis: String(row[5]||'').trim(),
+          tierarzt: String(row[6]||'').trim(),
+          abgabeDatum: parseExcelDatum(row[7]),
+          wzMilchTage: parseInt(row[8])||0,
+          wzMilchEnde: parseExcelDatum(row[9]),
+          wzFleischTage: parseInt(row[10])||0,
+          wzFleischEnde: parseExcelDatum(row[11]),
+          behandlungZeit: String(row[12]||'morgen').toLowerCase().includes('abend')?'abend':'morgen',
+          aktiv: true,
+          wartezeitEnde: parseExcelDatum(row[9])||parseExcelDatum(row[11]),
+          createdAt: ts
+        };
+        if(!data.medikament) continue;
+        await push(ref(db,'behandlungen'), data);
+        total++;
+      }
+    }
+
+    // ── Kraftfutter ──
+    const wsKF = wb.Sheets['Kraftfutter'];
+    if(wsKF) {
+      const rows = XLSX.utils.sheet_to_json(wsKF, {header:1, defval:'', range:2});
+      for(const row of rows) {
+        const datumRaw = row[0];
+        const kuhNr = String(row[1]||'').trim();
+        const menge = parseFloat(row[4])||0;
+        if(!datumRaw || !kuhNr || !menge) continue;
+        
+        const datum = parseExcelDatum(datumRaw);
+        if(!datum) continue;
+        
+        const kuhEntry = Object.entries(kuehe).find(([,k])=>k.nr===kuhNr);
+        const kuhId = kuhEntry ? kuhEntry[0] : null;
+        if(!kuhId) continue;
+        
+        // Check if exists
+        const exists = Object.values(kraftfutter).find(kf=>kf.kuhId===kuhId);
+        const data = {kuhId, datum, menge, notiz: String(row[6]||'').trim(), createdAt:ts};
+        if(exists) {
+          const [kid] = Object.entries(kraftfutter).find(([,kf])=>kf.kuhId===kuhId);
+          await update(ref(db,'kraftfutter/'+kid), data);
+        } else {
+          await push(ref(db,'kraftfutter'), data);
+        }
+        total++;
+      }
+    }
+
+    statusEl.innerHTML = '✓ Import abgeschlossen: ' + total + ' Datensätze importiert';
+    alert('✓ Rohdaten Import abgeschlossen!\n' + total + ' Datensätze importiert.\n\nDie Daten sind jetzt in der App verfügbar.');
+    
+    // Auto-trigger sync export for Excel
+    setTimeout(() => {
+      if(confirm('Soll jetzt auch automatisch der Sync-Export für das Sennerei-Excel erstellt werden?')) {
+        exportSyncJSON();
+      }
+    }, 1000);
+
+  } catch(e) {
+    statusEl.innerHTML = '✗ Fehler: ' + e.message;
+    alert('Fehler beim Import: ' + e.message);
+  }
+  input.value = '';
+};
+
+function parseExcelDatum(val) {
+  if(!val) return null;
+  if(typeof val === 'number') {
+    // Excel serial date
+    return Math.round((val - 25569) * 86400000);
+  }
+  if(val instanceof Date) {
+    return val.getTime();
+  }
+  if(typeof val === 'string') {
+    // DD.MM.YYYY
+    const m = val.match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})$/);
+    if(m) return new Date(parseInt(m[3]), parseInt(m[2])-1, parseInt(m[1])).getTime();
+    // YYYY-MM-DD
+    const d = new Date(val);
+    if(!isNaN(d.getTime())) return d.getTime();
+  }
+  return null;
 }
   initApp();
 
