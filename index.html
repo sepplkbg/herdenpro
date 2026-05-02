@@ -979,739 +979,158 @@ function render() {
 //  DASHBOARD
 // ══════════════════════════════════════════════════════════════════════════════
 function renderDashboard() {
-  const heute=Date.now();
-  const kuhListe=Object.values(kuehe);
-  const bListe=Object.values(behandlungen);
-  const bsListe=Object.values(besamungen);
-  const aufgetrieben=kuhListe.filter(k=>k.almStatus==='oben').length;
-  const wzAbgelaufen=bListe.filter(b=>b.wartezeitEnde&&b.wartezeitEnde<=heute&&!b.warteAbgeschlossen);
-  const wzBald=bListe.filter(b=>b.wartezeitEnde&&b.wartezeitEnde>heute&&b.wartezeitEnde<heute+3*86400000);
-  const folgeFaellig=bListe.filter(b=>b.folgeTermin&&b.folgeTermin<=heute+2*86400000&&!b.folgeErledigt);
-  const geburtenBald=bsListe.filter(b=>b.erwartetGeburt&&b.erwartetGeburt>heute&&b.erwartetGeburt<heute+14*86400000&&b.status==='tragend');
-  const trockenBald=bsListe.filter(b=>b.trockenstell&&b.trockenstell>heute&&b.trockenstell<heute+7*86400000);
-  const heuteDatum=isoDate(new Date());
-  const heidiWeide=Object.values(weideTage).find(w=>w.datum===heuteDatum);
-  const milchWerte=Object.values(milchEintraege).sort((a,b)=>b.datum-a.datum);
-  const letztesMilch=milchWerte[0];
-  const alerts=[...wzAbgelaufen,...wzBald,...folgeFaellig,...geburtenBald,...trockenBald];
+  const heute = Date.now();
+  const morgen = heute + 86400000;
+  const kuhListe = Object.values(kuehe);
+  const kueheOben = kuhListe.filter(k => k.almStatus === 'oben');
+  
+  // Alerts: Wartezeiten die heute/morgen ablaufen
+  const wzAlerts = [];
+  Object.entries(behandlungen).forEach(([id,b]) => {
+    const k = kuehe[b.kuhId];
+    if(!b.aktiv) return;
+    if(b.wzMilchEnde && b.wzMilchEnde <= morgen + 86400000) {
+      const diff = Math.floor((b.wzMilchEnde - heute) / 86400000);
+      wzAlerts.push({type:'wz', kuh:k, text: `WZ Milch ${diff<=0?'abgelaufen':diff===1?'morgen':'in '+diff+' Tagen'}`, id, color: diff<=0?'red':'orange'});
+    }
+    if(b.wzFleischEnde && b.wzFleischEnde <= morgen + 86400000) {
+      const diff = Math.floor((b.wzFleischEnde - heute) / 86400000);
+      wzAlerts.push({type:'wz', kuh:k, text: `WZ Fleisch ${diff<=0?'abgelaufen':diff===1?'morgen':'in '+diff+' Tagen'}`, id, color: diff<=0?'red':'orange'});
+    }
+    if(b.folgeTermin && b.folgeTermin >= heute && b.folgeTermin <= morgen + 86400000) {
+      wzAlerts.push({type:'termin', kuh:k, text:'Folgetermin heute/morgen', id, color:'orange'});
+    }
+  });
+
+  // Trächtige mit baldiger Geburt
+  const gebAlerts = [];
+  Object.entries(besamungen).forEach(([id,bs]) => {
+    const k = kuehe[bs.kuhId];
+    if(bs.status==='tragend' && bs.erwartetGeburt) {
+      const diff = Math.floor((bs.erwartetGeburt - heute) / 86400000);
+      if(diff <= 14) gebAlerts.push({kuh:k, diff, id});
+    }
+  });
+
+  // Letzte Milch heute
+  const heuteMilch = Object.values(milchEintraege).filter(m => {
+    const d = new Date(m.datum);
+    const h = new Date(heute);
+    return d.getDate()===h.getDate() && d.getMonth()===h.getMonth() && d.getFullYear()===h.getFullYear();
+  });
+  const heuteMilchL = heuteMilch.reduce((s,m)=>s+(m.gesamt||0),0);
+  const heuteMorgens = heuteMilch.filter(m=>m.zeit==='morgen').length > 0;
+  const heuteAbends = heuteMilch.filter(m=>m.zeit==='abend').length > 0;
+
+  // Kühe noch nicht gemolken heute (pro Kuh Erfassung)
+  const heuteProkuh = new Set();
+  heuteMilch.forEach(m => { if(m.prokuh) Object.keys(m.prokuh).forEach(id => heuteProkuh.add(id)); });
+  const nochNichtGemolken = kueheOben.filter(k => {
+    const id = Object.entries(kuehe).find(([,kk])=>kk===k)?.[0];
+    return id && !heuteProkuh.has(id);
+  });
+
+  // Wetter state
+  const wetter = window._wetterData;
 
   return `
-    <div class="page-header">
-      <h2>Übersicht</h2>
-      <span class="date-chip">${new Date().toLocaleDateString('de-AT',{weekday:'short',day:'numeric',month:'short',year:'numeric'})}</span>
-    </div>
-    ${saisonInfo?.aktiv
-      ? `<div class="saison-banner" onclick="navigate('saison')"><span>⛰ ${saisonInfo.alm||'Alm'} · Saison aktiv seit ${new Date(saisonInfo.auftriebDatum).toLocaleDateString('de-AT')}</span><span class="saison-count">${aufgetrieben}/${kuhListe.length} oben</span></div>`
-      : `<div class="saison-banner saison-inaktiv" onclick="navigate('saison')">⛰ Keine aktive Saison – hier tippen</div>`}
-    <div class="stats-grid">
-      <div class="stat-card" onclick="navigate('herde')"><div class="stat-icon">🐄</div><div class="stat-num">${kuhListe.length}</div><div class="stat-label">Kühe</div></div>
-      <div class="stat-card ${wzAbgelaufen.length?'stat-warn':''}" onclick="navigate('behandlung')"><div class="stat-icon">⚕</div><div class="stat-num">${bListe.filter(b=>b.aktiv).length}</div><div class="stat-label">Behandlung</div></div>
-      <div class="stat-card" onclick="navigate('milch')"><div class="stat-icon">🥛</div><div class="stat-num">${letztesMilch?letztesMilch.gesamt+'L':'–'}</div><div class="stat-label">Letzte Milch</div></div>
-      <div class="stat-card" onclick="navigate('weide')"><div class="stat-icon">🌿</div><div class="stat-num">${heidiWeide?(heidiWeide.kuhIds?.length||0):'–'}</div><div class="stat-label">Heute Weide</div></div>
-    </div>
-
-    ${alerts.length ? `
-    <div class="section-title">⚠ Aktionen erforderlich</div>
-    <div class="alert-list">
-      ${wzAbgelaufen.map(b=>{const k=kuehe[b.kuhId];const id=Object.keys(behandlungen).find(x=>behandlungen[x]===b)||'';return`<div class="alert-item alert-red"><span class="alert-dot red"></span><div><b>Wartezeit abgelaufen</b><br><small>${k?k.name+' #'+k.nr:''} · ${b.medikament||''}</small></div><button class="btn-xs" onclick="wartezeitAbschliessen('${id}')">✓</button></div>`;}).join('')}
-      ${wzBald.map(b=>{const k=kuehe[b.kuhId];const t=Math.ceil((b.wartezeitEnde-heute)/86400000);return`<div class="alert-item alert-orange"><span class="alert-dot orange"></span><div><b>Wartezeit endet in ${t} Tag${t===1?'':'en'}</b><br><small>${k?k.name+' #'+k.nr:''} · ${b.medikament||''}</small></div></div>`;}).join('')}
-      ${folgeFaellig.map(b=>{const k=kuehe[b.kuhId];return`<div class="alert-item alert-orange" onclick="navigate('behandlung')"><span class="alert-dot orange"></span><div><b>Folgebehandlung fällig</b><br><small>${k?k.name+' #'+k.nr:''} · ${new Date(b.folgeTermin).toLocaleDateString('de-AT')}</small></div></div>`;}).join('')}
-      ${geburtenBald.map(b=>{const k=kuehe[b.kuhId];return`<div class="alert-item alert-green" onclick="navigate('besamung')"><span class="alert-dot green"></span><div><b>Geburt erwartet</b><br><small>${k?k.name+' #'+k.nr:''} · ${new Date(b.erwartetGeburt).toLocaleDateString('de-AT')}</small></div></div>`;}).join('')}
-      ${trockenBald.map(b=>{const k=kuehe[b.kuhId];return`<div class="alert-item alert-blue" onclick="navigate('besamung')"><span class="alert-dot blue"></span><div><b>Trockenstellung</b><br><small>${k?k.name+' #'+k.nr:''} · ${new Date(b.trockenstell).toLocaleDateString('de-AT')}</small></div></div>`;}).join('')}
-    </div>` : `<div class="empty-state" style="padding:1rem">✓ Keine offenen Aktionen</div>`}
-  `;
-}
-
-// ══════════════════════════════════════════════════════════════════════════════
-//  SAISON
-// ══════════════════════════════════════════════════════════════════════════════
-function renderSaison() {
-  const kuhListe=Object.entries(kuehe).sort((a,b)=>{const nA=parseInt(a[1].nr)||0,nB=parseInt(b[1].nr)||0;return nA-nB;});
-  const oben=kuhListe.filter(([,k])=>k.almStatus==='oben');
-  const vorzeitig=kuhListe.filter(([,k])=>k.almStatus!=='oben'&&k.vorzeitigAbtrieb);
-  const unten=kuhListe.filter(([,k])=>k.almStatus!=='oben'&&!k.vorzeitigAbtrieb);
-  const heute=Date.now();
-  const tageOben = saisonInfo?.auftriebDatum ? Math.floor((heute - saisonInfo.auftriebDatum)/86400000) : 0;
-
-  return `
-    <div class="page-header"><h2>⛰ Saison</h2></div>
-
-    ${!saisonInfo?.aktiv ? `
-    <!-- ── KEINE AKTIVE SAISON ── -->
-    <div style="text-align:center;padding:1.5rem 0 1rem">
-      <div style="font-size:3rem;margin-bottom:.5rem">⛰</div>
-      <div style="font-size:1.1rem;color:var(--gold);margin-bottom:.3rem">Saison noch nicht gestartet</div>
-      <div style="font-size:.82rem;color:var(--text3);margin-bottom:1.5rem">Starte die Saison wenn die Kühe auf die Alm getrieben werden.</div>
-    </div>
-    <div class="card-section">
-      <div class="section-label" style="margin-bottom:.6rem">AUFTRIEB ERFASSEN</div>
-      <input id="s-alm" class="inp" placeholder="Almname (z.B. Vordere Alm)" style="margin-bottom:.5rem" value="${saisonInfo?.alm||''}" />
-      <input id="s-datum" class="inp" type="date" value="${isoDate(new Date())}" style="margin-bottom:.8rem" />
-      <button class="btn-primary btn-block" onclick="startSaison()">▶ Saison starten</button>
-    </div>
-    ` : `
-    <!-- ── SAISON AKTIV ── -->
-
-    <!-- Status-Banner -->
-    <div style="background:rgba(91,168,92,.12);border:1.5px solid var(--green);border-radius:14px;padding:1rem 1.2rem;margin-bottom:1rem">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.5rem">
-        <span style="color:var(--green);font-weight:bold;font-size:.9rem">✓ Saison aktiv</span>
-        <span style="font-size:.75rem;color:var(--text3)">Tag ${tageOben}</span>
+    <!-- Saison Banner -->
+    ${saisonInfo?.aktiv ? `
+    <div style="background:linear-gradient(135deg,rgba(77,184,78,.15),rgba(77,184,78,.05));border:1px solid rgba(77,184,78,.3);border-radius:var(--radius-sm);padding:.6rem 1rem;margin-bottom:.8rem;display:flex;align-items:center;justify-content:space-between">
+      <div>
+        <div style="font-size:.7rem;color:var(--green);letter-spacing:.05em">▲ SAISON AKTIV</div>
+        <div style="font-size:.85rem;color:var(--text)">${saisonInfo.alm||'Alm'} · Tag ${Math.floor((heute-(saisonInfo.auftriebDatum||heute))/86400000)+1}</div>
       </div>
-      <div style="font-size:1.1rem;color:var(--gold);margin-bottom:.3rem">${saisonInfo.alm||'Alm'}</div>
-      <div style="font-size:.82rem;color:var(--text2)">
-        Auftrieb: ${new Date(saisonInfo.auftriebDatum).toLocaleDateString('de-AT',{weekday:'long',day:'numeric',month:'long'})}
+      <div style="text-align:right">
+        <div style="font-size:1.1rem;color:var(--gold);font-weight:bold">${kueheOben.length}/${kuhListe.length}</div>
+        <div style="font-size:.68rem;color:var(--text3)">oben</div>
       </div>
-    </div>
-
-    <!-- Kühe Zähler -->
-    <div class="stats-grid" style="margin-bottom:1rem">
-      <div class="stat-card">
-        <div class="stat-icon">⛰</div>
-        <div class="stat-num">${oben.length}</div>
-        <div class="stat-label">Kühe oben</div>
-      </div>
-      <div class="stat-card ${unten.length?'stat-warn':''}">
-        <div class="stat-icon">🏠</div>
-        <div class="stat-num">${unten.length}</div>
-        <div class="stat-label">noch unten</div>
-      </div>
-    </div>
-
-    <!-- Schritt-für-Schritt Anleitung -->
-    <div class="section-title">Was kannst du hier tun?</div>
-    <div class="card-section" style="margin-bottom:1rem">
-      <div style="display:flex;flex-direction:column;gap:.7rem">
-        <div style="display:flex;gap:.8rem;align-items:flex-start">
-          <span style="font-size:1.3rem;flex-shrink:0">1️⃣</span>
-          <div>
-            <div style="font-size:.88rem;color:var(--text);font-weight:bold">Kühe aufgetrieben markieren</div>
-            <div style="font-size:.75rem;color:var(--text3)">Jede Kuh einzeln oder alle auf einmal als „oben" markieren → Alpungstage laufen automatisch</div>
-          </div>
-        </div>
-        <div style="display:flex;gap:.8rem;align-items:flex-start">
-          <span style="font-size:1.3rem;flex-shrink:0">2️⃣</span>
-          <div>
-            <div style="font-size:.88rem;color:var(--text);font-weight:bold">Tägliche Kontrolle</div>
-            <div style="font-size:.75rem;color:var(--text3)">Unter „Mehr → Tägliche Kontrolle" prüfen ob alle Kühe da sind</div>
-          </div>
-        </div>
-        <div style="display:flex;gap:.8rem;align-items:flex-start">
-          <span style="font-size:1.3rem;flex-shrink:0">3️⃣</span>
-          <div>
-            <div style="font-size:.88rem;color:var(--text);font-weight:bold">Am Ende der Saison: Abtrieb erfassen</div>
-            <div style="font-size:.75rem;color:var(--text3)">Abtriebsdatum eintragen → Alpungstage werden für AMA/ÖPUL berechnet → Saisonbericht exportieren</div>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- Kühe Verwaltung -->
-    ${unten.length ? `
-    <div class="section-title">Noch nicht aufgetrieben (${unten.length})</div>
-    <div class="card-list" style="margin-bottom:.6rem">
-      ${unten.map(([id,k])=>`
-        <div class="list-card list-card-sm">
-          <span class="nr-badge">#${k.nr}</span>
-          <span class="list-card-title">${k.name||'–'}</span>
-          <span style="font-size:.72rem;color:var(--text3);flex:1">${k.bauer||''}</span>
-          <button class="btn-xs" onclick="setAlmStatus('${id}','oben')">↑ aufgetrieben</button>
-        </div>`).join('')}
-    </div>
-    <button class="btn-secondary btn-block" style="margin-bottom:.8rem" onclick="alleAuftreiben()">↑ Alle als aufgetrieben markieren</button>
-    ` : `<div class="empty-state" style="margin-bottom:.8rem">✓ Alle Kühe oben</div>`}
-
-    <!-- Vorzeitig abgetrieben -->
-    ${vorzeitig.length ? `
-    <div class="section-title" style="color:var(--orange)">⚠ Vorzeitig abgetrieben (${vorzeitig.length})</div>
-    <div class="card-list" style="margin-bottom:.8rem">
-      ${vorzeitig.map(([id,k])=>{
-        const vz=k.vorzeitigAbtrieb||{};
-        const gl={krank:'Krank/Verletzt',trocken:'Trockengestellt',geburt:'Geburt',verkauf:'Verkauf',verhaltensauffaellig:'Verhaltensauffällig',sonstige:'Sonstiges'};
-        return '<div class="list-card"><div class="list-card-left"><span class="nr-badge">#'+k.nr+'</span><div>'+
-          '<div class="list-card-title">'+(k.name||'–')+'</div>'+
-          '<div class="list-card-sub">'+(vz.datum?new Date(vz.datum).toLocaleDateString('de-AT'):'')+(vz.datum?' · ':'')+( gl[vz.grund]||vz.grund||'–')+'</div>'+
-          (vz.notiz?'<div class="list-card-sub" style="font-style:italic">'+vz.notiz+'</div>':'')+
-          '</div></div>'+
-          '<button class="btn-xs" onclick="window.setAlmStatus(\''+id+'\',\'oben\')">↑ zurück</button></div>';
-      }).join('')}
     </div>` : ''}
 
-    ${oben.length ? `
-    <div class="section-title">Auf der Alm (${oben.length})</div>
-    <div class="card-list" style="margin-bottom:1rem">
-      ${oben.map(([id,k])=>`
-        <div class="list-card list-card-sm">
-          <span class="nr-badge">#${k.nr}</span>
-          <span class="list-card-title">${k.name||'–'}</span>
-          <span style="font-size:.72rem;color:var(--text3);flex:1">${k.bauer||''}</span>
-          <button class="btn-xs" onclick="showVorzeitigAbtrieb('${id}')">↓ vorzeitig</button>
-          <button class="btn-xs-danger" onclick="setAlmStatus('${id}','unten')">↓ ab</button>
-        </div>`).join('')}
+    <!-- Wetter Card -->
+    <div id="dashboard-wetter" style="margin-bottom:.8rem">
+      ${wetter ? `
+      <div style="background:linear-gradient(135deg,rgba(30,80,140,.25),rgba(30,80,140,.1));border:1px solid rgba(80,140,200,.3);border-radius:var(--radius-sm);padding:.6rem 1rem;display:flex;align-items:center;gap:.8rem;cursor:pointer" onclick="navigate('wetter')">
+        <div style="font-size:2rem">${wetter.icon}</div>
+        <div style="flex:1">
+          <div style="font-size:1.1rem;color:#7acbff;font-weight:bold">${wetter.temp}°C <span style="font-size:.75rem;color:var(--text3)">${wetter.desc}</span></div>
+          <div style="font-size:.7rem;color:var(--text3)">${wetter.ort} · Gefühlt ${wetter.feels}°C · Wind ${wetter.wind} km/h</div>
+        </div>
+        <div style="text-align:right;font-size:.7rem;color:var(--text3)">${wetter.updated}</div>
+      </div>` : `
+      <div style="background:rgba(30,80,140,.1);border:1px solid rgba(80,140,200,.2);border-radius:var(--radius-sm);padding:.5rem 1rem;display:flex;align-items:center;justify-content:space-between;cursor:pointer" onclick="ladeWetter()">
+        <span style="font-size:.8rem;color:var(--text3)">⛅ Wetter laden…</span>
+        <button class="btn-xs" onclick="event.stopPropagation();ladeWetter()">Aktualisieren</button>
+      </div>`}
+    </div>
+
+    <!-- Stats Grid -->
+    <div class="stats-grid" style="margin-bottom:.8rem">
+      <div class="stat-card" onclick="navigate('herde')" style="cursor:pointer">
+        <div class="stat-icon">🐄</div>
+        <div class="stat-num">${kuhListe.length}</div>
+        <div class="stat-label">Kühe</div>
+      </div>
+      <div class="stat-card ${wzAlerts.length?'stat-warn':''}" onclick="navigate('behandlung')" style="cursor:pointer">
+        <div class="stat-icon">⚕</div>
+        <div class="stat-num">${Object.values(behandlungen).filter(b=>b.aktiv).length}</div>
+        <div class="stat-label">Behandlung</div>
+      </div>
+      <div class="stat-card" onclick="navigate('milch')" style="cursor:pointer">
+        <div class="stat-icon">🥛</div>
+        <div class="stat-num">${heuteMilchL>0?Math.round(heuteMilchL)+'L':'–'}</div>
+        <div class="stat-label">Heute</div>
+      </div>
+      <div class="stat-card" onclick="navigate('zaehlung')" style="cursor:pointer">
+        <div class="stat-icon">✓</div>
+        <div class="stat-num">${kueheOben.length}</div>
+        <div class="stat-label">Heute Weide</div>
+      </div>
+    </div>
+
+    <!-- Milch Status heute -->
+    <div style="background:var(--bg2);border-radius:var(--radius-sm);padding:.6rem 1rem;margin-bottom:.8rem;display:flex;gap:1rem;align-items:center">
+      <span style="font-size:.78rem;color:var(--text3)">Heute gemolken:</span>
+      <span style="font-size:.82rem" class="${heuteMorgens?'':'opacity: .4'}">🌅 ${heuteMorgens?'✓ Morgens':'– Morgens'}</span>
+      <span style="font-size:.82rem" class="${heuteAbends?'':'opacity: .4'}">🌇 ${heuteAbends?'✓ Abends':'– Abends'}</span>
+      <button class="btn-xs" style="margin-left:auto" onclick="showMilchForm()">+ Milch</button>
+    </div>
+
+    <!-- Nicht gemolken heute -->
+    ${nochNichtGemolken.length > 0 && heuteMilch.length > 0 ? `
+    <div style="background:rgba(200,100,0,.08);border:1px solid rgba(200,100,0,.3);border-radius:var(--radius-sm);padding:.6rem 1rem;margin-bottom:.8rem">
+      <div style="font-size:.72rem;color:var(--orange);font-weight:bold;margin-bottom:.3rem">⚠ NOCH NICHT GEMOLKEN HEUTE (${nochNichtGemolken.length})</div>
+      <div style="font-size:.78rem;color:var(--text2)">${nochNichtGemolken.slice(0,6).map(k=>'#'+k.nr+' '+k.name).join(' · ')}${nochNichtGemolken.length>6?'…':''}</div>
     </div>` : ''}
 
-    <!-- Abtrieb Button -->
-    <div class="card-section" style="border-color:var(--orange)">
-      <div style="font-size:.82rem;color:var(--text2);margin-bottom:.7rem">
-        <b style="color:var(--orange)">Saisonende:</b> Wenn alle Kühe abgetrieben wurden, hier den Abtrieb erfassen. 
-        Die Alpungstage werden dann berechnet.
-      </div>
-      <button class="btn-primary" style="background:var(--orange);width:100%" onclick="showAbtriebbForm()">
-        ↓ Abtrieb erfassen & Saison beenden
-      </button>
-    </div>
-    `}
-
-    <!-- Abtrieb Form -->
-    <div id="abtrieb-overlay" class="form-overlay" style="display:none">
-      <div class="form-sheet">
-        <div class="form-header"><h3>Abtrieb erfassen</h3><button class="close-btn" onclick="closeForm('abtrieb-overlay')">✕</button></div>
-        <div class="form-body">
-          <p style="font-size:.82rem;color:var(--text2);margin-bottom:.8rem">
-            Nach dem Speichern wird die Saison beendet und die Alpungstage werden berechnet.
-          </p>
-          <label class="inp-label">Abtriebsdatum</label>
-          <input id="ab-datum" class="inp" type="date" value="${isoDate(new Date())}" />
-          <textarea id="ab-notiz" class="inp" rows="2" placeholder="Notizen (z.B. alle gesund, Wetter gut…)"></textarea>
-          <div class="form-actions">
-            <button class="btn-secondary" onclick="closeForm('abtrieb-overlay')">Abbrechen</button>
-            <button class="btn-primary" onclick="saveAbtrieb()">Abtrieb speichern</button>
-          </div>
+    <!-- Wartezeit Alerts -->
+    ${wzAlerts.length ? `
+    <div style="margin-bottom:.8rem">
+      <div class="section-title">⚠ Wartezeiten</div>
+      ${wzAlerts.slice(0,4).map(a=>`
+      <div style="background:rgba(${a.color==='red'?'200,60,60':'200,120,0'},.1);border:1px solid rgba(${a.color==='red'?'200,60,60':'200,120,0'},.3);border-radius:var(--radius-sm);padding:.5rem .8rem;margin-bottom:.3rem;display:flex;align-items:center;gap:.6rem;cursor:pointer" onclick="navigate('behandlung')">
+        <span style="font-size:.85rem;color:${a.color==='red'?'var(--red)':'var(--orange)'}">⚕</span>
+        <div style="flex:1">
+          <div style="font-size:.82rem;color:var(--text)">#${a.kuh?.nr||'?'} ${a.kuh?.name||'–'}</div>
+          <div style="font-size:.72rem;color:${a.color==='red'?'var(--red)':'var(--orange)'}">${a.text}</div>
         </div>
-      </div>
-    </div>
+      </div>`).join('')}
+    </div>` : ''}
+
+    <!-- Geburten bald -->
+    ${gebAlerts.length ? `
+    <div style="margin-bottom:.8rem">
+      <div class="section-title">🐮 Baldige Geburten</div>
+      ${gebAlerts.map(a=>`
+      <div style="background:rgba(77,184,78,.08);border:1px solid rgba(77,184,78,.2);border-radius:var(--radius-sm);padding:.5rem .8rem;margin-bottom:.3rem">
+        <span style="font-size:.85rem">#${a.kuh?.nr||'?'} ${a.kuh?.name||'–'}</span>
+        <span style="font-size:.75rem;color:var(--text3)"> · ${a.diff<=0?'überfällig!':a.diff===1?'morgen':'in '+a.diff+' Tagen'}</span>
+      </div>`).join('')}
+    </div>` : ''}
+
+    ${wzAlerts.length===0 && gebAlerts.length===0 ? '<div style="text-align:center;color:var(--text3);font-size:.8rem;padding:.5rem">✓ Keine offenen Aktionen</div>' : ''}
   `;
 }
-window.startSaison=async function(){const alm=document.getElementById('s-alm')?.value.trim();const datum=document.getElementById('s-datum')?.value;await set(ref(db,'saison'),{aktiv:true,alm,auftriebDatum:datum?new Date(datum).getTime():Date.now(),jahr:new Date().getFullYear()});};
-window.beendeSaison=async function(){await update(ref(db,'saison'),{aktiv:false,abtriebtDatum:Date.now()});const u={};Object.keys(kuehe).forEach(id=>{u[`kuehe/${id}/almStatus`]='unten';});await update(ref(db),u);};
-window.setAlmStatus=async(id,s)=>await update(ref(db,'kuehe/'+id),{almStatus:s});
-window.alleAuftreiben=async function(){const u={};Object.keys(kuehe).forEach(id=>{u[`kuehe/${id}/almStatus`]='oben';});await update(ref(db),u);};
-window.showAbtriebbForm=function(){document.getElementById('abtrieb-overlay').style.display='flex';};
-window.saveAbtrieb=async function(){const datum=document.getElementById('ab-datum')?.value;await update(ref(db,'saison'),{abtriebtDatum:datum?new Date(datum).getTime():Date.now(),abtriebtNotiz:document.getElementById('ab-notiz')?.value.trim(),aktiv:false});const u={};Object.keys(kuehe).filter(id=>kuehe[id].almStatus==='oben').forEach(id=>{u[`kuehe/${id}/almStatus`]='unten';});if(Object.keys(u).length)await update(ref(db),u);closeForm('abtrieb-overlay');};
-
-// ══════════════════════════════════════════════════════════════════════════════
-//  MILCH
-// ══════════════════════════════════════════════════════════════════════════════
-function renderMilch() {
-  const eintraege=Object.entries(milchEintraege).sort((a,b)=>b[1].datum-a[1].datum);
-  const letzten14=eintraege.slice(0,14);
-  const gesamtL14=letzten14.reduce((s,[,e])=>s+(e.gesamt||0),0);
-  const proMonat={};
-  eintraege.forEach(([,e])=>{if(!e.datum)return;const m=new Date(e.datum).toLocaleDateString('de-AT',{month:'short',year:'numeric'});proMonat[m]=(proMonat[m]||0)+(e.gesamt||0);});
-  const kueheOben=Object.entries(kuehe).sort((a,b)=>{const nA=parseInt(a[1].nr)||0,nB=parseInt(b[1].nr)||0;return nA-nB;});
-  return `
-    <div class="page-header"><h2>🥛 Milchleistung</h2><button class="btn-primary" onclick="showMilchForm()">+ Eintrag</button></div>
-    <div class="stats-grid" style="grid-template-columns:1fr 1fr 1fr">
-      <div class="stat-card"><div class="stat-icon" style="font-size:.9rem">Ø/Tag</div><div class="stat-num" style="font-size:1.4rem">${letzten14.length?Math.round(gesamtL14/letzten14.length):'–'}L</div><div class="stat-label">14 Tage</div></div>
-      <div class="stat-card"><div class="stat-icon" style="font-size:.9rem">Gesamt</div><div class="stat-num" style="font-size:1.4rem">${Math.round(gesamtL14)}L</div><div class="stat-label">14 Tage</div></div>
-      <div class="stat-card" onclick="exportMilchMolkerei()"><div class="stat-icon">📤</div><div class="stat-num" style="font-size:.9rem">Export</div><div class="stat-label">→ Molkerei</div></div>
-    </div>
-    ${Object.keys(proMonat).length?`<div class="section-title">Monatsübersicht</div><div class="card-section" style="padding:.5rem .8rem">${Object.entries(proMonat).slice(0,6).map(([m,l])=>`<div class="info-row"><span>${m}</span><b>${Math.round(l)} L</b></div>`).join('')}</div>`:''}
-    <div class="section-title">Einträge</div>
-    <div class="card-list">
-      ${eintraege.length ? eintraege.slice(0,30).map(([id,e])=>`
-        <div class="list-card" style="cursor:pointer" onclick="showMilchDetail('${id}',null)">
-          <div class="list-card-left"><div>
-            <div class="list-card-title">${new Date(e.datum).toLocaleDateString('de-AT',{weekday:'short',day:'numeric',month:'short'})}</div>
-            <div class="list-card-sub">${e.art==='gesamt'?'Gesamtmenge':'Pro Kuh'} · ${e.zeit==='abend'?'🌇 Abends':'🌅 Morgens'}${e.molkerei?' · an Molkerei':''}</div>
-          </div></div>
-          <div class="list-card-right" onclick="event.stopPropagation()"><span style="font-size:1.1rem;color:var(--gold);font-weight:bold">${Math.round(e.gesamt*10)/10} L</span><button class="btn-xs-danger" onclick="deleteMilch('${id}')">✕</button></div>
-        </div>`).join('') : `<div class="empty-state">Noch keine Einträge</div>`}
-    </div>
-    <div id="milch-form-overlay" class="form-overlay" style="display:none">
-      <div class="form-sheet" style="max-height:calc(100vh - var(--topbar-h,56px) - var(--nav-h,60px) - var(--safe-b,0px));overflow-y:auto">
-        <div class="form-header">
-          <h3 id="m-form-title">🥛 Milch erfassen</h3>
-          <button class="close-btn" onclick="closeForm('milch-form-overlay')">✕</button>
-        </div>
-        <div class="form-body">
-          <!-- Datum + Zeit -->
-          <div style="display:grid;grid-template-columns:1fr auto;gap:.5rem;margin-bottom:.6rem">
-            <input id="m-datum" class="inp" type="date" value="${isoDate(new Date())}" />
-            <div style="display:flex;gap:.4rem">
-              <button class="filter-chip active" id="m-zeit-morgen" onclick="selectMilchZeit('morgen',this)">🌅 Mo.</button>
-              <button class="filter-chip" id="m-zeit-abend" onclick="selectMilchZeit('abend',this)">🌇 Ab.</button>
-            </div>
-          </div>
-          <input type="hidden" id="m-zeit" value="morgen" />
-
-          <!-- Modus Tabs -->
-          <div style="display:flex;gap:.4rem;margin-bottom:.8rem">
-            <button id="m-tab-prokuh" onclick="setMilchModus('prokuh')"
-              style="flex:1;padding:.45rem;border-radius:var(--radius-sm);border:2px solid var(--gold);background:var(--gold);color:#000;font-weight:bold;font-family:inherit;font-size:.82rem;cursor:pointer">
-              Pro Kuh
-            </button>
-            <button id="m-tab-gesamt" onclick="setMilchModus('gesamt')"
-              style="flex:1;padding:.45rem;border-radius:var(--radius-sm);border:1px solid var(--border);background:transparent;color:var(--text3);font-family:inherit;font-size:.82rem;cursor:pointer">
-              Gesamt
-            </button>
-          </div>
-
-          <!-- PRO KUH BLOCK -->
-          <div id="m-prokuh-block">
-            <div style="font-size:.72rem;color:var(--text3);margin-bottom:.5rem">
-              Liter pro Kuh eingeben · 0 oder leer = nicht gemolken
-            </div>
-            <!-- Schnellfilter nach Bauer -->
-            <div id="m-bauer-filter" style="display:flex;gap:.3rem;flex-wrap:wrap;margin-bottom:.6rem">
-              <button class="filter-chip active" onclick="filterMilchBauer('',this)">Alle</button>
-              ${[...new Set(kueheOben.map(([,k])=>k.bauer).filter(Boolean))].map(b=>
-                `<button class="filter-chip" onclick="filterMilchBauer('${b}',this)">${b.split(' ').pop()}</button>`
-              ).join('')}
-            </div>
-            <!-- Kuh-Liste -->
-            <div id="m-kuh-liste">
-              ${kueheOben.map(([id,k])=>`
-                <div class="milch-kuh-row" data-bauer="${k.bauer||''}" style="display:flex;align-items:center;gap:.5rem;padding:.35rem 0;border-bottom:1px solid var(--border)">
-                  <span class="nr-badge" style="min-width:38px;text-align:center">#${k.nr}</span>
-                  <div style="flex:1;min-width:0">
-                    <div style="font-size:.85rem;font-weight:bold;color:var(--text)">${k.name||'–'}</div>
-                    <div style="font-size:.7rem;color:var(--text3)">${k.bauer||''}</div>
-                  </div>
-                  <div style="display:flex;align-items:center;gap:.3rem">
-                    <button onclick="milchStep('${id}',-1)" style="width:28px;height:28px;border-radius:50%;border:1px solid var(--border);background:var(--bg3);color:var(--text);font-size:1rem;cursor:pointer;display:flex;align-items:center;justify-content:center;font-family:inherit">−</button>
-                    <input class="inp kuh-liter" data-id="${id}" data-nr="${k.nr}" data-name="${k.name||''}"
-                      placeholder="L" inputmode="decimal"
-                      style="width:62px;text-align:center;font-size:.95rem;font-weight:bold;padding:.35rem .4rem"
-                      oninput="onMilchInput(this)" onfocus="this.select()" />
-                    <button onclick="milchStep('${id}',1)" style="width:28px;height:28px;border-radius:50%;border:1px solid var(--border);background:var(--bg3);color:var(--text);font-size:1rem;cursor:pointer;display:flex;align-items:center;justify-content:center;font-family:inherit">+</button>
-                  </div>
-                </div>`).join('')}
-            </div>
-            <!-- Summe -->
-            <div style="display:flex;justify-content:space-between;align-items:center;margin-top:.6rem;padding-top:.5rem;border-top:1px solid var(--border2)">
-              <span style="font-size:.82rem;color:var(--text3)">Eingetragen: <span id="m-count">0</span> Kühe</span>
-              <span style="font-size:1rem;color:var(--gold);font-weight:bold">∑ <span id="m-summe">0</span> L</span>
-            </div>
-          </div>
-
-          <!-- GESAMT BLOCK -->
-          <div id="m-gesamt-block" style="display:none">
-            <label class="inp-label">Gesamtmenge Alm (Liter)</label>
-            <input id="m-gesamt" class="inp" placeholder="z.B. 850" inputmode="decimal"
-              style="font-size:1.2rem;text-align:center;font-weight:bold" />
-          </div>
-
-          <label class="checkbox-row" style="margin-top:.6rem"><input type="checkbox" id="m-molkerei" /> An Molkerei abgegeben</label>
-          <textarea id="m-notiz" class="inp" rows="2" placeholder="Notizen" style="margin-top:.4rem"></textarea>
-
-          <div class="form-actions" style="margin-top:.8rem">
-            <button class="btn-secondary" onclick="closeForm('milch-form-overlay')">Abbrechen</button>
-            <button class="btn-primary" onclick="saveMilch()">💾 Speichern</button>
-          </div>
-        </div>
-      </div>
-    </div>
-  `;
-}
-window.selectMilchZeit=function(z,btn){
-  document.getElementById('m-zeit').value=z;
-  document.querySelectorAll('#m-zeit-morgen,#m-zeit-abend').forEach(b=>b.classList.remove('active'));
-  btn.classList.add('active');
-};
-window.showMilchForm = function() {
-  const ov = document.getElementById('milch-form-overlay');
-  if(!ov) return;
-  // Reset form
-  document.getElementById('m-datum').value = isoDate(new Date());
-  document.getElementById('m-zeit').value = 'morgen';
-  document.getElementById('m-molkerei').checked = false;
-  document.getElementById('m-notiz').value = '';
-  document.querySelectorAll('.kuh-liter').forEach(inp => {
-    inp.value = '';
-    const row = inp.closest('.milch-kuh-row');
-    if(row) { row.style.background=''; row.querySelector('.nr-badge').style.background=''; }
-  });
-  const sumEl = document.getElementById('m-summe');
-  const cntEl = document.getElementById('m-count');
-  if(sumEl) sumEl.textContent = '0';
-  if(cntEl) cntEl.textContent = '0';
-  // Set Zeit chips
-  document.getElementById('m-zeit-morgen')?.classList.add('active');
-  document.getElementById('m-zeit-abend')?.classList.remove('active');
-  // Default: Pro Kuh
-  setMilchModus('prokuh');
-  // Reset bauer filter
-  document.querySelectorAll('#m-bauer-filter .filter-chip').forEach((b,i) => {
-    if(i===0) b.classList.add('active'); else b.classList.remove('active');
-  });
-  document.querySelectorAll('.milch-kuh-row').forEach(r => r.style.display='');
-  ov.style.display = 'flex';
-  // Focus first input
-  setTimeout(()=>{ document.querySelector('.kuh-liter')?.focus(); }, 150);
-};
-window.toggleMilchArt=function(v){document.getElementById('m-gesamt-block').style.display=v==='gesamt'?'':'none';document.getElementById('m-prokuh-block').style.display=v==='prokuh'?'':'none';};
-
-window.setMilchModus = function(modus) {
-  document.getElementById('m-prokuh-block').style.display = modus==='prokuh' ? '' : 'none';
-  document.getElementById('m-gesamt-block').style.display = modus==='gesamt' ? '' : 'none';
-  const tb1 = document.getElementById('m-tab-prokuh');
-  const tb2 = document.getElementById('m-tab-gesamt');
-  if(tb1) {
-    tb1.style.background = modus==='prokuh' ? 'var(--gold)' : 'transparent';
-    tb1.style.color = modus==='prokuh' ? '#000' : 'var(--text3)';
-    tb1.style.border = modus==='prokuh' ? '2px solid var(--gold)' : '1px solid var(--border)';
-    tb1.style.fontWeight = modus==='prokuh' ? 'bold' : 'normal';
-  }
-  if(tb2) {
-    tb2.style.background = modus==='gesamt' ? 'var(--gold)' : 'transparent';
-    tb2.style.color = modus==='gesamt' ? '#000' : 'var(--text3)';
-    tb2.style.border = modus==='gesamt' ? '2px solid var(--gold)' : '1px solid var(--border)';
-    tb2.style.fontWeight = modus==='gesamt' ? 'bold' : 'normal';
-  }
-};
-
-window.filterMilchBauer = function(bauer, btn) {
-  document.querySelectorAll('#m-bauer-filter .filter-chip').forEach(b => b.classList.remove('active'));
-  if(btn) btn.classList.add('active');
-  document.querySelectorAll('.milch-kuh-row').forEach(row => {
-    row.style.display = (!bauer || row.dataset.bauer === bauer) ? '' : 'none';
-  });
-};
-
-window.milchStep = function(kuhId, delta) {
-  const inp = document.querySelector(`.kuh-liter[data-id="${kuhId}"]`);
-  if(!inp) return;
-  const cur = parseFloat(inp.value)||0;
-  const neu = Math.max(0, Math.round((cur + delta) * 10) / 10);
-  inp.value = neu || '';
-  onMilchInput(inp);
-};
-
-window.onMilchInput = function(inp) {
-  // Highlight filled rows
-  const row = inp.closest('.milch-kuh-row');
-  const val = parseFloat(inp.value)||0;
-  if(row) {
-    row.style.background = val > 0 ? 'rgba(77,184,78,.08)' : '';
-    row.querySelector('.nr-badge').style.background = val > 0 ? 'var(--green)' : '';
-  }
-  // Update sum
-  let sum = 0, count = 0;
-  document.querySelectorAll('.kuh-liter').forEach(i => {
-    const v = parseFloat(i.value)||0;
-    if(v > 0) { sum += v; count++; }
-  });
-  const sumEl = document.getElementById('m-summe');
-  const cntEl = document.getElementById('m-count');
-  if(sumEl) sumEl.textContent = Math.round(sum*10)/10;
-  if(cntEl) cntEl.textContent = count;
-};
-
-window.selectMilchZeit = function(zeit, btn) {
-  document.getElementById('m-zeit').value = zeit;
-  document.querySelectorAll('#m-zeit-morgen,#m-zeit-abend').forEach(b => b.classList.remove('active'));
-  if(btn) btn.classList.add('active');
-};
-
-window.saveMilch=async function(){
-  const datum=document.getElementById('m-datum')?.value;
-  if(!datum){alert('Datum fehlt');return;}
-  const prokuhBlock = document.getElementById('m-prokuh-block');
-  const modus = prokuhBlock && prokuhBlock.style.display !== 'none' ? 'prokuh' : 'gesamt';
-  const zeit=document.getElementById('m-zeit')?.value||'morgen';
-  const molkerei=document.getElementById('m-molkerei')?.checked||false;
-  const notiz=document.getElementById('m-notiz')?.value.trim()||'';
-  let gesamt=0, prokuh={};
-
-  if(modus==='prokuh'){
-    document.querySelectorAll('.kuh-liter').forEach(inp=>{
-      const l=parseFloat(inp.value)||0;
-      if(l>0){ prokuh[inp.dataset.id]=l; gesamt+=l; }
-    });
-    if(Object.keys(prokuh).length===0){alert('Bitte mindestens eine Kuh eintragen');return;}
-  } else {
-    gesamt=parseFloat(document.getElementById('m-gesamt')?.value)||0;
-    if(!gesamt){alert('Bitte Menge eingeben');return;}
-  }
-
-  await push(ref(db,'milch'),{
-    datum:new Date(datum).getTime(),
-    art:modus,
-    zeit,
-    gesamt:Math.round(gesamt*10)/10,
-    prokuh:modus==='prokuh'?prokuh:null,
-    molkerei,
-    notiz,
-    createdAt:Date.now()
-  });
-  closeForm('milch-form-overlay');
-};
-window.deleteMilch=async id=>{if(confirm('Löschen?'))await remove(ref(db,'milch/'+id));};
-window.exportMilchMolkerei=function(){
-  const csv='Datum;Liter;An Molkerei;Notiz\n'+Object.values(milchEintraege).sort((a,b)=>a.datum-b.datum).map(e=>[new Date(e.datum).toLocaleDateString('de-AT'),e.gesamt,e.molkerei?'Ja':'Nein',e.notiz||''].join(';')).join('\n');
-  const a=document.createElement('a');a.href=URL.createObjectURL(new Blob(['\ufeff'+csv],{type:'text/csv;charset=utf-8'}));a.download=`Milch_${isoDate(new Date())}.csv`;a.click();
-};
-
-// ══════════════════════════════════════════════════════════════════════════════
-//  WEIDEGANG
-// ══════════════════════════════════════════════════════════════════════════════
-function renderWeide() {
-  const heuteDatum=isoDate(new Date());
-  const weidenListe=Object.entries(weiden).sort((a,b)=>a[1].name?.localeCompare(b[1].name));
-  const verlauf=Object.entries(weideTage).sort((a,b)=>b[1].datum?.localeCompare(a[1].datum)).slice(0,30);
-  const heuteEintrag=Object.entries(weideTage).find(([,w])=>w.datum===heuteDatum);
-  const kueheOben=Object.entries(kuehe).sort((a,b)=>{const nA=parseInt(a[1].nr)||0,nB=parseInt(b[1].nr)||0;return nA-nB;});
-  return `
-    <div class="page-header"><h2>🌿 Weidegang</h2><button class="btn-primary" onclick="showWeideTagForm()">+ Heute</button></div>
-    <div class="section-title">Weiden <button class="btn-xs" style="margin-left:.5rem" onclick="showWeideForm()">+ anlegen</button></div>
-    <div style="display:flex;flex-wrap:wrap;gap:.4rem;margin-bottom:.8rem">
-      ${weidenListe.map(([id,w])=>`<div class="weide-chip"><span>${w.name}</span>${w.ha?`<span style="font-size:.68rem;color:var(--text3)"> ${w.ha}ha</span>`:''}<button onclick="deleteWeide('${id}')" style="background:none;border:none;color:var(--text3);cursor:pointer;padding:0 0 0 4px;font-size:.8rem">✕</button></div>`).join('')||`<span style="color:var(--text3);font-size:.82rem">Noch keine Weiden</span>`}
-    </div>
-    ${heuteEintrag?`<div class="card-section" style="border-color:var(--green);margin-bottom:.8rem">
-      <div class="info-row"><span>Heute</span><b style="color:var(--green)">${weiden[heuteEintrag[1].weideId]?.name||heuteEintrag[1].weideText||'–'}</b></div>
-      <div class="info-row"><span>Tiere</span><b>${heuteEintrag[1].kuhIds?.length||0}</b></div>
-      ${heuteEintrag[1].notiz?`<div class="info-row"><span>Notiz</span><span>${heuteEintrag[1].notiz}</span></div>`:''}
-      <button class="btn-xs-danger" style="margin-top:.4rem" onclick="deleteWeideTag('${heuteEintrag[0]}')">Löschen</button>
-    </div>`:''}
-    <div class="section-title">Verlauf</div>
-    <div class="card-list">
-      ${verlauf.length?verlauf.map(([id,w])=>`<div class="list-card"><div class="list-card-left"><div><div class="list-card-title">${new Date(w.datum+'T12:00').toLocaleDateString('de-AT',{weekday:'short',day:'numeric',month:'short'})}</div><div class="list-card-sub">${weiden[w.weideId]?.name||w.weideText||'–'} · ${w.kuhIds?.length||0} Tiere${w.notiz?' · '+w.notiz:''}</div></div></div><button class="btn-xs-danger" onclick="deleteWeideTag('${id}')">✕</button></div>`).join(''):`<div class="empty-state">Noch keine Einträge</div>`}
-    </div>
-    <div id="weidetag-overlay" class="form-overlay" style="display:none">
-      <div class="form-sheet">
-        <div class="form-header"><h3>Weidegang erfassen</h3><button class="close-btn" onclick="closeForm('weidetag-overlay')">✕</button></div>
-        <div class="form-body">
-          <input id="wt-datum" class="inp" type="date" value="${heuteDatum}" />
-          <label class="inp-label">Weide</label>
-          <select id="wt-weide" class="inp" onchange="document.getElementById('wt-freitext').style.display=this.value==='__text__'?'':'none'">
-            <option value="">– wählen –</option>
-            ${weidenListe.map(([id,w])=>`<option value="${id}">${w.name}${w.ha?' ('+w.ha+'ha)':''}</option>`).join('')}
-            <option value="__text__">Andere (Freitext)</option>
-          </select>
-          <input id="wt-freitext" class="inp" placeholder="Weidename" style="display:none" />
-          <label class="inp-label">Tiere auf dieser Weide</label>
-          <div style="display:flex;gap:.4rem;margin-bottom:.4rem"><button class="btn-xs" onclick="alleKueheWeide(true)">Alle</button><button class="btn-xs" onclick="alleKueheWeide(false)">Keine</button></div>
-          <div id="wt-kuehe" style="display:flex;flex-wrap:wrap;gap:.4rem;max-height:150px;overflow-y:auto;background:var(--bg);border-radius:8px;padding:.5rem">
-            ${kueheOben.map(([id,k])=>`<label class="kuh-select-chip"><input type="checkbox" class="kuh-cb" value="${id}" checked />#${k.nr} ${k.name||''}</label>`).join('')}
-          </div>
-          <textarea id="wt-notiz" class="inp" rows="2" placeholder="Notizen (Wetter, Zaunschäden…)"></textarea>
-          <div class="form-actions">
-            <button class="btn-secondary" onclick="closeForm('weidetag-overlay')">Abbrechen</button>
-            <button class="btn-primary" onclick="saveWeideTag()">Speichern</button>
-          </div>
-        </div>
-      </div>
-    </div>
-    <div id="weide-overlay" class="form-overlay" style="display:none">
-      <div class="form-sheet">
-        <div class="form-header"><h3>Weide anlegen</h3><button class="close-btn" onclick="closeForm('weide-overlay')">✕</button></div>
-        <div class="form-body">
-          <input id="w-name" class="inp" placeholder="Name (z.B. Hochweide)" />
-          <input id="w-ha" class="inp" placeholder="Fläche in ha" inputmode="decimal" />
-          <textarea id="w-notiz" class="inp" rows="2" placeholder="Notizen"></textarea>
-          <div class="form-actions">
-            <button class="btn-secondary" onclick="closeForm('weide-overlay')">Abbrechen</button>
-            <button class="btn-primary" onclick="saveWeide()">Speichern</button>
-          </div>
-        </div>
-      </div>
-    </div>
-  `;
-}
-window.showWeideTagForm=function(){const ov=document.getElementById('weidetag-overlay');if(!ov){navigate('weide');setTimeout(()=>showWeideTagForm(),150);return;}ov.style.display='flex';};
-window.alleKueheWeide=an=>document.querySelectorAll('.kuh-cb').forEach(cb=>cb.checked=an);
-window.saveWeideTag=async function(){
-  const datum=document.getElementById('wt-datum')?.value;const wv=document.getElementById('wt-weide')?.value;
-  await push(ref(db,'weideTage'),{datum,weideId:wv!=='__text__'?wv:'',weideText:wv==='__text__'?(document.getElementById('wt-freitext')?.value.trim()||''):'',kuhIds:[...document.querySelectorAll('.kuh-cb:checked')].map(c=>c.value),notiz:document.getElementById('wt-notiz')?.value.trim(),createdAt:Date.now()});
-  closeForm('weidetag-overlay');
-};
-window.showWeideForm=function(){document.getElementById('weide-overlay').style.display='flex';};
-window.saveWeide=async function(){const name=document.getElementById('w-name')?.value.trim();if(!name)return;await push(ref(db,'weiden'),{name,ha:parseFloat(document.getElementById('w-ha')?.value)||null,notiz:document.getElementById('w-notiz')?.value.trim()});closeForm('weide-overlay');};
-window.deleteWeide=async id=>{if(confirm('Weide löschen?'))await remove(ref(db,'weiden/'+id));};
-window.deleteWeideTag=async id=>{if(confirm('Eintrag löschen?'))await remove(ref(db,'weideTage/'+id));};
-
-// ══════════════════════════════════════════════════════════════════════════════
-//  BESTANDSBUCH
-// ══════════════════════════════════════════════════════════════════════════════
-function renderBestandsbuch() {
-  const bListe=Object.entries(behandlungen).filter(([,b])=>b.medikament).sort((a,b)=>b[1].datum-a[1].datum);
-  return `
-    <div class="page-header"><h2>📋 Bestandsbuch</h2><button class="btn-primary" onclick="druckeBestandsbuch()">🖨 Drucken</button></div>
-    <p style="font-size:.75rem;color:var(--text3);margin-bottom:.8rem">Gemäß § 12 TAKG – alle Behandlungen mit Medikamenten.</p>
-    <div class="card-section" style="margin-bottom:.8rem">
-      <div class="info-row"><span>Betrieb / Alm</span><b>${saisonInfo?.alm||'–'}</b></div>
-      <div class="info-row"><span>Tiere</span><b>${Object.keys(kuehe).length}</b></div>
-      <div class="info-row"><span>Saison</span><b>${saisonInfo?.jahr||new Date().getFullYear()}</b></div>
-    </div>
-    ${bListe.length?`
-    <div style="overflow-x:auto">
-    <table class="bb-table">
-      <thead><tr><th>Datum</th><th>Zeit</th><th>Tier</th><th>Diagnose</th><th>Medikament</th><th>Dosis</th><th>Abgabe</th><th>WZ Milch Tage</th><th>WZ Milch Ende</th><th>WZ Fleisch Tage</th><th>WZ Fleisch Ende</th><th>Tierarzt</th></tr></thead>
-      <tbody>${bListe.map(([,b])=>{const k=kuehe[b.kuhId];return(function(){
-        const dat=new Date(b.datum).toLocaleDateString('de-AT');
-        const zeit=b.behandlungZeit==='abend'?'🌇 Ab.':'🌅 Mo.';
-        const tier='#'+(k?.nr||'?')+' '+(k?.name||'')+(k?.ohrmarke?' ('+k.ohrmarke+')':'');
-        const wzMEnde=b.wzMilchEnde?new Date(b.wzMilchEnde).toLocaleDateString('de-AT')+'('+zeit+')':'–';
-        const wzFEnde=b.wzFleischEnde?new Date(b.wzFleischEnde).toLocaleDateString('de-AT')+'('+zeit+')':'–';
-        const abgabe=b.abgabeDatum?new Date(b.abgabeDatum).toLocaleDateString('de-AT'):'–';
-        return '<tr><td>'+dat+'</td><td>'+zeit+'</td><td>'+tier+'</td><td>'+(b.diagnose||'–')+'</td><td>'+(b.medikament||'–')+'</td><td>'+(b.dosis||'–')+'</td><td>'+abgabe+'</td><td>'+(b.wzMilchTage||'–')+'</td><td>'+wzMEnde+'</td><td>'+(b.wzFleischTage||'–')+'</td><td>'+wzFEnde+'</td><td>'+(b.tierarzt||'–')+'</td></tr>';
-      })();}).join('')}</tbody>
-    </table></div>` : `<div class="empty-state">Keine Behandlungen mit Medikamenten</div>`}
-  `;
-}
-window.druckeBestandsbuch=function(){
-  const alm=saisonInfo?.alm||'Alm';const jahr=saisonInfo?.jahr||new Date().getFullYear();
-  const z=Object.values(behandlungen).filter(b=>b.medikament).sort((a,b)=>a.datum-b.datum).map(b=>{const k=kuehe[b.kuhId];return(function(){
-        const dat=new Date(b.datum).toLocaleDateString('de-AT');
-        const zeit=b.behandlungZeit==='abend'?'🌇 Ab.':'🌅 Mo.';
-        const tier='#'+(k?.nr||'?')+' '+(k?.name||'')+(k?.ohrmarke?' ('+k.ohrmarke+')':'');
-        const wzMEnde=b.wzMilchEnde?new Date(b.wzMilchEnde).toLocaleDateString('de-AT')+'('+zeit+')':'–';
-        const wzFEnde=b.wzFleischEnde?new Date(b.wzFleischEnde).toLocaleDateString('de-AT')+'('+zeit+')':'–';
-        const abgabe=b.abgabeDatum?new Date(b.abgabeDatum).toLocaleDateString('de-AT'):'–';
-        return '<tr><td>'+dat+'</td><td>'+zeit+'</td><td>'+tier+'</td><td>'+(b.diagnose||'–')+'</td><td>'+(b.medikament||'–')+'</td><td>'+(b.dosis||'–')+'</td><td>'+abgabe+'</td><td>'+(b.wzMilchTage||'–')+'</td><td>'+wzMEnde+'</td><td>'+(b.wzFleischTage||'–')+'</td><td>'+wzFEnde+'</td><td>'+(b.tierarzt||'–')+'</td></tr>';
-      })();}).join('');
-  const w=window.open('','_blank');
-  w.document.write(`<!DOCTYPE html><html lang="de"><head><meta charset="UTF-8"/><title>Bestandsbuch ${alm} ${jahr}</title><style>body{font-family:Arial,sans-serif;font-size:11pt;margin:2cm}h1{font-size:14pt}p{font-size:9pt;color:#555;margin-bottom:12px}table{width:100%;border-collapse:collapse;font-size:9pt}th{background:#1a3a0a;color:#fff;padding:5px 8px;text-align:left}td{padding:4px 8px;border-bottom:1px solid #ddd}tr:nth-child(even){background:#f8f8f0}@media print{@page{margin:1.5cm}}</style></head><body><h1>Bestandsbuch – ${alm} · Saison ${jahr}</h1><p>Erstellt: ${new Date().toLocaleDateString('de-AT')} · § 12 TAKG</p><table><thead><tr><th>Datum</th><th>Tier</th><th>Diagnose</th><th>Medikament</th><th>Dosis</th><th>Wartezeit bis</th><th>Tierarzt</th></tr></thead><tbody>${z}</tbody></table><script>window.onload=()=>window.print()<\/script></body></html>`);
-  w.document.close();
-};
-
-// ══════════════════════════════════════════════════════════════════════════════
-//  EINSTELLUNGEN
-// ══════════════════════════════════════════════════════════════════════════════
-function renderEinstellungen() {
-  const bauernListe=Object.entries(bauern).sort((a,b)=>a[1].name?.localeCompare(b[1].name));
-  return `
-    <div class="page-header"><h2>⚙ Einstellungen</h2></div>
-
-    <div class="card-section" style="margin-bottom:.8rem">
-      <div class="section-label" style="margin-bottom:.6rem">ALM-EINSTELLUNGEN</div>
-      <div style="display:flex;align-items:center;gap:.5rem;margin-bottom:.4rem">
-        <input id="einst-almname" class="inp" placeholder="Almname" value="${saisonInfo?.alm||''}" style="flex:1" />
-        <button class="btn-xs" onclick="saveAlmName()">✓ Speichern</button>
-      </div>
-      <div style="display:flex;align-items:center;gap:.5rem;margin-bottom:.4rem">
-        <input id="einst-almjahr" class="inp" placeholder="Saison-Jahr" value="${saisonInfo?.jahr||new Date().getFullYear()}" style="width:100px" inputmode="numeric" />
-        <label style="font-size:.8rem;color:var(--text3)">Saison-Jahr</label>
-      </div>
-      <button class="btn-secondary" style="width:100%;margin-top:.3rem" onclick="saveAlmEinstellungen()">💾 Alm-Einstellungen speichern</button>
-    </div>
-
-    <div class="card-section" style="margin-bottom:.8rem;border-color:var(--red)">
-      <div class="section-label" style="margin-bottom:.5rem;color:var(--red)">⚠ DATEN VERWALTEN</div>
-      <!-- Neue Saison / Alles löschen -->
-      <div style="background:rgba(200,60,60,.08);border:1px solid rgba(200,60,60,.3);border-radius:var(--radius-sm);padding:.8rem;margin-bottom:.8rem">
-        <div style="font-size:.82rem;font-weight:bold;color:var(--red);margin-bottom:.4rem">🗑 Alle Daten löschen</div>
-        <p style="font-size:.78rem;color:var(--text2);margin-bottom:.7rem">Löscht ALLE Daten (Kühe, Milch, Behandlungen, Bauern, Saison usw.) – z.B. für neue Saison. Nicht rückgängig machbar!</p>
-        <button class="btn-secondary" style="border-color:var(--red);color:var(--red);width:100%" onclick="loescheAlleDaten()">
-          ☢ ALLE DATEN LÖSCHEN
-        </button>
-      </div>
-      <p style="font-size:.8rem;color:var(--text2);margin-bottom:.8rem">
-        Löscht alle Daten die <b>nicht</b> in der aktuellen Bauern/Kühe-Liste sind.
-        Nützlich nach einem Rohdaten-Import wenn alte Testdaten entfernt werden sollen.
-      </p>
-      <div style="display:flex;flex-direction:column;gap:.4rem">
-        <button class="btn-secondary" style="border-color:var(--orange);color:var(--orange)" onclick="bereinigeMilch()">
-          🥛 Milcheinträge ohne Kuh löschen
-        </button>
-        <button class="btn-secondary" style="border-color:var(--orange);color:var(--orange)" onclick="bereinigeBeh()">
-          ⚕ Behandlungen ohne Kuh löschen
-        </button>
-        <button class="btn-secondary" style="border-color:var(--red);color:var(--red)" onclick="bereinigeFull()">
-          🗑 Alle Daten bereinigen (Milch + Behandlung + Kraftfutter)
-        </button>
-      </div>
-    </div>
-
-    <div class="card-section" style="margin-bottom:.8rem">
-      <div class="section-label" style="margin-bottom:.5rem">APP INFO</div>
-      <div class="info-row"><span>Version</span><b>HerdenPro v2</b></div>
-      <div class="info-row"><span>Datenbank</span><b style="color:var(--green)">● Firebase verbunden</b></div>
-      <div class="info-row"><span>Alm</span><b>${saisonInfo?.alm||'–'}</b></div>
-      <div class="info-row"><span>Saison</span><b>${saisonInfo?.aktiv?'Aktiv '+saisonInfo.jahr:saisonInfo?.jahr||'–'}</b></div>
-    </div>
-
-    <div class="card-section" style="margin-bottom:.8rem">
-      <div class="section-label" style="margin-bottom:.5rem">GESPEICHERTE DATEN</div>
-      <div class="info-row"><span>🐄 Kühe</span><b>${Object.keys(kuehe).length}</b></div>
-      <div class="info-row"><span>⚕ Behandlungen</span><b>${Object.keys(behandlungen).length}</b></div>
-      <div class="info-row"><span>🐮 Besamungen</span><b>${Object.keys(besamungen).length}</b></div>
-      <div class="info-row"><span>🥛 Milcheinträge</span><b>${Object.keys(milchEintraege).length}</b></div>
-      <div class="info-row"><span>📓 Journaleinträge</span><b>${Object.keys(journal).length}</b></div>
-      <div class="info-row"><span>🌿 Weidetage</span><b>${Object.keys(weideTage).length}</b></div>
-    </div>
-
-    <div class="section-title">Bauern</div>
-    <div class="card-section" style="margin-bottom:.8rem">
-      <p style="font-size:.82rem;color:var(--text2);margin-bottom:.6rem">Bauern werden im Bauernmenü verwaltet.</p>
-      <button class="btn-primary" onclick="navigate('bauern_menu')">👥 Zum Bauernmenü</button>
-    </div>
-
-    <div class="section-title">Molkerei-Export</div>
-    <div class="card-section" style="margin-bottom:.8rem">
-      <p style="font-size:.82rem;color:var(--text2);margin-bottom:.7rem">
-        Milchdaten als Excel exportieren – fertig formatiert für das Molkerei-System (Stall-Sheet Format, W1–W14).
-      </p>
-      <button class="btn-primary" onclick="exportMolkereiExcel()">🧀 Molkerei Excel exportieren</button>
-    </div>
-
-    <div class="section-title">Datensicherung</div>
-    <div class="card-section" style="margin-bottom:.8rem;border-color:var(--green)">
-      <div style="display:flex;gap:.7rem;align-items:flex-start">
-        <span style="font-size:1.5rem">🛡</span>
-        <div>
-          <div style="font-size:.88rem;color:var(--text);font-weight:bold;margin-bottom:.3rem">Automatische Sicherung aktiv</div>
-          <div style="font-size:.78rem;color:var(--text3);line-height:1.6">Firebase (Google Cloud) sichert alle Daten automatisch täglich. Für manuelle Backups →
-            <span style="color:var(--gold);cursor:pointer" onclick="navigate('backup')">Backup & Export</span>.</div>
-        </div>
-      </div>
-    </div>
-
-    <div class="section-title">App neu laden</div>
-    <div class="card-section" style="margin-bottom:.8rem">
-      <p style="font-size:.82rem;color:var(--text2);margin-bottom:.7rem">Falls die App eine veraltete Version anzeigt → Cache leeren und neu laden.</p>
-      <button class="btn-secondary" onclick="clearCache()">↺ Cache leeren & neu laden</button>
-    </div>
-
-    <div class="section-title">Benachrichtigungen</div>
-    <div class="card-section" style="margin-bottom:.8rem">
-      <div class="info-row" style="margin-bottom:.5rem">
-        <span>Status</span>
-        <b style="color:${'Notification' in window ? (Notification.permission==='granted'?'var(--green)':Notification.permission==='denied'?'var(--red)':'var(--orange)') : 'var(--text3)'}">
-          ${'Notification' in window ? (Notification.permission==='granted'?'✓ Erlaubt':Notification.permission==='denied'?'✗ Blockiert':'Noch nicht gesetzt') : 'Nicht unterstützt'}
-        </b>
-      </div>
-      <p style="font-size:.78rem;color:var(--text3);margin-bottom:.7rem;line-height:1.5">
-        Benachrichtigungen für: Wartezeit abgelaufen · Folgebehandlung fällig · Besamungs-Erinnerung (3 Wochen)
-      </p>
-      <div style="display:flex;gap:.5rem;flex-wrap:wrap">
-        <button class="btn-primary" onclick="benachrichtigungErlauben()">🔔 Erlauben</button>
-        <button class="btn-secondary" onclick="testBenachrichtigung()">Test senden</button>
-      </div>
-    </div>
-
-    <div class="section-title">Datenbank</div>
-    <div class="card-section">
-      <div class="info-row"><span>Projekt</span><b style="font-size:.72rem">herdenmanagement-33ff5</b></div>
-      <div class="info-row"><span>Region</span><b>Europa West (Belgien)</b></div>
-      <div class="info-row"><span>Tarif</span><b>Spark (kostenlos)</b></div>
-    </div>
-
-    <div id="bauer-overlay" class="form-overlay" style="display:none">
-      <div class="form-sheet">
-        <div class="form-header"><h3>Bauer erfassen</h3><button class="close-btn" onclick="closeForm('bauer-overlay')">✕</button></div>
-        <div class="form-body">
-          <input id="ba-name" class="inp" placeholder="Name *" />
-          <input id="ba-betrieb" class="inp" placeholder="LFBIS-Nummer" />
-          <input id="ba-tel" class="inp" placeholder="Telefon" inputmode="tel" />
-          <input id="ba-email" class="inp" placeholder="E-Mail" inputmode="email" />
-          <div class="form-actions">
-            <button class="btn-secondary" onclick="closeForm('bauer-overlay')">Abbrechen</button>
-            <button class="btn-primary" onclick="saveBauer()">Speichern</button>
-          </div>
-        </div>
-      </div>
-    </div>
-  `;
-}
-window.showBauerForm=function(){document.getElementById('bauer-overlay').style.display='flex';};
-window.saveBauer=async function(){const name=document.getElementById('ba-name')?.value.trim();if(!name)return;await push(ref(db,'bauern'),{name,betrieb:document.getElementById('ba-betrieb')?.value.trim(),tel:document.getElementById('ba-tel')?.value.trim()});closeForm('bauer-overlay');};
-window.deleteBauer=async id=>{if(confirm('Bauer löschen?'))await remove(ref(db,'bauern/'+id));};
-
-// ══════════════════════════════════════════════════════════════════════════════
-//  HERDE
-// ══════════════════════════════════════════════════════════════════════════════
 function renderHerde() {
   const liste=Object.entries(kuehe).sort((a,b)=>a[1].nr?.localeCompare(b[1].nr,undefined,{numeric:true}));
   const bauernListe=Object.entries(bauern);
@@ -1973,6 +1392,17 @@ function behandlungFormHTML(vorId, editId, editData) {
         <label class="inp-label">Folgetermin</label>
         <input id="b-folge" class="inp" type="date" value="${d.folgeTermin?isoDate(new Date(d.folgeTermin)):''}" />
         <textarea id="b-notiz" class="inp" rows="2" placeholder="Notizen">${d.notiz||''}</textarea>
+        <label class="inp-label">Foto (optional)</label>
+        <div style="display:flex;gap:.5rem;align-items:center">
+          <label style="cursor:pointer;flex:1">
+            <span class="btn-secondary" style="display:block;text-align:center;padding:.4rem;border-radius:var(--radius-sm);font-size:.82rem">📷 Foto aufnehmen / wählen</span>
+            <input type="file" accept="image/*" capture="environment" style="display:none" onchange="behandlungFotoPreview(this)" />
+          </label>
+          <div id="b-foto-preview" style="width:48px;height:48px;border-radius:8px;overflow:hidden;display:none">
+            <img id="b-foto-img" style="width:100%;height:100%;object-fit:cover" />
+          </div>
+        </div>
+        <input type="hidden" id="b-foto-data" />
         <label class="checkbox-row"><input type="checkbox" id="b-aktiv" ${d.aktiv!==false?'checked':''} /> Behandlung aktiv</label>
         <div class="form-actions">
           <button class="btn-secondary" onclick="closeForm('behandlung-form-overlay')">Abbrechen</button>
@@ -2143,9 +1573,11 @@ window.saveBehandlung=async function(){
     folgeTermin:fl?new Date(fl).getTime():null,
     notiz:document.getElementById('b-notiz')?.value.trim()||'',
     aktiv:document.getElementById('b-aktiv')?.checked!==false,
+    fotoData:document.getElementById('b-foto-data')?.value||null,
   };
   if(editId){await update(ref(db,'behandlungen/'+editId),{...data,updatedAt:Date.now()});}
   else{await push(ref(db,'behandlungen'),{...data,createdAt:Date.now()});}
+  window.showSaveToast&&showSaveToast('Behandlung gespeichert');
   closeForm('behandlung-form-overlay');
 };
 window.deleteBehandlung=async id=>{if(confirm('Löschen?'))await remove(ref(db,'behandlungen/'+id));};
@@ -2227,6 +1659,7 @@ window.saveBesamung=async function(){
   };
   if(editId){await update(ref(db,'besamungen/'+editId),{...data,updatedAt:Date.now()});}
   else{await push(ref(db,'besamungen'),{...data,createdAt:Date.now()});}
+  window.showSaveToast&&showSaveToast('Besamung gespeichert');
   closeForm('besamung-form-overlay');
 };
 window.deleteBesamung=async id=>{if(confirm('Löschen?'))await remove(ref(db,'besamungen/'+id));};
@@ -3058,7 +2491,33 @@ window.exportSaisonPDF = function() {
   </tbody></table>`:''}
   
   <script>window.onload=()=>window.print()<\/script>
-  </body></html>`);
+  
+  <!-- Floating Action Button -->
+  <div id="fab-container" style="position:fixed;bottom:calc(var(--nav-h) + var(--safe-b) + 16px);right:16px;z-index:80;display:flex;flex-direction:column;align-items:flex-end;gap:.5rem">
+    <!-- Sub-actions (hidden by default) -->
+    <div id="fab-actions" style="display:none;flex-direction:column;align-items:flex-end;gap:.4rem">
+      <div style="display:flex;align-items:center;gap:.5rem">
+        <span style="background:rgba(0,0,0,.7);color:#fff;padding:.25rem .6rem;border-radius:12px;font-size:.75rem;white-space:nowrap">Milch erfassen</span>
+        <button onclick="closeFab();showMilchForm()" style="width:44px;height:44px;border-radius:50%;background:linear-gradient(135deg,#1a5a8a,#2a7abf);border:none;font-size:1.3rem;cursor:pointer;box-shadow:0 4px 12px rgba(0,0,0,.3);display:flex;align-items:center;justify-content:center">🥛</button>
+      </div>
+      <div style="display:flex;align-items:center;gap:.5rem">
+        <span style="background:rgba(0,0,0,.7);color:#fff;padding:.25rem .6rem;border-radius:12px;font-size:.75rem;white-space:nowrap">Behandlung</span>
+        <button onclick="closeFab();navigate('behandlung');setTimeout(()=>document.querySelector('.btn-primary')?.click(),300)" style="width:44px;height:44px;border-radius:50%;background:linear-gradient(135deg,#8a1a1a,#bf2a2a);border:none;font-size:1.3rem;cursor:pointer;box-shadow:0 4px 12px rgba(0,0,0,.3);display:flex;align-items:center;justify-content:center">⚕</button>
+      </div>
+      <div style="display:flex;align-items:center;gap:.5rem">
+        <span style="background:rgba(0,0,0,.7);color:#fff;padding:.25rem .6rem;border-radius:12px;font-size:.75rem;white-space:nowrap">Zählung starten</span>
+        <button onclick="closeFab();navigate('zaehlung')" style="width:44px;height:44px;border-radius:50%;background:linear-gradient(135deg,#1a6a1a,#2a9a2a);border:none;font-size:1.3rem;cursor:pointer;box-shadow:0 4px 12px rgba(0,0,0,.3);display:flex;align-items:center;justify-content:center">✓</button>
+      </div>
+      <div style="display:flex;align-items:center;gap:.5rem">
+        <span style="background:rgba(0,0,0,.7);color:#fff;padding:.25rem .6rem;border-radius:12px;font-size:.75rem;white-space:nowrap">Journal</span>
+        <button onclick="closeFab();navigate('journal');setTimeout(()=>document.querySelector('[onclick*=showJournalForm]')?.click(),300)" style="width:44px;height:44px;border-radius:50%;background:linear-gradient(135deg,#4a3a1a,#8a6a2a);border:none;font-size:1.3rem;cursor:pointer;box-shadow:0 4px 12px rgba(0,0,0,.3);display:flex;align-items:center;justify-content:center">📓</button>
+      </div>
+    </div>
+    <!-- Main FAB button -->
+    <button id="fab-main" onclick="toggleFab()" style="width:56px;height:56px;border-radius:50%;background:linear-gradient(135deg,var(--gold2),var(--gold));border:none;font-size:1.6rem;cursor:pointer;box-shadow:0 4px 16px rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center;transition:transform .2s">+</button>
+  </div>
+
+</body></html>`);
   w.document.close();
 };
 
@@ -3106,7 +2565,33 @@ window.druckeHerde = function() {
     : renderGruppe('',kuhListe)}
   <div class="footer">HerdenPro · ${alm} · Saison ${saisonInfo?.jahr||new Date().getFullYear()}</div>
   <script>window.onload=()=>window.print()<\/script>
-  </body></html>`);
+  
+  <!-- Floating Action Button -->
+  <div id="fab-container" style="position:fixed;bottom:calc(var(--nav-h) + var(--safe-b) + 16px);right:16px;z-index:80;display:flex;flex-direction:column;align-items:flex-end;gap:.5rem">
+    <!-- Sub-actions (hidden by default) -->
+    <div id="fab-actions" style="display:none;flex-direction:column;align-items:flex-end;gap:.4rem">
+      <div style="display:flex;align-items:center;gap:.5rem">
+        <span style="background:rgba(0,0,0,.7);color:#fff;padding:.25rem .6rem;border-radius:12px;font-size:.75rem;white-space:nowrap">Milch erfassen</span>
+        <button onclick="closeFab();showMilchForm()" style="width:44px;height:44px;border-radius:50%;background:linear-gradient(135deg,#1a5a8a,#2a7abf);border:none;font-size:1.3rem;cursor:pointer;box-shadow:0 4px 12px rgba(0,0,0,.3);display:flex;align-items:center;justify-content:center">🥛</button>
+      </div>
+      <div style="display:flex;align-items:center;gap:.5rem">
+        <span style="background:rgba(0,0,0,.7);color:#fff;padding:.25rem .6rem;border-radius:12px;font-size:.75rem;white-space:nowrap">Behandlung</span>
+        <button onclick="closeFab();navigate('behandlung');setTimeout(()=>document.querySelector('.btn-primary')?.click(),300)" style="width:44px;height:44px;border-radius:50%;background:linear-gradient(135deg,#8a1a1a,#bf2a2a);border:none;font-size:1.3rem;cursor:pointer;box-shadow:0 4px 12px rgba(0,0,0,.3);display:flex;align-items:center;justify-content:center">⚕</button>
+      </div>
+      <div style="display:flex;align-items:center;gap:.5rem">
+        <span style="background:rgba(0,0,0,.7);color:#fff;padding:.25rem .6rem;border-radius:12px;font-size:.75rem;white-space:nowrap">Zählung starten</span>
+        <button onclick="closeFab();navigate('zaehlung')" style="width:44px;height:44px;border-radius:50%;background:linear-gradient(135deg,#1a6a1a,#2a9a2a);border:none;font-size:1.3rem;cursor:pointer;box-shadow:0 4px 12px rgba(0,0,0,.3);display:flex;align-items:center;justify-content:center">✓</button>
+      </div>
+      <div style="display:flex;align-items:center;gap:.5rem">
+        <span style="background:rgba(0,0,0,.7);color:#fff;padding:.25rem .6rem;border-radius:12px;font-size:.75rem;white-space:nowrap">Journal</span>
+        <button onclick="closeFab();navigate('journal');setTimeout(()=>document.querySelector('[onclick*=showJournalForm]')?.click(),300)" style="width:44px;height:44px;border-radius:50%;background:linear-gradient(135deg,#4a3a1a,#8a6a2a);border:none;font-size:1.3rem;cursor:pointer;box-shadow:0 4px 12px rgba(0,0,0,.3);display:flex;align-items:center;justify-content:center">📓</button>
+      </div>
+    </div>
+    <!-- Main FAB button -->
+    <button id="fab-main" onclick="toggleFab()" style="width:56px;height:56px;border-radius:50%;background:linear-gradient(135deg,var(--gold2),var(--gold));border:none;font-size:1.6rem;cursor:pointer;box-shadow:0 4px 16px rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center;transition:transform .2s">+</button>
+  </div>
+
+</body></html>`);
   w.document.close();
 };
 
@@ -3870,6 +3355,7 @@ window.saveBauer = async function() {
   } else {
     await push(ref(db,'bauern'),data);
   }
+  window.showSaveToast&&showSaveToast('Bauer gespeichert');
   closeForm('bauer-overlay');
 };
 
@@ -4505,6 +3991,11 @@ window.importRohdatenExcel = async function(input) {
         const nr = String(row[0]||'').trim();
         const name = String(row[1]||'').trim();
         if(!nr) continue;
+        // Skip header/hint rows
+        if(nr.includes('#') || nr.includes('↓') || nr.toLowerCase().includes('kuhnr') || 
+           nr.toLowerCase().includes('auto') || nr.toLowerCase().includes('klicke') ||
+           name.toLowerCase().includes('(auto)') || name.toLowerCase().includes('kuhname') ||
+           isNaN(parseInt(nr))) continue;
         const data = {
           nr, name,
           bauer: String(row[2]||'').trim(),
@@ -4515,12 +4006,39 @@ window.importRohdatenExcel = async function(input) {
           ohrmarke: String(row[8]||'').trim(),  // AT59 4700 432
           updatedAt: ts
         };
+        // Extract gruppe from data
+        const gruppeNamen = data.gruppe ? data.gruppe.split(/[,;\/]/).map(g=>g.trim()).filter(Boolean) : [];
+        
         // Check if exists
         const existing = Object.entries(kuehe).find(([,k])=>k.nr===nr);
+        let kuhId;
         if(existing) {
           await update(ref(db,'kuehe/'+existing[0]), data);
+          kuhId = existing[0];
         } else {
-          await push(ref(db,'kuehe'), data);
+          const ref2 = await push(ref(db,'kuehe'), data);
+          kuhId = ref2.key;
+        }
+        
+        // Create/assign Gruppen
+        for(const gName of gruppeNamen) {
+          if(!gName) continue;
+          // Find or create group
+          let gruppeId = Object.entries(gruppen||{}).find(([,g])=>g.name===gName)?.[0];
+          if(!gruppeId) {
+            // Create new group with random color
+            const colors = ['#e74c3c','#e67e22','#f1c40f','#2ecc71','#3498db','#9b59b6','#1abc9c'];
+            const col = colors[Object.keys(gruppen||{}).length % colors.length];
+            const newGRef = await push(ref(db,'gruppen'), {name:gName, farbe:col, createdAt:Date.now()});
+            gruppeId = newGRef.key;
+          }
+          // Assign kuh to gruppe
+          if(kuhId && gruppeId) {
+            const gData = gruppen[gruppeId] || {};
+            const members = gData.mitglieder || {};
+            members[kuhId] = true;
+            await update(ref(db,'gruppen/'+gruppeId), {mitglieder: members});
+          }
         }
         total++;
       }
@@ -5337,7 +4855,8 @@ window.saveMilch = async function() {
     document.getElementById('m-edit-id').value = '';
     const titleEl = document.getElementById('m-form-title');
     if(titleEl) titleEl.textContent = '🥛 Milch erfassen';
-    closeForm('milch-form-overlay');
+    window.showSaveToast&&showSaveToast('Milch gespeichert');
+  closeForm('milch-form-overlay');
     return;
   }
   _origSaveMilch();
@@ -5366,6 +4885,778 @@ window.loescheAlleDaten = async function() {
   
   alert('✓ Alle Daten gelöscht.\nApp wird neu geladen.');
   location.reload();
+};
+
+// ── Verbindungsstatus ──
+function updateVerbindungsDot(online) {
+  const dot = document.getElementById('status-dot');
+  if(!dot) return;
+  if(online) {
+    dot.style.background = 'var(--green)';
+    dot.style.boxShadow = '0 0 6px var(--green)';
+    dot.title = 'Online – Firebase verbunden';
+  } else {
+    dot.style.background = 'var(--red)';
+    dot.style.boxShadow = '0 0 6px var(--red)';
+    dot.title = 'Offline – keine Verbindung';
+  }
+}
+window.addEventListener('online',  () => updateVerbindungsDot(true));
+window.addEventListener('offline', () => updateVerbindungsDot(false));
+
+window.showVerbindungsInfo = function() {
+  const online = navigator.onLine;
+  showPopupHTML(
+    '<div style="text-align:center;padding:.5rem 0">' +
+    '<div style="font-size:2rem;margin-bottom:.5rem">' + (online?'🟢':'🔴') + '</div>' +
+    '<div style="font-weight:bold;font-size:1rem;color:' + (online?'var(--green)':'var(--red)') + '">' + (online?'Online':'Offline') + '</div>' +
+    '<div style="font-size:.8rem;color:var(--text3);margin-top:.4rem">' + (online?'Firebase verbunden · Daten werden synchronisiert':'Keine Internetverbindung · Daten werden lokal gespeichert und später synchronisiert') + '</div>' +
+    '</div>' +
+    '<button class="btn-secondary" style="width:100%;margin-top:.8rem" onclick="closePopup()">OK</button>'
+  );
+};
+
+// ── Speichern-Feedback (Vibration + Toast) ──
+window.showSaveToast = function(msg) {
+  if(navigator.vibrate) navigator.vibrate(30);
+  let toast = document.getElementById('save-toast');
+  if(!toast) {
+    toast = document.createElement('div');
+    toast.id = 'save-toast';
+    toast.style.cssText = 'position:fixed;bottom:calc(var(--nav-h) + var(--safe-b) + 12px);left:50%;transform:translateX(-50%);background:rgba(77,184,78,.95);color:#fff;padding:.4rem 1.2rem;border-radius:20px;font-size:.82rem;font-weight:bold;z-index:1000;pointer-events:none;transition:opacity .3s';
+    document.body.appendChild(toast);
+  }
+  toast.textContent = '✓ ' + (msg || 'Gespeichert');
+  toast.style.opacity = '1';
+  clearTimeout(toast._timer);
+  toast._timer = setTimeout(() => { toast.style.opacity = '0'; }, 1800);
+};
+
+window._fabOpen = false;
+window.toggleFab = function() {
+  const actions = document.getElementById('fab-actions');
+  const btn = document.getElementById('fab-main');
+  window._fabOpen = !window._fabOpen;
+  if(actions) actions.style.display = window._fabOpen ? 'flex' : 'none';
+  if(btn) btn.style.transform = window._fabOpen ? 'rotate(45deg)' : '';
+  if(navigator.vibrate && window._fabOpen) navigator.vibrate(15);
+};
+window.closeFab = function() {
+  const actions = document.getElementById('fab-actions');
+  const btn = document.getElementById('fab-main');
+  window._fabOpen = false;
+  if(actions) actions.style.display = 'none';
+  if(btn) btn.style.transform = '';
+};
+// Close FAB when navigating
+const _navBeforeFab = window.navigate;
+window.navigate = function(v) {
+  window.closeFab && window.closeFab();
+  _navBeforeFab(v);
+};
+
+// ── Wetter (Open-Meteo, kostenlos, kein API-Key) ──
+const WETTER_ORTE = {
+  'Innsbruck':   {lat:47.2692, lon:11.4041},
+  'Lienz':       {lat:46.8289, lon:12.7693},
+  'Imst':        {lat:47.2448, lon:10.7397},
+  'Landeck':     {lat:47.1408, lon:10.5650},
+  'Kitzbühel':   {lat:47.4467, lon:12.3926},
+  'Reutte':      {lat:47.4833, lon:10.7167},
+  'Schwaz':      {lat:47.3531, lon:11.7092},
+  'Bregenz':     {lat:47.5031, lon:9.7471},
+  'Feldkirch':   {lat:47.2372, lon:9.5973},
+  'Bludenz':     {lat:47.1528, lon:9.8218},
+  'Klagenfurt':  {lat:46.6228, lon:14.3053},
+  'Villach':     {lat:46.6133, lon:13.8558},
+  'Salzburg':    {lat:47.8095, lon:13.0550},
+  'Zell am See': {lat:47.3256, lon:12.7956},
+  'St. Johann':  {lat:47.5261, lon:12.4228},
+};
+
+const WMO_ICONS = {
+  0:'☀️', 1:'🌤️', 2:'⛅', 3:'☁️',
+  45:'🌫️', 48:'🌫️',
+  51:'🌦️', 53:'🌦️', 55:'🌦️',
+  61:'🌧️', 63:'🌧️', 65:'🌧️',
+  71:'🌨️', 73:'🌨️', 75:'❄️',
+  77:'❄️',
+  80:'🌦️', 81:'🌧️', 82:'⛈️',
+  85:'🌨️', 86:'❄️',
+  95:'⛈️', 96:'⛈️', 99:'⛈️',
+};
+const WMO_DESC = {
+  0:'Klar', 1:'Überwiegend klar', 2:'Teils bewölkt', 3:'Bedeckt',
+  45:'Nebel', 48:'Nebel',
+  51:'Leichter Nieselregen', 53:'Nieselregen', 55:'Starker Nieselregen',
+  61:'Leichter Regen', 63:'Regen', 65:'Starker Regen',
+  71:'Leichter Schnee', 73:'Schnee', 75:'Starker Schnee',
+  80:'Schauer', 81:'Starke Schauer', 82:'Sehr starke Schauer',
+  95:'Gewitter', 96:'Gewitter mit Hagel', 99:'Starkes Gewitter',
+};
+
+window.ladeWetter = async function() {
+  const ort = localStorage.getItem('wetterOrt') || 'Innsbruck';
+  const coords = WETTER_ORTE[ort];
+  if(!coords) return;
+  try {
+    const url = `https://api.open-meteo.com/v1/forecast?latitude=${coords.lat}&longitude=${coords.lon}&current=temperature_2m,apparent_temperature,weather_code,wind_speed_10m&wind_speed_unit=kmh&timezone=Europe%2FVienna`;
+    const res = await fetch(url);
+    const data = await res.json();
+    const c = data.current;
+    window._wetterData = {
+      temp: Math.round(c.temperature_2m),
+      feels: Math.round(c.apparent_temperature),
+      wind: Math.round(c.wind_speed_10m),
+      icon: WMO_ICONS[c.weather_code] || '⛅',
+      desc: WMO_DESC[c.weather_code] || '',
+      ort,
+      updated: new Date().toLocaleTimeString('de-AT', {hour:'2-digit',minute:'2-digit'}) + ' Uhr',
+      ts: Date.now()
+    };
+    // Refresh dashboard
+    if(currentView === 'dashboard') render();
+    else {
+      const el = document.getElementById('dashboard-wetter');
+      if(el && window._wetterData) {
+        const w = window._wetterData;
+        el.innerHTML = `<div style="background:linear-gradient(135deg,rgba(30,80,140,.25),rgba(30,80,140,.1));border:1px solid rgba(80,140,200,.3);border-radius:var(--radius-sm);padding:.6rem 1rem;display:flex;align-items:center;gap:.8rem">
+          <div style="font-size:2rem">${w.icon}</div>
+          <div style="flex:1">
+            <div style="font-size:1.1rem;color:#7acbff;font-weight:bold">${w.temp}°C <span style="font-size:.75rem;color:var(--text3)">${w.desc}</span></div>
+            <div style="font-size:.7rem;color:var(--text3)">${w.ort} · Gefühlt ${w.feels}°C · Wind ${w.wind} km/h</div>
+          </div>
+          <div style="text-align:right;font-size:.7rem;color:var(--text3)">${w.updated}</div>
+        </div>`;
+      }
+    }
+  } catch(e) { console.warn('Wetter:', e); }
+};
+
+// Auto-load Wetter on start
+window.addEventListener('load', () => {
+  setTimeout(() => ladeWetter(), 2000);
+  // Refresh every 30 min
+  setInterval(() => ladeWetter(), 30 * 60 * 1000);
+});
+function renderMilch() {
+  const eintraege=Object.entries(milchEintraege).sort((a,b)=>b[1].datum-a[1].datum);
+  const letzten14=eintraege.slice(0,14);
+  const gesamtL14=letzten14.reduce((s,[,e])=>s+(e.gesamt||0),0);
+  const proMonat={};
+  eintraege.forEach(([,e])=>{if(!e.datum)return;const m=new Date(e.datum).toLocaleDateString('de-AT',{month:'short',year:'numeric'});proMonat[m]=(proMonat[m]||0)+(e.gesamt||0);});
+  const kueheOben=Object.entries(kuehe).sort((a,b)=>{const nA=parseInt(a[1].nr)||0,nB=parseInt(b[1].nr)||0;return nA-nB;});
+  return `
+    <div class="page-header"><h2>🥛 Milchleistung</h2><button class="btn-primary" onclick="showMilchForm()">+ Eintrag</button></div>
+    <div class="stats-grid" style="grid-template-columns:1fr 1fr 1fr">
+      <div class="stat-card"><div class="stat-icon" style="font-size:.9rem">Ø/Tag</div><div class="stat-num" style="font-size:1.4rem">${letzten14.length?Math.round(gesamtL14/letzten14.length):'–'}L</div><div class="stat-label">14 Tage</div></div>
+      <div class="stat-card"><div class="stat-icon" style="font-size:.9rem">Gesamt</div><div class="stat-num" style="font-size:1.4rem">${Math.round(gesamtL14)}L</div><div class="stat-label">14 Tage</div></div>
+      <div class="stat-card" onclick="exportMilchMolkerei()"><div class="stat-icon">📤</div><div class="stat-num" style="font-size:.9rem">Export</div><div class="stat-label">→ Molkerei</div></div>
+    </div>
+    ${Object.keys(proMonat).length?`<div class="section-title">Monatsübersicht</div><div class="card-section" style="padding:.5rem .8rem">${Object.entries(proMonat).slice(0,6).map(([m,l])=>`<div class="info-row"><span>${m}</span><b>${Math.round(l)} L</b></div>`).join('')}</div>`:''}
+    <div class="section-title">Einträge</div>
+    <div class="card-list">
+      ${eintraege.length ? eintraege.slice(0,30).map(([id,e])=>`
+        <div class="list-card">
+          <div class="list-card-left"><div>
+            <div class="list-card-title">${new Date(e.datum).toLocaleDateString('de-AT',{weekday:'short',day:'numeric',month:'short'})}</div>
+            <div class="list-card-sub">${e.art==='gesamt'?'Gesamtmenge':'Pro Kuh'} · ${e.zeit==='abend'?'🌇 Abends':'🌅 Morgens'}${e.molkerei?' · an Molkerei':''}</div>
+          </div></div>
+          <div class="list-card-right"><span style="font-size:1.1rem;color:var(--gold);font-weight:bold">${e.gesamt} L</span><button class="btn-xs-danger" onclick="deleteMilch('${id}')">✕</button></div>
+        </div>`).join('') : `<div class="empty-state">Noch keine Einträge</div>`}
+    </div>
+    <div id="milch-form-overlay" class="form-overlay" style="display:none">
+      <div class="form-sheet">
+        <div class="form-header"><h3>Milch erfassen</h3><button class="close-btn" onclick="closeForm('milch-form-overlay')">✕</button></div>
+        <div class="form-body">
+          <input id="m-datum" class="inp" type="date" value="${isoDate(new Date())}" />
+          <div style="display:flex;gap:.5rem;margin-bottom:.4rem">
+            <button class="filter-chip active" id="m-zeit-morgen" onclick="selectMilchZeit('morgen',this)">🌅 Morgens</button>
+            <button class="filter-chip" id="m-zeit-abend" onclick="selectMilchZeit('abend',this)">🌇 Abends</button>
+          </div>
+          <input type="hidden" id="m-zeit" value="morgen" />
+          <label class="inp-label">Erfassungsart</label>
+          <select id="m-art" class="inp" onchange="toggleMilchArt(this.value)">
+            <option value="gesamt">Gesamtmenge (Alm)</option>
+            <option value="prokuh">Pro Kuh</option>
+          </select>
+          <div id="m-gesamt-block"><input id="m-gesamt" class="inp" placeholder="Liter gesamt" inputmode="decimal" /></div>
+          <div id="m-prokuh-block" style="display:none">
+            ${kueheOben.map(([id,k])=>`<div style="display:flex;align-items:center;gap:.5rem;margin-bottom:.4rem"><span class="nr-badge" style="min-width:44px">#${k.nr}</span><span style="flex:1;font-size:.83rem;color:var(--text2)">${k.name||''}</span><input class="inp kuh-liter" data-id="${id}" placeholder="L" inputmode="decimal" style="width:70px;text-align:right" /></div>`).join('')}
+          </div>
+          <label class="checkbox-row"><input type="checkbox" id="m-molkerei" /> An Molkerei abgegeben</label>
+          <textarea id="m-notiz" class="inp" rows="2" placeholder="Notizen"></textarea>
+          <div class="form-actions">
+            <button class="btn-secondary" onclick="closeForm('milch-form-overlay')">Abbrechen</button>
+            <button class="btn-primary" onclick="saveMilch()">Speichern</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function renderSaison() {
+  const kuhListe=Object.entries(kuehe).sort((a,b)=>{const nA=parseInt(a[1].nr)||0,nB=parseInt(b[1].nr)||0;return nA-nB;});
+  const oben=kuhListe.filter(([,k])=>k.almStatus==='oben');
+  const unten=kuhListe.filter(([,k])=>k.almStatus!=='oben');
+  const heute=Date.now();
+  const tageOben = saisonInfo?.auftriebDatum ? Math.floor((heute - saisonInfo.auftriebDatum)/86400000) : 0;
+
+  return `
+    <div class="page-header"><h2>⛰ Saison</h2></div>
+
+    ${!saisonInfo?.aktiv ? `
+    <!-- ── KEINE AKTIVE SAISON ── -->
+    <div style="text-align:center;padding:1.5rem 0 1rem">
+      <div style="font-size:3rem;margin-bottom:.5rem">⛰</div>
+      <div style="font-size:1.1rem;color:var(--gold);margin-bottom:.3rem">Saison noch nicht gestartet</div>
+      <div style="font-size:.82rem;color:var(--text3);margin-bottom:1.5rem">Starte die Saison wenn die Kühe auf die Alm getrieben werden.</div>
+    </div>
+    <div class="card-section">
+      <div class="section-label" style="margin-bottom:.6rem">AUFTRIEB ERFASSEN</div>
+      <input id="s-alm" class="inp" placeholder="Almname (z.B. Vordere Alm)" style="margin-bottom:.5rem" value="${saisonInfo?.alm||''}" />
+      <input id="s-datum" class="inp" type="date" value="${isoDate(new Date())}" style="margin-bottom:.8rem" />
+      <button class="btn-primary btn-block" onclick="startSaison()">▶ Saison starten</button>
+    </div>
+    ` : `
+    <!-- ── SAISON AKTIV ── -->
+
+    <!-- Status-Banner -->
+    <div style="background:rgba(91,168,92,.12);border:1.5px solid var(--green);border-radius:14px;padding:1rem 1.2rem;margin-bottom:1rem">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.5rem">
+        <span style="color:var(--green);font-weight:bold;font-size:.9rem">✓ Saison aktiv</span>
+        <span style="font-size:.75rem;color:var(--text3)">Tag ${tageOben}</span>
+      </div>
+      <div style="font-size:1.1rem;color:var(--gold);margin-bottom:.3rem">${saisonInfo.alm||'Alm'}</div>
+      <div style="font-size:.82rem;color:var(--text2)">
+        Auftrieb: ${new Date(saisonInfo.auftriebDatum).toLocaleDateString('de-AT',{weekday:'long',day:'numeric',month:'long'})}
+      </div>
+    </div>
+
+    <!-- Kühe Zähler -->
+    <div class="stats-grid" style="margin-bottom:1rem">
+      <div class="stat-card">
+        <div class="stat-icon">⛰</div>
+        <div class="stat-num">${oben.length}</div>
+        <div class="stat-label">Kühe oben</div>
+      </div>
+      <div class="stat-card ${unten.length?'stat-warn':''}">
+        <div class="stat-icon">🏠</div>
+        <div class="stat-num">${unten.length}</div>
+        <div class="stat-label">noch unten</div>
+      </div>
+    </div>
+
+    <!-- Schritt-für-Schritt Anleitung -->
+    <div class="section-title">Was kannst du hier tun?</div>
+    <div class="card-section" style="margin-bottom:1rem">
+      <div style="display:flex;flex-direction:column;gap:.7rem">
+        <div style="display:flex;gap:.8rem;align-items:flex-start">
+          <span style="font-size:1.3rem;flex-shrink:0">1️⃣</span>
+          <div>
+            <div style="font-size:.88rem;color:var(--text);font-weight:bold">Kühe aufgetrieben markieren</div>
+            <div style="font-size:.75rem;color:var(--text3)">Jede Kuh einzeln oder alle auf einmal als „oben" markieren → Alpungstage laufen automatisch</div>
+          </div>
+        </div>
+        <div style="display:flex;gap:.8rem;align-items:flex-start">
+          <span style="font-size:1.3rem;flex-shrink:0">2️⃣</span>
+          <div>
+            <div style="font-size:.88rem;color:var(--text);font-weight:bold">Tägliche Kontrolle</div>
+            <div style="font-size:.75rem;color:var(--text3)">Unter „Mehr → Tägliche Kontrolle" prüfen ob alle Kühe da sind</div>
+          </div>
+        </div>
+        <div style="display:flex;gap:.8rem;align-items:flex-start">
+          <span style="font-size:1.3rem;flex-shrink:0">3️⃣</span>
+          <div>
+            <div style="font-size:.88rem;color:var(--text);font-weight:bold">Am Ende der Saison: Abtrieb erfassen</div>
+            <div style="font-size:.75rem;color:var(--text3)">Abtriebsdatum eintragen → Alpungstage werden für AMA/ÖPUL berechnet → Saisonbericht exportieren</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Kühe Verwaltung -->
+    ${unten.length ? `
+    <div class="section-title">Noch nicht aufgetrieben (${unten.length})</div>
+    <div class="card-list" style="margin-bottom:.6rem">
+      ${unten.map(([id,k])=>`
+        <div class="list-card list-card-sm">
+          <span class="nr-badge">#${k.nr}</span>
+          <span class="list-card-title">${k.name||'–'}</span>
+          <span style="font-size:.72rem;color:var(--text3);flex:1">${k.bauer||''}</span>
+          <button class="btn-xs" onclick="setAlmStatus('${id}','oben')">↑ aufgetrieben</button>
+        </div>`).join('')}
+    </div>
+    <button class="btn-secondary btn-block" style="margin-bottom:.8rem" onclick="alleAuftreiben()">↑ Alle als aufgetrieben markieren</button>
+    ` : `<div class="empty-state" style="margin-bottom:.8rem">✓ Alle Kühe oben</div>`}
+
+    ${oben.length ? `
+    <div class="section-title">Auf der Alm (${oben.length})</div>
+    <div class="card-list" style="margin-bottom:1rem">
+      ${oben.map(([id,k])=>`
+        <div class="list-card list-card-sm">
+          <span class="nr-badge">#${k.nr}</span>
+          <span class="list-card-title">${k.name||'–'}</span>
+          <span style="font-size:.72rem;color:var(--text3);flex:1">${k.bauer||''}</span>
+          <button class="btn-xs-danger" onclick="setAlmStatus('${id}','unten')">↓ abgetrieben</button>
+        </div>`).join('')}
+    </div>` : ''}
+
+    <!-- Abtrieb Button -->
+    <div class="card-section" style="border-color:var(--orange)">
+      <div style="font-size:.82rem;color:var(--text2);margin-bottom:.7rem">
+        <b style="color:var(--orange)">Saisonende:</b> Wenn alle Kühe abgetrieben wurden, hier den Abtrieb erfassen. 
+        Die Alpungstage werden dann berechnet.
+      </div>
+      <button class="btn-primary" style="background:var(--orange);width:100%" onclick="showAbtriebbForm()">
+        ↓ Abtrieb erfassen & Saison beenden
+      </button>
+    </div>
+    `}
+
+    <!-- Abtrieb Form -->
+    <div id="abtrieb-overlay" class="form-overlay" style="display:none">
+      <div class="form-sheet">
+        <div class="form-header"><h3>Abtrieb erfassen</h3><button class="close-btn" onclick="closeForm('abtrieb-overlay')">✕</button></div>
+        <div class="form-body">
+          <p style="font-size:.82rem;color:var(--text2);margin-bottom:.8rem">
+            Nach dem Speichern wird die Saison beendet und die Alpungstage werden berechnet.
+          </p>
+          <label class="inp-label">Abtriebsdatum</label>
+          <input id="ab-datum" class="inp" type="date" value="${isoDate(new Date())}" />
+          <textarea id="ab-notiz" class="inp" rows="2" placeholder="Notizen (z.B. alle gesund, Wetter gut…)"></textarea>
+          <div class="form-actions">
+            <button class="btn-secondary" onclick="closeForm('abtrieb-overlay')">Abbrechen</button>
+            <button class="btn-primary" onclick="saveAbtrieb()">Abtrieb speichern</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function renderWeide() {
+  const heuteDatum=isoDate(new Date());
+  const weidenListe=Object.entries(weiden).sort((a,b)=>a[1].name?.localeCompare(b[1].name));
+  const verlauf=Object.entries(weideTage).sort((a,b)=>b[1].datum?.localeCompare(a[1].datum)).slice(0,30);
+  const heuteEintrag=Object.entries(weideTage).find(([,w])=>w.datum===heuteDatum);
+  const kueheOben=Object.entries(kuehe).sort((a,b)=>{const nA=parseInt(a[1].nr)||0,nB=parseInt(b[1].nr)||0;return nA-nB;});
+  return `
+    <div class="page-header"><h2>🌿 Weidegang</h2><button class="btn-primary" onclick="showWeideTagForm()">+ Heute</button></div>
+    <div class="section-title">Weiden <button class="btn-xs" style="margin-left:.5rem" onclick="showWeideForm()">+ anlegen</button></div>
+    <div style="display:flex;flex-wrap:wrap;gap:.4rem;margin-bottom:.8rem">
+      ${weidenListe.map(([id,w])=>`<div class="weide-chip"><span>${w.name}</span>${w.ha?`<span style="font-size:.68rem;color:var(--text3)"> ${w.ha}ha</span>`:''}<button onclick="deleteWeide('${id}')" style="background:none;border:none;color:var(--text3);cursor:pointer;padding:0 0 0 4px;font-size:.8rem">✕</button></div>`).join('')||`<span style="color:var(--text3);font-size:.82rem">Noch keine Weiden</span>`}
+    </div>
+    ${heuteEintrag?`<div class="card-section" style="border-color:var(--green);margin-bottom:.8rem">
+      <div class="info-row"><span>Heute</span><b style="color:var(--green)">${weiden[heuteEintrag[1].weideId]?.name||heuteEintrag[1].weideText||'–'}</b></div>
+      <div class="info-row"><span>Tiere</span><b>${heuteEintrag[1].kuhIds?.length||0}</b></div>
+      ${heuteEintrag[1].notiz?`<div class="info-row"><span>Notiz</span><span>${heuteEintrag[1].notiz}</span></div>`:''}
+      <button class="btn-xs-danger" style="margin-top:.4rem" onclick="deleteWeideTag('${heuteEintrag[0]}')">Löschen</button>
+    </div>`:''}
+    <div class="section-title">Verlauf</div>
+    <div class="card-list">
+      ${verlauf.length?verlauf.map(([id,w])=>`<div class="list-card"><div class="list-card-left"><div><div class="list-card-title">${new Date(w.datum+'T12:00').toLocaleDateString('de-AT',{weekday:'short',day:'numeric',month:'short'})}</div><div class="list-card-sub">${weiden[w.weideId]?.name||w.weideText||'–'} · ${w.kuhIds?.length||0} Tiere${w.notiz?' · '+w.notiz:''}</div></div></div><button class="btn-xs-danger" onclick="deleteWeideTag('${id}')">✕</button></div>`).join(''):`<div class="empty-state">Noch keine Einträge</div>`}
+    </div>
+    <div id="weidetag-overlay" class="form-overlay" style="display:none">
+      <div class="form-sheet">
+        <div class="form-header"><h3>Weidegang erfassen</h3><button class="close-btn" onclick="closeForm('weidetag-overlay')">✕</button></div>
+        <div class="form-body">
+          <input id="wt-datum" class="inp" type="date" value="${heuteDatum}" />
+          <label class="inp-label">Weide</label>
+          <select id="wt-weide" class="inp" onchange="document.getElementById('wt-freitext').style.display=this.value==='__text__'?'':'none'">
+            <option value="">– wählen –</option>
+            ${weidenListe.map(([id,w])=>`<option value="${id}">${w.name}${w.ha?' ('+w.ha+'ha)':''}</option>`).join('')}
+            <option value="__text__">Andere (Freitext)</option>
+          </select>
+          <input id="wt-freitext" class="inp" placeholder="Weidename" style="display:none" />
+          <label class="inp-label">Tiere auf dieser Weide</label>
+          <div style="display:flex;gap:.4rem;margin-bottom:.4rem"><button class="btn-xs" onclick="alleKueheWeide(true)">Alle</button><button class="btn-xs" onclick="alleKueheWeide(false)">Keine</button></div>
+          <div id="wt-kuehe" style="display:flex;flex-wrap:wrap;gap:.4rem;max-height:150px;overflow-y:auto;background:var(--bg);border-radius:8px;padding:.5rem">
+            ${kueheOben.map(([id,k])=>`<label class="kuh-select-chip"><input type="checkbox" class="kuh-cb" value="${id}" checked />#${k.nr} ${k.name||''}</label>`).join('')}
+          </div>
+          <textarea id="wt-notiz" class="inp" rows="2" placeholder="Notizen (Wetter, Zaunschäden…)"></textarea>
+          <div class="form-actions">
+            <button class="btn-secondary" onclick="closeForm('weidetag-overlay')">Abbrechen</button>
+            <button class="btn-primary" onclick="saveWeideTag()">Speichern</button>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div id="weide-overlay" class="form-overlay" style="display:none">
+      <div class="form-sheet">
+        <div class="form-header"><h3>Weide anlegen</h3><button class="close-btn" onclick="closeForm('weide-overlay')">✕</button></div>
+        <div class="form-body">
+          <input id="w-name" class="inp" placeholder="Name (z.B. Hochweide)" />
+          <input id="w-ha" class="inp" placeholder="Fläche in ha" inputmode="decimal" />
+          <textarea id="w-notiz" class="inp" rows="2" placeholder="Notizen"></textarea>
+          <div class="form-actions">
+            <button class="btn-secondary" onclick="closeForm('weide-overlay')">Abbrechen</button>
+            <button class="btn-primary" onclick="saveWeide()">Speichern</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function renderEinstellungen() {
+  const bauernListe=Object.entries(bauern).sort((a,b)=>a[1].name?.localeCompare(b[1].name));
+  return `
+    <div class="page-header"><h2>⚙ Einstellungen</h2></div>
+
+    <div class="card-section" style="margin-bottom:.8rem">
+      <div class="section-label" style="margin-bottom:.6rem">ALM-EINSTELLUNGEN</div>
+      <div style="display:flex;align-items:center;gap:.5rem;margin-bottom:.4rem">
+        <input id="einst-almname" class="inp" placeholder="Almname" value="${saisonInfo?.alm||''}" style="flex:1" />
+        <button class="btn-xs" onclick="saveAlmName()">✓ Speichern</button>
+      </div>
+      <div style="display:flex;align-items:center;gap:.5rem;margin-bottom:.4rem">
+        <input id="einst-almjahr" class="inp" placeholder="Saison-Jahr" value="${saisonInfo?.jahr||new Date().getFullYear()}" style="width:100px" inputmode="numeric" />
+        <label style="font-size:.8rem;color:var(--text3)">Saison-Jahr</label>
+      </div>
+      <button class="btn-secondary" style="width:100%;margin-top:.3rem" <label class="inp-label">Nächste Stadt (für Wetter)</label>
+          <select id="einst-wetterort" class="inp" style="margin-bottom:.4rem" onchange="localStorage.setItem('wetterOrt',this.value);window.ladeWetter&&ladeWetter()">
+            <option value="Innsbruck">Innsbruck</option><option value="Lienz">Lienz</option><option value="Imst">Imst</option><option value="Landeck">Landeck</option><option value="Kitzbühel">Kitzbühel</option><option value="Reutte">Reutte</option><option value="Schwaz">Schwaz</option><option value="Bregenz">Bregenz</option><option value="Feldkirch">Feldkirch</option><option value="Bludenz">Bludenz</option><option value="Klagenfurt">Klagenfurt</option><option value="Villach">Villach</option><option value="Salzburg">Salzburg</option><option value="Zell am See">Zell am See</option><option value="St. Johann">St. Johann</option>
+          </select>
+          onclick="saveAlmEinstellungen()">💾 Alm-Einstellungen speichern</button>
+    </div>
+
+    <div class="card-section" style="margin-bottom:.8rem">
+      <div class="section-label" style="margin-bottom:.5rem">APP INFO</div>
+      <div class="info-row"><span>Version</span><b>HerdenPro v2</b></div>
+      <div class="info-row"><span>Datenbank</span><b style="color:var(--green)">● Firebase verbunden</b></div>
+      <div class="info-row"><span>Alm</span><b>${saisonInfo?.alm||'–'}</b></div>
+      <div class="info-row"><span>Saison</span><b>${saisonInfo?.aktiv?'Aktiv '+saisonInfo.jahr:saisonInfo?.jahr||'–'}</b></div>
+    </div>
+
+    <div class="card-section" style="margin-bottom:.8rem">
+      <div class="section-label" style="margin-bottom:.5rem">GESPEICHERTE DATEN</div>
+      <div class="info-row"><span>🐄 Kühe</span><b>${Object.keys(kuehe).length}</b></div>
+      <div class="info-row"><span>⚕ Behandlungen</span><b>${Object.keys(behandlungen).length}</b></div>
+      <div class="info-row"><span>🐮 Besamungen</span><b>${Object.keys(besamungen).length}</b></div>
+      <div class="info-row"><span>🥛 Milcheinträge</span><b>${Object.keys(milchEintraege).length}</b></div>
+      <div class="info-row"><span>📓 Journaleinträge</span><b>${Object.keys(journal).length}</b></div>
+      <div class="info-row"><span>🌿 Weidetage</span><b>${Object.keys(weideTage).length}</b></div>
+    </div>
+
+    <div class="section-title">Bauern</div>
+    <div class="card-section" style="margin-bottom:.8rem">
+      <p style="font-size:.82rem;color:var(--text2);margin-bottom:.6rem">Bauern werden im Bauernmenü verwaltet.</p>
+      <button class="btn-primary" onclick="navigate('bauern_menu')">👥 Zum Bauernmenü</button>
+    </div>
+
+    <div class="section-title">Molkerei-Export</div>
+    <div class="card-section" style="margin-bottom:.8rem">
+      <p style="font-size:.82rem;color:var(--text2);margin-bottom:.7rem">
+        Milchdaten als Excel exportieren – fertig formatiert für das Molkerei-System (Stall-Sheet Format, W1–W14).
+      </p>
+      <button class="btn-primary" onclick="exportMolkereiExcel()">🧀 Molkerei Excel exportieren</button>
+    </div>
+
+    <div class="section-title">Datensicherung</div>
+    <div class="card-section" style="margin-bottom:.8rem;border-color:var(--green)">
+      <div style="display:flex;gap:.7rem;align-items:flex-start">
+        <span style="font-size:1.5rem">🛡</span>
+        <div>
+          <div style="font-size:.88rem;color:var(--text);font-weight:bold;margin-bottom:.3rem">Automatische Sicherung aktiv</div>
+          <div style="font-size:.78rem;color:var(--text3);line-height:1.6">Firebase (Google Cloud) sichert alle Daten automatisch täglich. Für manuelle Backups →
+            <span style="color:var(--gold);cursor:pointer" onclick="navigate('backup')">Backup & Export</span>.</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="section-title">App neu laden</div>
+    <div class="card-section" style="margin-bottom:.8rem">
+      <p style="font-size:.82rem;color:var(--text2);margin-bottom:.7rem">Falls die App eine veraltete Version anzeigt → Cache leeren und neu laden.</p>
+      <button class="btn-secondary" onclick="clearCache()">↺ Cache leeren & neu laden</button>
+    </div>
+
+    <div class="section-title">Benachrichtigungen</div>
+    <div class="card-section" style="margin-bottom:.8rem">
+      <div class="info-row" style="margin-bottom:.5rem">
+        <span>Status</span>
+        <b style="color:${'Notification' in window ? (Notification.permission==='granted'?'var(--green)':Notification.permission==='denied'?'var(--red)':'var(--orange)') : 'var(--text3)'}">
+          ${'Notification' in window ? (Notification.permission==='granted'?'✓ Erlaubt':Notification.permission==='denied'?'✗ Blockiert':'Noch nicht gesetzt') : 'Nicht unterstützt'}
+        </b>
+      </div>
+      <p style="font-size:.78rem;color:var(--text3);margin-bottom:.7rem;line-height:1.5">
+        Benachrichtigungen für: Wartezeit abgelaufen · Folgebehandlung fällig · Besamungs-Erinnerung (3 Wochen)
+      </p>
+      <div style="display:flex;gap:.5rem;flex-wrap:wrap">
+        <button class="btn-primary" onclick="benachrichtigungErlauben()">🔔 Erlauben</button>
+        <button class="btn-secondary" onclick="testBenachrichtigung()">Test senden</button>
+      </div>
+    </div>
+
+    <div class="section-title">Datenbank</div>
+    <div class="card-section">
+      <div class="info-row"><span>Projekt</span><b style="font-size:.72rem">herdenmanagement-33ff5</b></div>
+      <div class="info-row"><span>Region</span><b>Europa West (Belgien)</b></div>
+      <div class="info-row"><span>Tarif</span><b>Spark (kostenlos)</b></div>
+    </div>
+
+    <div id="bauer-overlay" class="form-overlay" style="display:none">
+      <div class="form-sheet">
+        <div class="form-header"><h3>Bauer erfassen</h3><button class="close-btn" onclick="closeForm('bauer-overlay')">✕</button></div>
+        <div class="form-body">
+          <input id="ba-name" class="inp" placeholder="Name *" />
+          <input id="ba-betrieb" class="inp" placeholder="LFBIS-Nummer" />
+          <input id="ba-tel" class="inp" placeholder="Telefon" inputmode="tel" />
+          <input id="ba-email" class="inp" placeholder="E-Mail" inputmode="email" />
+          <div class="form-actions">
+            <button class="btn-secondary" onclick="closeForm('bauer-overlay')">Abbrechen</button>
+            <button class="btn-primary" onclick="saveBauer()">Speichern</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function renderBestandsbuch() {
+  const bListe=Object.entries(behandlungen).filter(([,b])=>b.medikament).sort((a,b)=>b[1].datum-a[1].datum);
+  return `
+    <div class="page-header"><h2>📋 Bestandsbuch</h2><button class="btn-primary" onclick="druckeBestandsbuch()">🖨 Drucken</button></div>
+    <p style="font-size:.75rem;color:var(--text3);margin-bottom:.8rem">Gemäß § 12 TAKG – alle Behandlungen mit Medikamenten.</p>
+    <div class="card-section" style="margin-bottom:.8rem">
+      <div class="info-row"><span>Betrieb / Alm</span><b>${saisonInfo?.alm||'–'}</b></div>
+      <div class="info-row"><span>Tiere</span><b>${Object.keys(kuehe).length}</b></div>
+      <div class="info-row"><span>Saison</span><b>${saisonInfo?.jahr||new Date().getFullYear()}</b></div>
+    </div>
+    ${bListe.length?`
+    <div style="overflow-x:auto">
+    <table class="bb-table">
+      <thead><tr><th>Datum</th><th>Tier</th><th>Diagnose</th><th>Medikament</th><th>Dosis</th><th>Abgabe</th><th>Wartezeit</th><th>Tierarzt</th></tr></thead>
+      <tbody>${bListe.map(([,b])=>{const k=kuehe[b.kuhId];return`<tr><td>${new Date(b.datum).toLocaleDateString('de-AT')}</td><td>#${k?.nr||'?'} ${k?.name||''}</td><td>${b.diagnose||'–'}</td><td>${b.medikament}</td><td>${b.dosis||'–'}</td><td>${b.abgabeDatum?new Date(b.abgabeDatum).toLocaleDateString('de-AT'):'–'}</td><td>${b.wartezeitEnde?new Date(b.wartezeitEnde).toLocaleDateString('de-AT'):'–'}</td><td>${b.tierarzt||'–'}</td></tr>`;}).join('')}</tbody>
+    </table></div>` : `<div class="empty-state">Keine Behandlungen mit Medikamenten</div>`}
+  `;
+}
+
+
+window.behandlungFotoPreview = function(input) {
+  const file = input.files[0];
+  if(!file) return;
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    const preview = document.getElementById('b-foto-preview');
+    const img = document.getElementById('b-foto-img');
+    const data = document.getElementById('b-foto-data');
+    if(preview && img && data) {
+      img.src = e.target.result;
+      preview.style.display = '';
+      data.value = e.target.result;
+    }
+  };
+  reader.readAsDataURL(file);
+};
+
+window.showFotoPopup = function(src) {
+  showPopupHTML(
+    '<img src="' + src + '" style="width:100%;border-radius:8px;max-height:60vh;object-fit:contain" />' +
+    '<button class="btn-secondary" style="width:100%;margin-top:.8rem" onclick="closePopup()">Schließen</button>'
+  );
+};
+
+// ── Push Benachrichtigungen: Wartezeit-Check ──
+window.checkWartezeiten = function() {
+  if(!('Notification' in window) || Notification.permission !== 'granted') return;
+  const heute = Date.now();
+  const morgen = heute + 86400000;
+  
+  Object.entries(behandlungen).forEach(([id, b]) => {
+    if(!b.aktiv) return;
+    const k = kuehe[b.kuhId];
+    const name = k ? `#${k.nr} ${k.name}` : 'Kuh';
+    
+    // WZ Milch läuft heute ab
+    if(b.wzMilchEnde && b.wzMilchEnde >= heute && b.wzMilchEnde <= morgen) {
+      new Notification('⚕ Wartezeit Milch endet heute', {
+        body: `${name} · ${b.medikament||b.diagnose||'Behandlung'}`,
+        icon: './icon-192.png',
+        tag: 'wz-milch-' + id
+      });
+    }
+    // WZ Fleisch läuft heute ab
+    if(b.wzFleischEnde && b.wzFleischEnde >= heute && b.wzFleischEnde <= morgen) {
+      new Notification('⚕ Wartezeit Fleisch endet heute', {
+        body: `${name} · ${b.medikament||b.diagnose||'Behandlung'}`,
+        icon: './icon-192.png',
+        tag: 'wz-fleisch-' + id
+      });
+    }
+    // Folgetermin heute
+    if(b.folgeTermin && b.folgeTermin >= heute && b.folgeTermin <= morgen) {
+      new Notification('📅 Tierarzt-Termin heute', {
+        body: `${name} · ${b.tierarzt||''}`,
+        icon: './icon-192.png',
+        tag: 'termin-' + id
+      });
+    }
+  });
+  
+  // Baldige Geburten
+  Object.entries(besamungen).forEach(([id, bs]) => {
+    if(bs.status !== 'tragend' || !bs.erwartetGeburt) return;
+    const k = kuehe[bs.kuhId];
+    const diff = Math.floor((bs.erwartetGeburt - heute) / 86400000);
+    if(diff === 3) {
+      new Notification('🐮 Geburt in 3 Tagen', {
+        body: k ? `#${k.nr} ${k.name}` : 'Kuh',
+        icon: './icon-192.png',
+        tag: 'geburt-' + id
+      });
+    }
+  });
+};
+
+// Abend-Check: Wartezeiten die MORGEN ablaufen (für 20:00 Benachrichtigung)
+window.checkWartezeiten_abend = function() {
+  if(!('Notification' in window) || Notification.permission !== 'granted') return;
+  const heute = Date.now();
+  const morgenStart = heute + 86400000;
+  const morgenEnde  = heute + 2 * 86400000;
+
+  Object.entries(behandlungen).forEach(([id, b]) => {
+    if(!b.aktiv) return;
+    const k = kuehe[b.kuhId];
+    const name = k ? '#'+k.nr+' '+k.name : 'Kuh';
+
+    if(b.wzMilchEnde && b.wzMilchEnde >= morgenStart && b.wzMilchEnde < morgenEnde) {
+      const zeit = b.behandlungZeit === 'abend' ? 'abends' : 'morgens';
+      new Notification('⚕ Morgen: WZ Milch endet ' + zeit, {
+        body: name + ' · ' + (b.medikament||b.diagnose||'Behandlung'),
+        icon: './icon-192.png',
+        tag: 'wz-milch-abend-' + id
+      });
+    }
+    if(b.wzFleischEnde && b.wzFleischEnde >= morgenStart && b.wzFleischEnde < morgenEnde) {
+      const zeit = b.behandlungZeit === 'abend' ? 'abends' : 'morgens';
+      new Notification('⚕ Morgen: WZ Fleisch endet ' + zeit, {
+        body: name + ' · ' + (b.medikament||b.diagnose||'Behandlung'),
+        icon: './icon-192.png',
+        tag: 'wz-fleisch-abend-' + id
+      });
+    }
+    if(b.folgeTermin && b.folgeTermin >= morgenStart && b.folgeTermin < morgenEnde) {
+      new Notification('📅 Morgen: Tierarzt-Termin', {
+        body: name + ' · ' + (b.tierarzt||''),
+        icon: './icon-192.png',
+        tag: 'termin-abend-' + id
+      });
+    }
+  });
+
+  // Geburten überfällig oder morgen
+  Object.entries(besamungen).forEach(([id, bs]) => {
+    if(bs.status !== 'tragend' || !bs.erwartetGeburt) return;
+    const k = kuehe[bs.kuhId];
+    const diff = Math.floor((bs.erwartetGeburt - heute) / 86400000);
+    if(diff === 1) {
+      new Notification('🐮 Morgen: Geburt erwartet', {
+        body: k ? '#'+k.nr+' '+k.name : 'Kuh',
+        icon: './icon-192.png',
+        tag: 'geburt-abend-' + id
+      });
+    }
+  });
+};
+
+// Run check on load, then schedule for 07:00 AND 20:00
+window.addEventListener('load', () => {
+  setTimeout(() => {
+    if(Notification.permission === 'granted') {
+      checkWartezeiten();
+    }
+  }, 3000);
+
+  function scheduleAt(hour, fn) {
+    const now = new Date();
+    const next = new Date(now);
+    next.setHours(hour, 0, 0, 0);
+    if(next <= now) next.setDate(next.getDate() + 1);
+    const ms = next.getTime() - now.getTime();
+    setTimeout(() => { fn(); setInterval(fn, 24 * 60 * 60 * 1000); }, ms);
+  }
+
+  scheduleAt(7,  () => { if(Notification.permission==='granted') checkWartezeiten(); });
+  scheduleAt(20, () => { if(Notification.permission==='granted') checkWartezeiten_abend(); });
+});
+
+window.renderAlpungsKalender = function() {
+  const auftrieb = saisonInfo?.auftriebDatum;
+  if(!auftrieb) return '<div class="empty-state">Keine aktive Saison</div>';
+  
+  const heute = Date.now();
+  const tage = Math.min(98, Math.floor((heute - auftrieb) / 86400000) + 1);
+  if(tage <= 0) return '<div class="empty-state">Saison noch nicht begonnen</div>';
+  
+  // Count cows per day from weideTage data
+  const tagMap = {};
+  Object.values(weideTage||{}).forEach(wt => {
+    if(!wt.datum) return;
+    const d = new Date(wt.datum).toLocaleDateString('de-AT', {day:'2-digit',month:'2-digit'});
+    tagMap[d] = (tagMap[d]||0) + 1;
+  });
+  
+  const obenCount = Object.values(kuehe).filter(k=>k.almStatus==='oben').length;
+  
+  let html = '<div style="margin-bottom:.5rem;font-size:.75rem;color:var(--text3)">Kühe auf der Alm pro Tag (Zählung)</div>';
+  html += '<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:3px;margin-bottom:1rem">';
+  
+  // Weekday headers
+  ['Mo','Di','Mi','Do','Fr','Sa','So'].forEach(d => {
+    html += `<div style="text-align:center;font-size:.6rem;color:var(--text3);padding:.2rem">${d}</div>`;
+  });
+  
+  // Fill empty cells for first week
+  const firstDay = new Date(auftrieb);
+  const firstWeekday = (firstDay.getDay() + 6) % 7; // 0=Mo
+  for(let i=0; i<firstWeekday; i++) {
+    html += '<div></div>';
+  }
+  
+  for(let t=0; t<tage; t++) {
+    const d = new Date(auftrieb + t * 86400000);
+    const key = d.toLocaleDateString('de-AT', {day:'2-digit',month:'2-digit'});
+    const count = tagMap[key] || 0;
+    const isToday = t === tage - 1;
+    const ratio = obenCount > 0 ? count / obenCount : 0;
+    const alpha = count === 0 ? 0.08 : 0.2 + ratio * 0.7;
+    const dayNum = d.getDate();
+    
+    html += `<div style="aspect-ratio:1;background:rgba(77,184,78,${alpha});border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:.6rem;color:${count>0?'var(--text)':'var(--text3)'};border:${isToday?'1.5px solid var(--gold)':'none'};cursor:${count>0?'pointer':'default'}" title="${key}: ${count} Kühe">
+      ${dayNum}
+    </div>`;
+  }
+  
+  html += '</div>';
+  html += `<div style="display:flex;gap:1rem;font-size:.7rem;color:var(--text3)">
+    <span><span style="display:inline-block;width:12px;height:12px;border-radius:2px;background:rgba(77,184,78,.08);vertical-align:middle"></span> Keine Daten</span>
+    <span><span style="display:inline-block;width:12px;height:12px;border-radius:2px;background:rgba(77,184,78,.5);vertical-align:middle"></span> Teilweise</span>
+    <span><span style="display:inline-block;width:12px;height:12px;border-radius:2px;background:rgba(77,184,78,.9);vertical-align:middle"></span> Voll belegt</span>
+  </div>`;
+  
+  return html;
+};
+
+window.setAlpTab = function(tab, btn) {
+  document.querySelectorAll('#alp-tab-liste,#alp-tab-kalender').forEach(b=>b.classList.remove('active'));
+  if(btn) btn.classList.add('active');
+  const kalEl = document.getElementById('alp-kalender-view');
+  const listeEl = document.getElementById('alp-liste-view');
+  if(tab === 'kalender') {
+    if(kalEl) kalEl.style.display=''; else {
+      const div=document.createElement('div'); div.id='alp-kalender-view';
+      div.innerHTML=renderAlpungsKalender();
+      const page=document.querySelector('.page');
+      if(page) page.appendChild(div);
+    }
+    if(listeEl) listeEl.style.display='none';
+  } else {
+    if(kalEl) kalEl.style.display='none';
+    if(listeEl) listeEl.style.display='';
+  }
 };
   initApp();
 
@@ -5860,5 +6151,31 @@ document.addEventListener('DOMContentLoaded', function() {
   };
 });
 </script>
+
+  <!-- Floating Action Button -->
+  <div id="fab-container" style="position:fixed;bottom:calc(var(--nav-h) + var(--safe-b) + 16px);right:16px;z-index:80;display:flex;flex-direction:column;align-items:flex-end;gap:.5rem">
+    <!-- Sub-actions (hidden by default) -->
+    <div id="fab-actions" style="display:none;flex-direction:column;align-items:flex-end;gap:.4rem">
+      <div style="display:flex;align-items:center;gap:.5rem">
+        <span style="background:rgba(0,0,0,.7);color:#fff;padding:.25rem .6rem;border-radius:12px;font-size:.75rem;white-space:nowrap">Milch erfassen</span>
+        <button onclick="closeFab();showMilchForm()" style="width:44px;height:44px;border-radius:50%;background:linear-gradient(135deg,#1a5a8a,#2a7abf);border:none;font-size:1.3rem;cursor:pointer;box-shadow:0 4px 12px rgba(0,0,0,.3);display:flex;align-items:center;justify-content:center">🥛</button>
+      </div>
+      <div style="display:flex;align-items:center;gap:.5rem">
+        <span style="background:rgba(0,0,0,.7);color:#fff;padding:.25rem .6rem;border-radius:12px;font-size:.75rem;white-space:nowrap">Behandlung</span>
+        <button onclick="closeFab();navigate('behandlung');setTimeout(()=>document.querySelector('.btn-primary')?.click(),300)" style="width:44px;height:44px;border-radius:50%;background:linear-gradient(135deg,#8a1a1a,#bf2a2a);border:none;font-size:1.3rem;cursor:pointer;box-shadow:0 4px 12px rgba(0,0,0,.3);display:flex;align-items:center;justify-content:center">⚕</button>
+      </div>
+      <div style="display:flex;align-items:center;gap:.5rem">
+        <span style="background:rgba(0,0,0,.7);color:#fff;padding:.25rem .6rem;border-radius:12px;font-size:.75rem;white-space:nowrap">Zählung starten</span>
+        <button onclick="closeFab();navigate('zaehlung')" style="width:44px;height:44px;border-radius:50%;background:linear-gradient(135deg,#1a6a1a,#2a9a2a);border:none;font-size:1.3rem;cursor:pointer;box-shadow:0 4px 12px rgba(0,0,0,.3);display:flex;align-items:center;justify-content:center">✓</button>
+      </div>
+      <div style="display:flex;align-items:center;gap:.5rem">
+        <span style="background:rgba(0,0,0,.7);color:#fff;padding:.25rem .6rem;border-radius:12px;font-size:.75rem;white-space:nowrap">Journal</span>
+        <button onclick="closeFab();navigate('journal');setTimeout(()=>document.querySelector('[onclick*=showJournalForm]')?.click(),300)" style="width:44px;height:44px;border-radius:50%;background:linear-gradient(135deg,#4a3a1a,#8a6a2a);border:none;font-size:1.3rem;cursor:pointer;box-shadow:0 4px 12px rgba(0,0,0,.3);display:flex;align-items:center;justify-content:center">📓</button>
+      </div>
+    </div>
+    <!-- Main FAB button -->
+    <button id="fab-main" onclick="toggleFab()" style="width:56px;height:56px;border-radius:50%;background:linear-gradient(135deg,var(--gold2),var(--gold));border:none;font-size:1.6rem;cursor:pointer;box-shadow:0 4px 16px rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center;transition:transform .2s">+</button>
+  </div>
+
 </body>
 </html>
