@@ -1,5 +1,5 @@
 const CACHE = 'herdenpro-v25';
-const SHELL = ['/index.html', '/'];
+const SHELL = ['./', './index.html'];
 
 self.addEventListener('install', e => {
   e.waitUntil(
@@ -57,5 +57,5 @@ self.addEventListener('push', e => {
 
 self.addEventListener('notificationclick', e => {
   e.notification.close();
-  e.waitUntil(clients.openWindow('/'));
+  e.waitUntil(clients.openWindow('./'));
 });
