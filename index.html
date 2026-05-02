@@ -18,6 +18,11 @@
      (Firebase Console → Projekteinstellungen → Web-App → Config)
 ═══════════════════════════════════════════════════════════════════════════ -->
 <script>
+// Force clear cache if version changed
+if(localStorage.getItem('hp_version') !== 'v25') {
+  localStorage.clear();
+  localStorage.setItem('hp_version','v25');
+}
 window.FIREBASE_CONFIG = {
   apiKey:            "AIzaSyDw5u-SfQG0ibbzhv0SL_XnEdzSjJM835g",
   authDomain:        "herdenmanagement-33ff5.firebaseapp.com",
@@ -52,8 +57,7 @@ window.FIREBASE_CONFIG = {
   window.DEFAULT_MAIN_NAV = ['dashboard','herde','saison','milch'];
   window._mainNav = JSON.parse(localStorage.getItem('mainNav')||'null') || window.DEFAULT_MAIN_NAV.slice();
   window._mehrAnpassen = false;
-  // FORCE reset mehr-order to ensure new modules appear
-  localStorage.removeItem('mehrOrder');
+  // localStorage already reset by version check above
 
   // ── Stubs (werden vom Modul überschrieben) ──
   window._navReady = false;
