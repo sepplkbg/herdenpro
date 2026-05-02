@@ -1210,12 +1210,12 @@ function renderMilch() {
     <div class="section-title">Einträge</div>
     <div class="card-list">
       ${eintraege.length ? eintraege.slice(0,30).map(([id,e])=>`
-        <div class="list-card">
+        <div class="list-card" style="cursor:pointer" onclick="showMilchDetail('${id}',null)">
           <div class="list-card-left"><div>
             <div class="list-card-title">${new Date(e.datum).toLocaleDateString('de-AT',{weekday:'short',day:'numeric',month:'short'})}</div>
             <div class="list-card-sub">${e.art==='gesamt'?'Gesamtmenge':'Pro Kuh'} · ${e.zeit==='abend'?'🌇 Abends':'🌅 Morgens'}${e.molkerei?' · an Molkerei':''}</div>
           </div></div>
-          <div class="list-card-right"><span style="font-size:1.1rem;color:var(--gold);font-weight:bold">${Math.round(e.gesamt*10)/10} L</span><button class="btn-xs-danger" onclick="event.stopPropagation();deleteMilch('${id}')">✕</button></div>
+          <div class="list-card-right" onclick="event.stopPropagation()"><span style="font-size:1.1rem;color:var(--gold);font-weight:bold">${Math.round(e.gesamt*10)/10} L</span><button class="btn-xs-danger" onclick="deleteMilch('${id}')">✕</button></div>
         </div>`).join('') : `<div class="empty-state">Noch keine Einträge</div>`}
     </div>
     <div id="milch-form-overlay" class="form-overlay" style="display:none">
@@ -4662,7 +4662,8 @@ function parseExcelDatum(val) {
 }
 
 window.showMilchDetail = function(id, e) {
-  if(typeof e === 'string') { try { e = JSON.parse(e); } catch(x) { return; } }
+  if(!e) { e = milchEintraege[id]; if(!e) return; }
+  if(typeof e === 'string') { try { e = JSON.parse(e); } catch(x) { e = milchEintraege[id]; if(!e) return; } }
   const datum = new Date(e.datum).toLocaleDateString('de-AT', {weekday:'short',day:'numeric',month:'short',year:'numeric'});
   const zeit = e.zeit === 'abend' ? '🌇 Abends' : '🌅 Morgens';
   
