@@ -1018,7 +1018,8 @@ function renderDashboard() {
 function renderSaison() {
   const kuhListe=Object.entries(kuehe).sort((a,b)=>{const nA=parseInt(a[1].nr)||0,nB=parseInt(b[1].nr)||0;return nA-nB;});
   const oben=kuhListe.filter(([,k])=>k.almStatus==='oben');
-  const unten=kuhListe.filter(([,k])=>k.almStatus!=='oben');
+  const vorzeitig=kuhListe.filter(([,k])=>k.almStatus!=='oben'&&k.vorzeitigAbtrieb);
+  const unten=kuhListe.filter(([,k])=>k.almStatus!=='oben'&&!k.vorzeitigAbtrieb);
   const heute=Date.now();
   const tageOben = saisonInfo?.auftriebDatum ? Math.floor((heute - saisonInfo.auftriebDatum)/86400000) : 0;
 
@@ -1109,6 +1110,22 @@ function renderSaison() {
     </div>
     <button class="btn-secondary btn-block" style="margin-bottom:.8rem" onclick="alleAuftreiben()">↑ Alle als aufgetrieben markieren</button>
     ` : `<div class="empty-state" style="margin-bottom:.8rem">✓ Alle Kühe oben</div>`}
+
+    <!-- Vorzeitig abgetrieben -->
+    ${vorzeitig.length ? `
+    <div class="section-title" style="color:var(--orange)">⚠ Vorzeitig abgetrieben (${vorzeitig.length})</div>
+    <div class="card-list" style="margin-bottom:.8rem">
+      ${vorzeitig.map(([id,k])=>{
+        const vz=k.vorzeitigAbtrieb||{};
+        const gl={krank:'Krank/Verletzt',trocken:'Trockengestellt',geburt:'Geburt',verkauf:'Verkauf',verhaltensauffaellig:'Verhaltensauffällig',sonstige:'Sonstiges'};
+        return '<div class="list-card"><div class="list-card-left"><span class="nr-badge">#'+k.nr+'</span><div>'+
+          '<div class="list-card-title">'+(k.name||'–')+'</div>'+
+          '<div class="list-card-sub">'+(vz.datum?new Date(vz.datum).toLocaleDateString('de-AT'):'')+(vz.datum?' · ':'')+( gl[vz.grund]||vz.grund||'–')+'</div>'+
+          (vz.notiz?'<div class="list-card-sub" style="font-style:italic">'+vz.notiz+'</div>':'')+
+          '</div></div>'+
+          '<button class="btn-xs" onclick="window.setAlmStatus(\''+id+'\',\'oben\')">↑ zurück</button></div>';
+      }).join('')}
+    </div>` : ''}
 
     ${oben.length ? `
     <div class="section-title">Auf der Alm (${oben.length})</div>
@@ -1337,14 +1354,30 @@ function renderBestandsbuch() {
     ${bListe.length?`
     <div style="overflow-x:auto">
     <table class="bb-table">
-      <thead><tr><th>Datum</th><th>Tier</th><th>Diagnose</th><th>Medikament</th><th>Dosis</th><th>Abgabe</th><th>Wartezeit</th><th>Tierarzt</th></tr></thead>
-      <tbody>${bListe.map(([,b])=>{const k=kuehe[b.kuhId];return`<tr><td>${new Date(b.datum).toLocaleDateString('de-AT')}</td><td>#${k?.nr||'?'} ${k?.name||''}</td><td>${b.diagnose||'–'}</td><td>${b.medikament}</td><td>${b.dosis||'–'}</td><td>${b.abgabeDatum?new Date(b.abgabeDatum).toLocaleDateString('de-AT'):'–'}</td><td>${b.wartezeitEnde?new Date(b.wartezeitEnde).toLocaleDateString('de-AT'):'–'}</td><td>${b.tierarzt||'–'}</td></tr>`;}).join('')}</tbody>
+      <thead><tr><th>Datum</th><th>Zeit</th><th>Tier</th><th>Diagnose</th><th>Medikament</th><th>Dosis</th><th>Abgabe</th><th>WZ Milch Tage</th><th>WZ Milch Ende</th><th>WZ Fleisch Tage</th><th>WZ Fleisch Ende</th><th>Tierarzt</th></tr></thead>
+      <tbody>${bListe.map(([,b])=>{const k=kuehe[b.kuhId];return(function(){
+        const dat=new Date(b.datum).toLocaleDateString('de-AT');
+        const zeit=b.behandlungZeit==='abend'?'🌇 Ab.':'🌅 Mo.';
+        const tier='#'+(k?.nr||'?')+' '+(k?.name||'');
+        const wzMEnde=b.wzMilchEnde?new Date(b.wzMilchEnde).toLocaleDateString('de-AT')+'('+zeit+')':'–';
+        const wzFEnde=b.wzFleischEnde?new Date(b.wzFleischEnde).toLocaleDateString('de-AT')+'('+zeit+')':'–';
+        const abgabe=b.abgabeDatum?new Date(b.abgabeDatum).toLocaleDateString('de-AT'):'–';
+        return '<tr><td>'+dat+'</td><td>'+zeit+'</td><td>'+tier+'</td><td>'+(b.diagnose||'–')+'</td><td>'+(b.medikament||'–')+'</td><td>'+(b.dosis||'–')+'</td><td>'+abgabe+'</td><td>'+(b.wzMilchTage||'–')+'</td><td>'+wzMEnde+'</td><td>'+(b.wzFleischTage||'–')+'</td><td>'+wzFEnde+'</td><td>'+(b.tierarzt||'–')+'</td></tr>';
+      })();}).join('')}</tbody>
     </table></div>` : `<div class="empty-state">Keine Behandlungen mit Medikamenten</div>`}
   `;
 }
 window.druckeBestandsbuch=function(){
   const alm=saisonInfo?.alm||'Alm';const jahr=saisonInfo?.jahr||new Date().getFullYear();
-  const z=Object.values(behandlungen).filter(b=>b.medikament).sort((a,b)=>a.datum-b.datum).map(b=>{const k=kuehe[b.kuhId];return`<tr><td>${new Date(b.datum).toLocaleDateString('de-AT')}</td><td>#${k?.nr||'?'} ${k?.name||''}</td><td>${b.diagnose||'–'}</td><td>${b.medikament}</td><td>${b.dosis||'–'}</td><td>${b.abgabeDatum?new Date(b.abgabeDatum).toLocaleDateString('de-AT'):'–'}</td><td>${b.wartezeitEnde?new Date(b.wartezeitEnde).toLocaleDateString('de-AT'):'–'}</td><td>${b.tierarzt||'–'}</td></tr>`;}).join('');
+  const z=Object.values(behandlungen).filter(b=>b.medikament).sort((a,b)=>a.datum-b.datum).map(b=>{const k=kuehe[b.kuhId];return(function(){
+        const dat=new Date(b.datum).toLocaleDateString('de-AT');
+        const zeit=b.behandlungZeit==='abend'?'🌇 Ab.':'🌅 Mo.';
+        const tier='#'+(k?.nr||'?')+' '+(k?.name||'');
+        const wzMEnde=b.wzMilchEnde?new Date(b.wzMilchEnde).toLocaleDateString('de-AT')+'('+zeit+')':'–';
+        const wzFEnde=b.wzFleischEnde?new Date(b.wzFleischEnde).toLocaleDateString('de-AT')+'('+zeit+')':'–';
+        const abgabe=b.abgabeDatum?new Date(b.abgabeDatum).toLocaleDateString('de-AT'):'–';
+        return '<tr><td>'+dat+'</td><td>'+zeit+'</td><td>'+tier+'</td><td>'+(b.diagnose||'–')+'</td><td>'+(b.medikament||'–')+'</td><td>'+(b.dosis||'–')+'</td><td>'+abgabe+'</td><td>'+(b.wzMilchTage||'–')+'</td><td>'+wzMEnde+'</td><td>'+(b.wzFleischTage||'–')+'</td><td>'+wzFEnde+'</td><td>'+(b.tierarzt||'–')+'</td></tr>';
+      })();}).join('');
   const w=window.open('','_blank');
   w.document.write(`<!DOCTYPE html><html lang="de"><head><meta charset="UTF-8"/><title>Bestandsbuch ${alm} ${jahr}</title><style>body{font-family:Arial,sans-serif;font-size:11pt;margin:2cm}h1{font-size:14pt}p{font-size:9pt;color:#555;margin-bottom:12px}table{width:100%;border-collapse:collapse;font-size:9pt}th{background:#1a3a0a;color:#fff;padding:5px 8px;text-align:left}td{padding:4px 8px;border-bottom:1px solid #ddd}tr:nth-child(even){background:#f8f8f0}@media print{@page{margin:1.5cm}}</style></head><body><h1>Bestandsbuch – ${alm} · Saison ${jahr}</h1><p>Erstellt: ${new Date().toLocaleDateString('de-AT')} · § 12 TAKG</p><table><thead><tr><th>Datum</th><th>Tier</th><th>Diagnose</th><th>Medikament</th><th>Dosis</th><th>Wartezeit bis</th><th>Tierarzt</th></tr></thead><tbody>${z}</tbody></table><script>window.onload=()=>window.print()<\/script></body></html>`);
   w.document.close();
@@ -1678,6 +1711,7 @@ function behandlungFormHTML(vorId, editId, editData) {
   const opts = Object.entries(kuehe).sort((a,b)=>parseInt(a[1].nr)-parseInt(b[1].nr))
     .map(([id,k])=>`<option value="${id}" ${(d.kuhId?d.kuhId===id:id===vorId)?'selected':''}>#${k.nr} ${k.name||''}</option>`).join('');
   const bDatum = d.datum ? isoDate(new Date(d.datum)) : isoDate(new Date());
+  const bZeit = d.behandlungZeit || 'morgen';
   return `<div id="behandlung-form-overlay" class="form-overlay" style="display:none">
     <div class="form-sheet">
       <div class="form-header">
@@ -1686,16 +1720,23 @@ function behandlungFormHTML(vorId, editId, editData) {
       </div>
       <div class="form-body">
         <input type="hidden" id="b-edit-id" value="${editId||''}" />
-        <select id="b-kuh" class="inp"><option value="">Kuh *</option>${opts}</select>
+        <label class="inp-label">Kuh *</label>
+        <select id="b-kuh" class="inp"><option value="">Kuh wählen</option>${opts}</select>
         <label class="inp-label">Behandelt am</label>
-        <input id="b-datum" class="inp" type="date" value="${bDatum}" />
+        <div style="display:grid;grid-template-columns:1fr auto;gap:.5rem;align-items:center">
+          <input id="b-datum" class="inp" type="date" value="${bDatum}" oninput="berechneWartezeiten()" />
+          <select id="b-behandlung-zeit" class="inp" style="width:auto" onchange="berechneWartezeiten()">
+            <option value="morgen" ${bZeit==='morgen'?'selected':''}>🌅 Morgens</option>
+            <option value="abend" ${bZeit==='abend'?'selected':''}>🌇 Abends</option>
+          </select>
+        </div>
         <input id="b-diagnose" class="inp" placeholder="Diagnose" value="${d.diagnose||''}" />
         <input id="b-symptome" class="inp" placeholder="Symptome" value="${d.symptome||''}" />
         <input id="b-medikament" class="inp" placeholder="Medikament" value="${d.medikament||''}" />
         <input id="b-dosis" class="inp" placeholder="Dosis / Menge" value="${d.dosis||''}" />
         <input id="b-tierarzt" class="inp" placeholder="Tierarzt" value="${d.tierarzt||''}" />
         <label class="inp-label">Abgabedatum Medikament</label>
-        <input id="b-abgabe" class="inp" type="date" value="${d.abgabeDatum?isoDate(new Date(d.abgabeDatum)):''}" onchange="berechneWartezeiten()" />
+        <input id="b-abgabe" class="inp" type="date" value="${d.abgabeDatum?isoDate(new Date(d.abgabeDatum)):''}" />
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:.5rem">
           <div>
             <label class="inp-label">Wartezeit Milch (Tage)</label>
@@ -1708,11 +1749,11 @@ function behandlungFormHTML(vorId, editId, editData) {
         </div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:.5rem">
           <div>
-            <label class="inp-label">WZ Milch endet am</label>
+            <label class="inp-label">WZ Milch endet am <span id="b-wz-milch-hint" style="color:var(--text3);font-size:.65rem">${d.wzMilchTage?(d.behandlungZeit==='abend'?'(abends)':'(morgens)'):'(auto)'}</span></label>
             <input id="b-wz-milch" class="inp" type="date" value="${d.wzMilchEnde?isoDate(new Date(d.wzMilchEnde)):''}" />
           </div>
           <div>
-            <label class="inp-label">WZ Fleisch endet am</label>
+            <label class="inp-label">WZ Fleisch endet am <span id="b-wz-fleisch-hint" style="color:var(--text3);font-size:.65rem">${d.wzFleischTage?(d.behandlungZeit==='abend'?'(abends)':'(morgens)'):'(auto)'}</span></label>
             <input id="b-wz-fleisch" class="inp" type="date" value="${d.wzFleischEnde?isoDate(new Date(d.wzFleischEnde)):''}" />
           </div>
         </div>
@@ -1866,6 +1907,7 @@ window.saveBehandlung=async function(){
   const data={
     kuhId,
     datum:new Date(document.getElementById('b-datum').value).getTime(),
+    behandlungZeit:document.getElementById('b-behandlung-zeit')?.value||'morgen',
     diagnose:document.getElementById('b-diagnose')?.value.trim()||'',
     symptome:document.getElementById('b-symptome')?.value.trim()||'',
     medikament:document.getElementById('b-medikament')?.value.trim()||'',
@@ -2748,7 +2790,7 @@ window.exportSaisonPDF = function() {
   </tbody></table>
   
   ${bListe.length?`<h2>Behandlungen (Bestandsbuch)</h2>
-  <table><thead><tr><th>Datum</th><th>Tier</th><th>Diagnose</th><th>Medikament</th><th>Dosis</th><th>Abgabe</th><th>Wartezeit</th><th>Tierarzt</th></tr></thead><tbody>
+  <table><thead><tr><th>Datum</th><th>Zeit</th><th>Tier</th><th>Diagnose</th><th>Medikament</th><th>Dosis</th><th>Abgabe</th><th>WZ Milch Tage</th><th>WZ Milch Ende</th><th>WZ Fleisch Tage</th><th>WZ Fleisch Ende</th><th>Tierarzt</th></tr></thead><tbody>
   ${bListe.map(b=>{const k=kuehe[b.kuhId];return`<tr><td>${new Date(b.datum).toLocaleDateString('de-AT')}</td><td>#${k?.nr||''} ${k?.name||''}</td><td>${b.diagnose||'–'}</td><td>${b.medikament}</td><td>${b.dosis||'–'}</td><td>${b.wartezeitEnde?new Date(b.wartezeitEnde).toLocaleDateString('de-AT'):'–'}</td><td>${b.tierarzt||'–'}</td></tr>`;}).join('')}
   </tbody></table>`:''}
   
@@ -3740,22 +3782,23 @@ window.saveAlmEinstellungen = async function() {
 };
 
 window.berechneWartezeiten = function() {
-  const abgabe = document.getElementById('b-abgabe')?.value;
-  if(!abgabe) return;
-  const basis = new Date(abgabe);
+  const datum = document.getElementById('b-datum')?.value;
+  if(!datum) return;
+  const basis = new Date(datum);
+  const zeit = document.getElementById('b-behandlung-zeit')?.value || 'morgen';
   const milchTage = parseInt(document.getElementById('b-wz-milch-tage')?.value)||0;
   const fleischTage = parseInt(document.getElementById('b-wz-fleisch-tage')?.value)||0;
   if(milchTage > 0) {
-    const end = new Date(basis);
-    end.setDate(end.getDate() + milchTage);
-    const el = document.getElementById('b-wz-milch');
-    if(el) el.value = isoDate(end);
+    const end = new Date(basis); end.setDate(end.getDate() + milchTage);
+    const el = document.getElementById('b-wz-milch'); if(el) el.value = isoDate(end);
+    const hint = document.getElementById('b-wz-milch-hint');
+    if(hint) hint.textContent = '(' + (zeit==='morgen'?'endet morgens':'endet abends') + ')';
   }
   if(fleischTage > 0) {
-    const end = new Date(basis);
-    end.setDate(end.getDate() + fleischTage);
-    const el = document.getElementById('b-wz-fleisch');
-    if(el) el.value = isoDate(end);
+    const end = new Date(basis); end.setDate(end.getDate() + fleischTage);
+    const el = document.getElementById('b-wz-fleisch'); if(el) el.value = isoDate(end);
+    const hint = document.getElementById('b-wz-fleisch-hint');
+    if(hint) hint.textContent = '(' + (zeit==='morgen'?'endet morgens':'endet abends') + ')';
   }
 };
 
