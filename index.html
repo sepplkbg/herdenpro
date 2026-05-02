@@ -1792,6 +1792,7 @@ window.saveBesamung=async function(){
     erinnerung3w,
     erinnerungDatum,
     notiz:document.getElementById('bs-notiz')?.value.trim(),
+    scheinFoto:document.getElementById('bsm-foto-data')?.value||null,
   };
   if(editId){await update(ref(db,'besamungen/'+editId),{...data,updatedAt:Date.now()});}
   else{await push(ref(db,'besamungen'),{...data,createdAt:Date.now()});}
@@ -2651,7 +2652,10 @@ window.exportSaisonPDF = function() {
   
   ${bListe.length?`<h2>Behandlungen (Bestandsbuch)</h2>
   <table><thead><tr><th>Datum</th><th>Zeit</th><th>Tier</th><th>Diagnose</th><th>Medikament</th><th>Dosis</th><th>Abgabe</th><th>WZ Milch Tage</th><th>WZ Milch Ende</th><th>WZ Fleisch Tage</th><th>WZ Fleisch Ende</th><th>Tierarzt</th></tr></thead><tbody>
-  ${bListe.map(b=>{const k=kuehe[b.kuhId];return`<tr><td>${new Date(b.datum).toLocaleDateString('de-AT')}</td><td>#${k?.nr||''} ${k?.name||''}</td><td>${b.diagnose||'–'}</td><td>${b.medikament}</td><td>${b.dosis||'–'}</td><td>${b.wartezeitEnde?new Date(b.wartezeitEnde).toLocaleDateString('de-AT'):'–'}</td><td>${b.tierarzt||'–'}</td></tr>`;}).join('')}
+  ${bListe.map(b=>{const k=kuehe[b.kuhId];return`<tr><td>${new Date(b.datum).toLocaleDateString('de-AT')}</td><td>#${k?.nr||''} ${k?.name||''}</td><td>${b.diagnose||'–'}</td><td>${b.medikament}</td><td>${b.dosis||'–'}</td><td>${b.wzMilchTage||'–'}</td>
+<td>${b.wzMilchEnde?new Date(b.wzMilchEnde).toLocaleDateString('de-AT'):'–'}</td>
+<td>${b.wzFleischTage||'–'}</td>
+<td>${b.wzFleischEnde?new Date(b.wzFleischEnde).toLocaleDateString('de-AT'):'–'}</td><td>${b.tierarzt||'–'}</td></tr>`;}).join('')}
   </tbody></table>`:''}
   
   <script>window.onload=()=>window.print()<\/script>
@@ -6168,7 +6172,10 @@ function renderBestandsbuch() {
     <div style="overflow-x:auto">
     <table class="bb-table">
       <thead><tr><th>Datum</th><th>Tier</th><th>Diagnose</th><th>Medikament</th><th>Dosis</th><th>Abgabe</th><th>Wartezeit</th><th>Tierarzt</th></tr></thead>
-      <tbody>${bListe.map(([,b])=>{const k=kuehe[b.kuhId];return`<tr><td>${new Date(b.datum).toLocaleDateString('de-AT')}</td><td>#${k?.nr||'?'} ${k?.name||''}</td><td>${b.diagnose||'–'}</td><td>${b.medikament}</td><td>${b.dosis||'–'}</td><td>${b.abgabeDatum?new Date(b.abgabeDatum).toLocaleDateString('de-AT'):'–'}</td><td>${b.wartezeitEnde?new Date(b.wartezeitEnde).toLocaleDateString('de-AT'):'–'}</td><td>${b.tierarzt||'–'}</td></tr>`;}).join('')}</tbody>
+      <tbody>${bListe.map(([,b])=>{const k=kuehe[b.kuhId];return`<tr><td>${new Date(b.datum).toLocaleDateString('de-AT')}</td><td>#${k?.nr||'?'} ${k?.name||''}</td><td>${k?.ohrmarke||'–'}</td><td>${b.diagnose||'–'}</td><td>${b.medikament}</td><td>${b.dosis||'–'}</td><td>${b.abgabeDatum?new Date(b.abgabeDatum).toLocaleDateString('de-AT'):'–'}</td><td>${b.wzMilchTage||'–'}</td>
+<td>${b.wzMilchEnde?new Date(b.wzMilchEnde).toLocaleDateString('de-AT'):'–'}</td>
+<td>${b.wzFleischTage||'–'}</td>
+<td>${b.wzFleischEnde?new Date(b.wzFleischEnde).toLocaleDateString('de-AT'):'–'}</td><td>${b.tierarzt||'–'}</td></tr>`;}).join('')}</tbody>
     </table></div>` : `<div class="empty-state">Keine Behandlungen mit Medikamenten</div>`}
   `;
 }
@@ -7162,6 +7169,12 @@ window.bsmFotoPreview = function(input) {
     if(data) data.value = e.target.result;
   };
   reader.readAsDataURL(file);
+};
+
+window.setAlmStatus = async function(id, s) {
+  if(!id) return;
+  await update(ref(db, 'kuehe/' + id), {almStatus: s});
+  render();
 };
   initApp();
         }
@@ -9069,6 +9082,12 @@ window.bsmFotoPreview = function(input) {
     if(data) data.value = e.target.result;
   };
   reader.readAsDataURL(file);
+};
+
+window.setAlmStatus = async function(id, s) {
+  if(!id) return;
+  await update(ref(db, 'kuehe/' + id), {almStatus: s});
+  render();
 };
   initApp();
   }
