@@ -3,12 +3,14 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/>
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
 <meta name="theme-color" content="#0c1a09"/>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🐄</text></svg>" />
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="apple-mobile-web-app-title" content="HerdenPro"/>
-<title>HerdenPro</title>
+<title>HerdenPro v25</title>
 <link rel="manifest" href="manifest.json"/>
 
 <!-- ══════════════════════════════════════════════════════════════════════════
@@ -3966,69 +3968,134 @@ window.editBesamung = function(bsid) {
     var mainNavIds = window._mainNav || [];
     var allMods = window.ALLE_MODULE || [];
     var imMenu = allMods.filter(function(m){ return !mainNavIds.includes(m.id); });
-    
-    // Apply saved order
+
     var savedOrder = JSON.parse(localStorage.getItem('mehrOrder')||'null');
     if(savedOrder) {
       imMenu.sort(function(a,b){
-        var ai = savedOrder.indexOf(a.id);
-        var bi = savedOrder.indexOf(b.id);
-        if(ai===-1) return 1;
-        if(bi===-1) return -1;
-        return ai-bi;
+        var ai=savedOrder.indexOf(a.id), bi=savedOrder.indexOf(b.id);
+        if(ai===-1) return 1; if(bi===-1) return -1; return ai-bi;
       });
     }
-    
-    var dragSrc = null;
-    
+
     grid.innerHTML = imMenu.map(function(m) {
       var onclick = m.id==='__drucken__' ? 'druckeHerde()' : "window.navigate&&window.navigate('"+m.id+"')";
-      return '<button class="mehr-btn" draggable="true" data-mid="'+m.id+'" onclick="closeMehr();'+onclick+'">' +
-        '<span>'+m.icon+'</span>'+m.label+'</button>';
+      return '<button class="mehr-btn" data-mid="'+m.id+'" onclick="closeMehr();'+onclick+'"><span>'+m.icon+'</span>'+m.label+'</button>';
     }).join('');
-    
-    // Setup drag within mehr-grid
-    var btns = grid.querySelectorAll('.mehr-btn');
-    btns.forEach(function(btn) {
+
+    // ── Drag & Drop (Mouse + Touch) ──
+    var dragSrc = null;
+    var touchDragSrc = null;
+    var touchClone = null;
+
+    function getOrder() {
+      return imMenu.map(function(m){return m.id;});
+    }
+    function swapItems(srcId, tgtId) {
+      var cur = JSON.parse(localStorage.getItem('mehrOrder')||'null') || getOrder();
+      imMenu.forEach(function(m){ if(!cur.includes(m.id)) cur.push(m.id); });
+      var a=cur.indexOf(srcId), b=cur.indexOf(tgtId);
+      if(a>-1&&b>-1){ cur.splice(a,1); cur.splice(b,0,srcId); localStorage.setItem('mehrOrder',JSON.stringify(cur)); }
+      renderMehrGrid();
+      if(navigator.vibrate) navigator.vibrate(20);
+    }
+
+    Array.from(grid.querySelectorAll('.mehr-btn')).forEach(function(btn) {
+      // ── Mouse drag ──
+      btn.setAttribute('draggable','true');
       btn.addEventListener('dragstart', function(e) {
         dragSrc = this.dataset.mid;
         e.dataTransfer.effectAllowed = 'move';
-        e.dataTransfer.setData('text/plain', 'mehr:'+dragSrc);
-        this.style.opacity = '0.4';
+        e.dataTransfer.setData('text/plain', dragSrc);
+        this.style.opacity='0.4';
       });
-      btn.addEventListener('dragend', function() {
-        this.style.opacity = '';
-        dragSrc = null;
-      });
-      btn.addEventListener('dragover', function(e) { e.preventDefault(); });
+      btn.addEventListener('dragend', function() { this.style.opacity=''; });
+      btn.addEventListener('dragover', function(e) { e.preventDefault(); this.style.background='var(--bg4)'; });
+      btn.addEventListener('dragleave', function() { this.style.background=''; });
       btn.addEventListener('drop', function(e) {
+        e.preventDefault(); this.style.background='';
+        if(dragSrc && dragSrc!==this.dataset.mid) swapItems(dragSrc, this.dataset.mid);
+        dragSrc=null;
+      });
+
+      // ── Touch drag ──
+      var longPressTimer = null;
+      btn.addEventListener('touchstart', function(e) {
+        var self=this;
+        longPressTimer = setTimeout(function() {
+          touchDragSrc = self.dataset.mid;
+          // Visual feedback
+          self.style.transform='scale(1.1)';
+          self.style.boxShadow='0 0 16px rgba(212,168,75,.6)';
+          self.style.zIndex='99';
+          self.style.background='var(--bg4)';
+          if(navigator.vibrate) navigator.vibrate(40);
+          // Show hint
+          var hint = document.getElementById('touch-drag-hint');
+          if(!hint) {
+            hint=document.createElement('div');
+            hint.id='touch-drag-hint';
+            hint.style.cssText='position:fixed;bottom:calc(var(--nav-h) + var(--safe-b) + 60px);left:50%;transform:translateX(-50%);background:rgba(212,168,75,.95);color:#0a0800;border-radius:20px;padding:.35rem 1rem;font-size:.75rem;font-weight:bold;z-index:500;white-space:nowrap;pointer-events:none';
+            hint.textContent='Ziehen zum Verschieben';
+            document.body.appendChild(hint);
+          }
+          hint.style.display='';
+          setTimeout(function(){if(hint)hint.style.display='none';},2000);
+        }, 500);
+      }, {passive:true});
+
+      btn.addEventListener('touchmove', function(e) {
+        if(!touchDragSrc) { clearTimeout(longPressTimer); return; }
         e.preventDefault();
-        var targetId = this.dataset.mid;
-        if(!dragSrc || dragSrc===targetId) return;
-        var allIds = imMenu.map(function(m){return m.id;});
-        var cur = JSON.parse(localStorage.getItem('mehrOrder')||'null') || allIds;
-        // Add any missing
-        allIds.forEach(function(id){ if(!cur.includes(id)) cur.push(id); });
-        var a=cur.indexOf(dragSrc), b2=cur.indexOf(targetId);
-        if(a>-1&&b2>-1){
-          cur.splice(a,1);
-          cur.splice(b2,0,dragSrc);
-          localStorage.setItem('mehrOrder',JSON.stringify(cur));
-          renderMehrGrid();
-          if(navigator.vibrate) navigator.vibrate(20);
+        var touch=e.touches[0];
+        // Find element under touch
+        this.style.display='none';
+        var el=document.elementFromPoint(touch.clientX, touch.clientY);
+        this.style.display='';
+        var target=el&&el.closest('.mehr-btn[data-mid]');
+        // Highlight target
+        grid.querySelectorAll('.mehr-btn').forEach(function(b){ b.style.outline=''; });
+        if(target&&target.dataset.mid!==touchDragSrc) {
+          target.style.outline='2px solid var(--gold)';
         }
+      }, {passive:false});
+
+      btn.addEventListener('touchend', function(e) {
+        clearTimeout(longPressTimer);
+        if(!touchDragSrc) return;
+        var self=this;
+        var touch=e.changedTouches[0];
+        self.style.transform='';
+        self.style.boxShadow='';
+        self.style.zIndex='';
+        self.style.background='';
+        grid.querySelectorAll('.mehr-btn').forEach(function(b){ b.style.outline=''; });
+        self.style.display='none';
+        var el=document.elementFromPoint(touch.clientX, touch.clientY);
+        self.style.display='';
+        var target=el&&el.closest('.mehr-btn[data-mid]');
+        if(target&&target.dataset.mid!==touchDragSrc) {
+          swapItems(touchDragSrc, target.dataset.mid);
+        }
+        touchDragSrc=null;
+      });
+
+      btn.addEventListener('touchcancel', function() {
+        clearTimeout(longPressTimer);
+        this.style.transform=''; this.style.boxShadow=''; this.style.zIndex=''; this.style.background='';
+        touchDragSrc=null;
+        grid.querySelectorAll('.mehr-btn').forEach(function(b){b.style.outline='';});
       });
     });
-    
-    // Also update alle-module-grid if open
+
+    // Update alle-module-grid
     var alleGrid = document.getElementById('alle-module-grid');
     if(alleGrid) {
-        var allMods2=(window.ALLE_MODULE||[]).filter(function(m){return m.id!=='dashboard'&&m.id!=='mehr';});
-        var rows2=allMods2.map(function(m){
-          var inM=(window._mainNav||[]).includes(m.id);
-          return '<button class="mehr-btn"'+(inM?' style="border-color:var(--gold);color:var(--gold)"':'')+' onclick="window.toggleMainNav&&window.toggleMainNav(\''+m.id+'\')"><span>'+m.icon+'</span>'+m.label+(inM?' ◆':' ')+'</button>';
-        });
-        alleGrid.innerHTML=rows2.join('');
+      var allMods2=(window.ALLE_MODULE||[]).filter(function(m){return m.id!=='dashboard'&&m.id!=='mehr';});
+      alleGrid.innerHTML=allMods2.map(function(m){
+        var inM=(window._mainNav||[]).includes(m.id);
+        var s=inM?' style="border-color:var(--gold);color:var(--gold)"':'';
+        return '<button class="mehr-btn"'+s+' onclick="window.toggleMainNav&&window.toggleMainNav(\"'+m.id+'\")"><span>'+m.icon+'</span>'+m.label+(inM?' ◆':' ')+'</button>';
+      }).join('');
     }
   }
 
