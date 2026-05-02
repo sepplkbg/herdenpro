@@ -6850,6 +6850,14 @@ function updateUserDisplay() {
 }
 
 window.doLogin = async function() {
+  // Ensure Firebase is initialized
+  if(!window.db || !firebase.apps.length) {
+    try {
+      if(!firebase.apps.length) firebase.initializeApp(window.FIREBASE_CONFIG);
+      db = firebase.database();
+      db_instance = db;
+    } catch(e) { console.warn('Firebase re-init:', e); }
+  }
   const email = document.getElementById('login-email')?.value.trim();
   const pw = document.getElementById('login-pw')?.value;
   if(!email || !pw) { showLoginError('Bitte E-Mail und Passwort eingeben.'); return; }
@@ -7603,9 +7611,16 @@ document.addEventListener('DOMContentLoaded', function() {
   
   // Initialize Firebase after all SDKs are loaded
   try {
-    if(!firebase.apps.length) {
-      firebase.initializeApp(window._fbConfig || window.FIREBASE_CONFIG);
-    }
+    let app;
+    try { app = firebase.app(); } catch(e) { app = firebase.initializeApp(window.FIREBASE_CONFIG); }
+    db = firebase.database();
+    db_instance = db;
+    initAuth();
+  } catch(e) {
+    console.error('Firebase init error:', e);
+    const errEl = document.getElementById('login-error');
+    if(errEl) { errEl.textContent = 'Verbindungsfehler: ' + e.message; errEl.style.display = ''; }
+  }
     db = firebase.database();
     db_instance = db;
     initAuth();
