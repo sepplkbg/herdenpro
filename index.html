@@ -52,19 +52,8 @@ window.FIREBASE_CONFIG = {
   window.DEFAULT_MAIN_NAV = ['dashboard','herde','saison','milch'];
   window._mainNav = JSON.parse(localStorage.getItem('mainNav')||'null') || window.DEFAULT_MAIN_NAV.slice();
   window._mehrAnpassen = false;
-  // Clear cached mehr-order if it's missing new modules
-  (function() {
-    var savedOrder = JSON.parse(localStorage.getItem('mehrOrder')||'null');
-    if(savedOrder) {
-      var newIds = ['kraftfutter','bauern_menu'];
-      var missing = newIds.filter(function(id){ return !savedOrder.includes(id); });
-      if(missing.length > 0) {
-        // Add missing items to order
-        missing.forEach(function(id){ savedOrder.push(id); });
-        localStorage.setItem('mehrOrder', JSON.stringify(savedOrder));
-      }
-    }
-  })();
+  // FORCE reset mehr-order to ensure new modules appear
+  localStorage.removeItem('mehrOrder');
 
   // ── Stubs (werden vom Modul überschrieben) ──
   window._navReady = false;
@@ -1900,7 +1889,6 @@ window.zaehlKuhById=async function(id){if(zaehlSession?.anwesend?.[id]&&!confirm
 window.entferneZaehlung=async id=>remove(ref(db,`zaehlung/anwesend/${id}`));
 window.deleteZaehlVerlauf=async function(datum){if(confirm('Eintrag löschen?'))await remove(ref(db,'zaehlVerlauf/'+datum));};
 window.showBehandlungForm=function(kuhId, editBId, editData) {
-  // Rebuild form with data (replaces overlay with fresh form)
   const existing = document.getElementById('behandlung-form-overlay');
   const container = document.createElement('div');
   container.innerHTML = behandlungFormHTML(kuhId, editBId, editData);
@@ -1909,6 +1897,11 @@ window.showBehandlungForm=function(kuhId, editBId, editData) {
   else document.body.appendChild(newOv);
   newOv.onclick = e => { if(e.target===newOv) closeForm('behandlung-form-overlay'); };
   newOv.style.display = 'flex';
+  // Scroll form to top so kuh-select is visible
+  setTimeout(function(){
+    var sheet = newOv.querySelector('.form-sheet');
+    if(sheet) sheet.scrollTop = 0;
+  }, 50);
 };
 window.saveBehandlung=async function(){
   const kuhId=document.getElementById('b-kuh')?.value;
@@ -1973,6 +1966,7 @@ window.showBesamungForm=function(kuhId, editBsId, editData){
     document.getElementById('bs-kuh').value=kuhId;
   }
   ov.style.display='flex';
+  setTimeout(function(){var s=ov.querySelector('.form-sheet');if(s)s.scrollTop=0;},50);
   berechneTermine();
 };
 window.berechneTermine=function(){
@@ -4024,138 +4018,73 @@ window.editBesamung = function(bsid) {
     if(!grid) return;
     var mainNavIds = window._mainNav || [];
     var allMods = window.ALLE_MODULE || [];
-    if(!allMods.length) { console.warn('ALLE_MODULE empty!'); return; }
     var imMenu = allMods.filter(function(m){ return !mainNavIds.includes(m.id); });
-    console.log('renderMehrGrid: imMenu ids=', imMenu.map(function(m){return m.id;}));
-
-    var savedOrder = JSON.parse(localStorage.getItem('mehrOrder')||'null');
-    if(savedOrder) {
-      imMenu.sort(function(a,b){
-        var ai=savedOrder.indexOf(a.id), bi=savedOrder.indexOf(b.id);
-        if(ai===-1) return 1; if(bi===-1) return -1; return ai-bi;
-      });
-    }
+    var editMode = window._mehrEditMode || false;
+    var selected = window._mehrSelected || null;
 
     grid.innerHTML = imMenu.map(function(m) {
-      var onclick = m.id==='__drucken__' ? 'druckeHerde()' : "window.navigate&&window.navigate('"+m.id+"')";
-      return '<button class="mehr-btn" data-mid="'+m.id+'" onclick="closeMehr();'+onclick+'"><span>'+m.icon+'</span>'+m.label+'</button>';
+      var isSelected = selected === m.id;
+      var style = isSelected ? 'border:2px solid var(--gold);background:rgba(212,168,75,.15);' : '';
+      var eid = m.id.replace(/'/g,"\'");
+      var onclick = editMode
+        ? 'window.mehrItemTap("'+eid+'")'
+        : 'closeMehr();'+(m.id==='__drucken__'?'druckeHerde()':'window.navigate&&window.navigate("'+eid+'")');
+      return '<button class="mehr-btn" data-mid="'+m.id+'" style="'+style+'" onclick="'+onclick+'"><span>'+m.icon+'</span>'+m.label+'</button>';
     }).join('');
 
-    // ── Drag & Drop (Mouse + Touch) ──
-    var dragSrc = null;
-    var touchDragSrc = null;
-    var touchClone = null;
-
-    function getOrder() {
-      return imMenu.map(function(m){return m.id;});
-    }
-    function swapItems(srcId, tgtId) {
-      var cur = JSON.parse(localStorage.getItem('mehrOrder')||'null') || getOrder();
-      imMenu.forEach(function(m){ if(!cur.includes(m.id)) cur.push(m.id); });
-      var a=cur.indexOf(srcId), b=cur.indexOf(tgtId);
-      if(a>-1&&b>-1){ cur.splice(a,1); cur.splice(b,0,srcId); localStorage.setItem('mehrOrder',JSON.stringify(cur)); }
-      renderMehrGrid();
-      if(navigator.vibrate) navigator.vibrate(20);
+    // Edit mode button
+    var editBtn = document.getElementById('mehr-edit-btn');
+    if(editBtn) {
+      editBtn.textContent = editMode ? '✓ Fertig' : '⇅ Reihenfolge ändern';
+      editBtn.style.color = editMode ? 'var(--gold)' : '';
     }
 
-    Array.from(grid.querySelectorAll('.mehr-btn')).forEach(function(btn) {
-      // ── Mouse drag ──
-      btn.setAttribute('draggable','true');
-      btn.addEventListener('dragstart', function(e) {
-        dragSrc = this.dataset.mid;
-        e.dataTransfer.effectAllowed = 'move';
-        e.dataTransfer.setData('text/plain', dragSrc);
-        this.style.opacity='0.4';
-      });
-      btn.addEventListener('dragend', function() { this.style.opacity=''; });
-      btn.addEventListener('dragover', function(e) { e.preventDefault(); this.style.background='var(--bg4)'; });
-      btn.addEventListener('dragleave', function() { this.style.background=''; });
-      btn.addEventListener('drop', function(e) {
-        e.preventDefault(); this.style.background='';
-        if(dragSrc && dragSrc!==this.dataset.mid) swapItems(dragSrc, this.dataset.mid);
-        dragSrc=null;
-      });
-
-      // ── Pointer drag (works on touch AND mouse) ──
-      var pointerDownTimer = null;
-      var isDragging = false;
-      
-      btn.addEventListener('pointerdown', function(e) {
-        var self = this;
-        isDragging = false;
-        pointerDownTimer = setTimeout(function() {
-          isDragging = true;
-          touchDragSrc = self.dataset.mid;
-          self.style.transform = 'scale(1.08)';
-          self.style.boxShadow = '0 0 20px rgba(212,168,75,.7)';
-          self.style.zIndex = '99';
-          self.setPointerCapture(e.pointerId);
-          if(navigator.vibrate) navigator.vibrate(40);
-          // Hint
-          var hint = document.getElementById('touch-drag-hint');
-          if(!hint) {
-            hint = document.createElement('div');
-            hint.id = 'touch-drag-hint';
-            hint.style.cssText = 'position:fixed;bottom:calc(var(--nav-h) + var(--safe-b) + 65px);left:50%;transform:translateX(-50%);background:rgba(212,168,75,.95);color:#0a0800;border-radius:20px;padding:.35rem 1rem;font-size:.75rem;font-weight:bold;z-index:500;white-space:nowrap;pointer-events:none';
-            hint.textContent = '↔ Ziehen zum Verschieben';
-            document.body.appendChild(hint);
-          }
-          hint.style.display = '';
-          setTimeout(function(){if(hint)hint.style.display='none';}, 2000);
-        }, 500);
-      });
-
-      btn.addEventListener('pointermove', function(e) {
-        if(!isDragging || !touchDragSrc) { return; }
-        e.preventDefault();
-        // Highlight target under pointer
-        this.style.display = 'none';
-        var el = document.elementFromPoint(e.clientX, e.clientY);
-        this.style.display = '';
-        var target = el && el.closest ? el.closest('.mehr-btn[data-mid]') : null;
-        Array.from(grid.querySelectorAll('.mehr-btn')).forEach(function(b){ 
-          b.style.outline = (target && b.dataset.mid===target.dataset.mid && b.dataset.mid!==touchDragSrc) ? '2px solid var(--gold)' : '';
-        });
-      });
-
-      btn.addEventListener('pointerup', function(e) {
-        clearTimeout(pointerDownTimer);
-        if(!isDragging || !touchDragSrc) { isDragging=false; return; }
-        var self = this;
-        self.style.transform = '';
-        self.style.boxShadow = '';
-        self.style.zIndex = '';
-        Array.from(grid.querySelectorAll('.mehr-btn')).forEach(function(b){ b.style.outline=''; });
-        self.style.display = 'none';
-        var el = document.elementFromPoint(e.clientX, e.clientY);
-        self.style.display = '';
-        var target = el && el.closest ? el.closest('.mehr-btn[data-mid]') : null;
-        if(target && target.dataset.mid !== touchDragSrc) {
-          swapItems(touchDragSrc, target.dataset.mid);
-        }
-        touchDragSrc = null;
-        isDragging = false;
-      });
-
-      btn.addEventListener('pointercancel', function() {
-        clearTimeout(pointerDownTimer);
-        this.style.transform=''; this.style.boxShadow=''; this.style.zIndex='';
-        Array.from(grid.querySelectorAll('.mehr-btn')).forEach(function(b){b.style.outline='';});
-        touchDragSrc=null; isDragging=false;
-      });
-    });
-
-    // Update alle-module-grid
+    // alle-module-grid
     var alleGrid = document.getElementById('alle-module-grid');
     if(alleGrid) {
-      var allMods2=(window.ALLE_MODULE||[]).filter(function(m){return m.id!=='dashboard'&&m.id!=='mehr';});
-      alleGrid.innerHTML=allMods2.map(function(m){
+      alleGrid.innerHTML = (window.ALLE_MODULE||[]).filter(function(m){
+        return m.id!=='dashboard'&&m.id!=='mehr';
+      }).map(function(m){
         var inM=(window._mainNav||[]).includes(m.id);
-        var s=inM?' style="border-color:var(--gold);color:var(--gold)"':'';
-        return '<button class="mehr-btn"'+s+' onclick="window.toggleMainNav&&window.toggleMainNav(\"'+m.id+'\")"><span>'+m.icon+'</span>'+m.label+(inM?' ◆':' ')+'</button>';
+        var s=inM?'border-color:var(--gold);color:var(--gold)':'';
+        var aid=m.id.replace(/'/g,"\'");
+        return '<button class="mehr-btn" style="'+s+'" onclick="window.toggleMainNav&&window.toggleMainNav(\"'+aid+'\")">'+'<span>'+m.icon+'</span>'+m.label+(inM?' ◆':'')+' </button>';
       }).join('');
     }
   }
+
+  window.mehrItemTap = function(id) {
+    if(!window._mehrSelected) {
+      // First tap: select item
+      window._mehrSelected = id;
+      renderMehrGrid();
+    } else if(window._mehrSelected === id) {
+      // Tap same: deselect
+      window._mehrSelected = null;
+      renderMehrGrid();
+    } else {
+      // Tap different: swap
+      var allMods = window.ALLE_MODULE || [];
+      var mainNavIds = window._mainNav || [];
+      var imMenu = allMods.filter(function(m){ return !mainNavIds.includes(m.id); });
+      var ids = imMenu.map(function(m){ return m.id; });
+      var a = ids.indexOf(window._mehrSelected);
+      var b = ids.indexOf(id);
+      if(a>-1&&b>-1){ ids.splice(a,1); ids.splice(b,0,window._mehrSelected); localStorage.setItem('mehrOrder',JSON.stringify(ids)); }
+      window._mehrSelected = null;
+      window._mehrEditMode = true;
+      renderMehrGrid();
+      if(navigator.vibrate) navigator.vibrate([20,10,20]);
+    }
+  };
+
+  window.toggleMehrEditMode = function() {
+    window._mehrEditMode = !window._mehrEditMode;
+    window._mehrSelected = null;
+    var hint = document.getElementById('mehr-edit-hint');
+    if(hint) hint.style.display = window._mehrEditMode ? '' : 'none';
+    renderMehrGrid();
+  };
 
   window.toggleMainNav = function(id) {
     if(_mainNav.includes(id)) {
@@ -4171,9 +4100,9 @@ window.editBesamung = function(bsid) {
   };
 
   window.toggleMehrAnpassen = function() {
-    _mehrAnpassen = !_mehrAnpassen;
+    window._mehrAnpassen = !window._mehrAnpassen;
     const el = document.getElementById('mehr-anpassen');
-    if(el) el.style.display = _mehrAnpassen ? '' : 'none';
+    if(el) el.style.display = window._mehrAnpassen ? '' : 'none';
     renderMehrGrid();
   };
 
