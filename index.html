@@ -938,14 +938,8 @@ function initApp() {
   // Sofort rendern ohne Firebase
   render();
   try {
-    const app = firebase.initializeApp(window.FIREBASE_CONFIG);
-    db = firebase.database();
-    // Start auth after Firebase is initialized
-    if(document.readyState === 'loading') {
-      document.addEventListener('DOMContentLoaded', initAuth);
-    } else {
-      setTimeout(initAuth, 100);
-    }
+    const app = // Firebase init deferred to after all SDKs load
+    window._fbConfig = window.FIREBASE_CONFIG;
   } catch(e) { 
     document.getElementById('main-content').innerHTML = '<div class="empty-state" style="color:#e06040">Firebase-Fehler: '+e.message+'<br><small>Bitte Internetverbindung prüfen</small></div>';
     return; 
@@ -6658,6 +6652,20 @@ document.addEventListener('DOMContentLoaded', function() {
   if(mb) mb.onclick = function() { 
     window.toggleMehrMenu && window.toggleMehrMenu(); 
   };
+  
+  // Initialize Firebase after all SDKs are loaded
+  try {
+    if(!firebase.apps.length) {
+      firebase.initializeApp(window._fbConfig || window.FIREBASE_CONFIG);
+    }
+    db = firebase.database();
+    db_instance = db;
+    initAuth();
+  } catch(e) {
+    console.error('Firebase init error:', e);
+    // Fallback without auth
+    initApp();
+  }
 });
 </script>
 
