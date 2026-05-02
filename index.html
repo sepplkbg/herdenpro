@@ -19,11 +19,11 @@
 ═══════════════════════════════════════════════════════════════════════════ -->
 <script>
 // Force clear cache if version changed
-if(localStorage.getItem('hp_version') !== 'v25.2') {
+if(localStorage.getItem('hp_version') !== 'v25.3') {
   // Keep Firebase auth but clear nav/order caches
   localStorage.removeItem('mainNav');
   localStorage.removeItem('mehrOrder');
-  localStorage.setItem('hp_version','v25.2');
+  localStorage.setItem('hp_version','v25.3');
 }
 window.FIREBASE_CONFIG = {
   apiKey:            "AIzaSyB2YSWcf1Kk2QG_JcCjkgJikx-f73yj-kc",
@@ -7489,6 +7489,7 @@ window.deleteBenutzer = async function(uid, email) {
   window.toggleMainNav = function(id) {
     if(_mainNav.includes(id)) {
       if(_mainNav.length<=2){alert('Mindestens 2 Einträge in der Hauptnavigation');return;}
+      if(['dashboard','herde','saison','milch'].includes(id)){showSaveToast&&showSaveToast(id.charAt(0).toUpperCase()+id.slice(1)+' kann nicht verschoben werden');return;}
       _mainNav = _mainNav.filter(m=>m!==id);
     } else {
       if(_mainNav.length>=4){_mainNav=_mainNav.slice(0,-1);}  // max 4
