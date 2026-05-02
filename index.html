@@ -801,309 +801,29 @@ textarea.inp{resize:vertical;min-height:64px}
 
 <!-- KÄSE MODUL CSS -->
 <style id="kaese-css">
-#kaese-modul {
-  --bg:#1a2a10; --surface:#1e3012; --border:#2e5c14;
-  --text:#e8f0e0; --muted:#8aaa7a; --accent:#4db84e;
-  --warn:#e05050; --warn-bg:#3a1a1a;
-  --row-h:72px; --label-w:210px; --bar-h:52px;
-  background:var(--bg-dark, #0a1a04);
-  min-height:calc(100vh - var(--topbar-h,56px) - var(--nav-h,60px));
-}
-
-/* ══════════════════════════════════════
-   TOKENS
-══════════════════════════════════════ */
-#kaese-modul{
-  --bg:#f4f1eb; --surface:#fffdf8; --border:#d6cfc0;
-  --text:#2c2416; --muted:#7a6f5e; --accent:#4a7c59;
-  --warn:#c0392b; --warn-bg:#fdf0ee;
-  --row-h:72px; --label-w:210px;
-  --bar-h:52px;
-}
-*{box-sizing:border-box;margin:0;padding:0;}
-#kaese-modul{font-family:'Segoe UI',system-ui,sans-serif;background:var(--bg);
-  color:var(--text);min-height:100vh;-webkit-tap-highlight-color:transparent;}
-
-/* ══════════════════════════════════════
-   HEADER
-══════════════════════════════════════ */
-#kaese-modul header{background:var(--accent);color:#fff;padding:10px 18px;display:flex;
-  align-items:center;justify-content:space-between;
-  position:sticky;top:0;z-index:300;box-shadow:0 2px 8px rgba(0,0,0,.2);}
-header h1{font-size:1rem;font-weight:700;}
-header .meta{font-size:.72rem;opacity:.85;}
-
-/* ══════════════════════════════════════
-   BRANDING BAR
-══════════════════════════════════════ */
-.branding-bar{
-  display:flex;align-items:center;justify-content:center;
-  gap:10px;flex-wrap:wrap;
-  padding:6px 16px;
-  background:linear-gradient(135deg,#3a6347 0%,#2e5039 100%);
-  border-bottom:2px solid rgba(255,255,255,.15);
-  font-size:.78rem;color:rgba(255,255,255,.9);
-  letter-spacing:.02em;
-}
-.branding-bar strong{color:#fff;font-weight:700;}
-.brand-sep{opacity:.4;font-size:.9rem;}
-.brand-recipes,.brand-eng{display:flex;align-items:center;gap:4px;}
-
-/* ══════════════════════════════════════
-   TOOLBAR (desktop)
-══════════════════════════════════════ */
-.toolbar{display:flex;gap:7px;align-items:center;flex-wrap:wrap;
-  padding:8px 16px;background:var(--surface);border-bottom:1px solid var(--border);}
-.toolbar label{font-size:.76rem;color:var(--muted);display:flex;align-items:center;gap:4px;}
-.toolbar input[type=number]{border:1px solid var(--border);border-radius:5px;
-  padding:4px 6px;font-size:.8rem;background:#fff;color:var(--text);width:72px;}
-.sep{width:1px;height:20px;background:var(--border);margin:0 2px;}
-
-/* ══════════════════════════════════════
-   BUTTONS
-══════════════════════════════════════ */
-.btn{padding:5px 11px;border-radius:6px;border:none;cursor:pointer;font-size:.78rem;
-  font-weight:600;transition:opacity .12s,transform .09s;white-space:nowrap;
-  -webkit-user-select:none;user-select:none;}
-.btn:hover{opacity:.85;} .btn:active{transform:scale(.96);}
-.btn-primary{background:var(--accent);color:#fff;}
-.btn-warn{background:var(--warn);color:#fff;}
-.btn-neutral{background:#e0dbd0;color:var(--text);}
-.btn-blue{background:#2e6da4;color:#fff;}
-.btn-orange{background:#b5600e;color:#fff;}
-.btn-purple{background:#7a3a8b;color:#fff;}
-.btn-sm{padding:3px 7px;font-size:.7rem;}
-
-/* ══════════════════════════════════════
-   VISIBILITY PANEL
-══════════════════════════════════════ */
-.vis-panel{display:flex;flex-wrap:wrap;gap:6px;
-  padding:6px 16px 5px;background:var(--surface);border-bottom:1px solid var(--border);}
-.vis-chip{display:flex;align-items:center;gap:5px;padding:3px 9px;border-radius:20px;
-  border:2px solid transparent;cursor:pointer;font-size:.74rem;font-weight:600;
-  transition:opacity .12s,filter .12s;user-select:none;}
-.vis-chip .chip-dot{width:9px;height:9px;border-radius:50%;flex-shrink:0;}
-.vis-chip.hidden-sorte{opacity:.35;filter:grayscale(.7);}
-.vis-chip:hover{opacity:.8;}
-
-/* ══════════════════════════════════════
-   OVERLAP
-══════════════════════════════════════ */
-#overlap-banner{display:none;background:var(--warn-bg);border-left:4px solid var(--warn);
-  padding:7px 16px;font-size:.8rem;color:var(--warn);font-weight:600;}
-#overlap-list{display:none;padding:3px 16px 7px;font-size:.74rem;color:var(--warn);line-height:1.9;}
-
-/* ══════════════════════════════════════
-   CHART
-══════════════════════════════════════ */
-.chart-wrap{padding:12px 16px 60px;overflow-x:auto;-webkit-overflow-scrolling:touch;}
-.gantt{min-width:600px;user-select:none;}
-.gantt-#kaese-modul header{margin-left:var(--label-w);height:24px;position:relative;
-  border-bottom:2px solid var(--border);margin-bottom:2px;}
-.time-tick{position:absolute;top:0;bottom:0;display:flex;align-items:flex-end;
-  padding-bottom:2px;font-size:.62rem;color:var(--muted);
-  border-left:1px solid var(--border);padding-left:3px;white-space:nowrap;}
-/* Midnight marker */
-.time-tick.midnight{border-left:2px dashed #c0392b;}
-.time-tick.midnight span{color:#c0392b;font-weight:700;}
-
-.gantt-row{display:flex;align-items:center;border-bottom:1px solid var(--border);
-  height:var(--row-h);transition:background .1s;}
-.gantt-row:hover{background:rgba(74,124,89,.04);}
-.gantt-row.row-hidden{display:none;}
-
-/* ══════════════════════════════════════
-   ROW LABEL
-══════════════════════════════════════ */
-.row-label{width:var(--label-w);flex-shrink:0;font-size:.76rem;font-weight:600;
-  padding-right:3px;color:var(--text);display:flex;align-items:center;gap:3px;}
-.row-label .dot{width:9px;height:9px;border-radius:50%;flex-shrink:0;}
-.row-label-text{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
-.row-btns{display:flex;gap:2px;flex-shrink:0;}
-.lbl-btn{font-size:.58rem;padding:2px 4px;border-radius:4px;border:1px solid var(--border);
-  cursor:pointer;background:#fff;color:var(--muted);font-weight:700;white-space:nowrap;
-  line-height:1.4;}
-.lbl-btn:hover{background:var(--accent);color:#fff;border-color:var(--accent);}
-.lbl-btn.del-btn:hover{background:var(--warn);border-color:var(--warn);}
-
-/* ══════════════════════════════════════
-   TIMELINE + BARS
-══════════════════════════════════════ */
-/* row-timeline defined below with cursor:grab */
-.step-wrap{
-  position:absolute;
-  top:50%;
-  transform:translateY(-50%);
-  height:var(--bar-h);
-  pointer-events:none;
-  overflow:hidden;
-}
-/* Coloured capsule */
-.step-bar{
-  position:absolute;
-  inset:0;
-  border-radius:6px;
-  border:2px solid transparent;
-  box-shadow:0 1px 4px rgba(0,0,0,.2);
-  pointer-events:all;
-  cursor:pointer;
-  transition:filter .12s,box-shadow .12s;
-}
-.step-bar:hover{filter:brightness(1.1);box-shadow:0 2px 10px rgba(0,0,0,.3);}
-.step-bar.overlap{border-color:var(--warn)!important;
-  animation:pulse-warn 1.1s ease-in-out infinite;}
-@keyframes pulse-warn{
-  0%,100%{box-shadow:0 0 0 0 rgba(192,57,43,.5);}
-  50%{box-shadow:0 0 0 6px rgba(192,57,43,0);}
-}
-/* Row drag handle: the timeline background itself is draggable */
-.row-timeline{flex:1;position:relative;height:100%;overflow:visible;cursor:grab;}
-.row-timeline.dragging{cursor:grabbing;}
-/* Text inside bar – wraps if needed, never overflows bar */
-.step-label{
-  position:absolute;
-  inset:0;
-  z-index:4;
-  display:flex;
-  align-items:center;
-  justify-content:center;
-  padding:3px 6px;
-  pointer-events:none;
-  overflow:hidden;
-}
-.step-label span{
-  font-size:.67rem;
-  font-weight:700;
-  color:#fff;
-  text-shadow:0 1px 2px rgba(0,0,0,.5);
-  white-space:normal;
-  word-break:break-word;
-  overflow-wrap:break-word;
-  text-align:center;
-  line-height:1.25;
-  display:block;
-}
-
-/* ══════════════════════════════════════
-   POPUPS
-══════════════════════════════════════ */
-#kaese-modul .popup-overlay{display:none;position:fixed;inset:0;
-  background:rgba(0,0,0,.4);align-items:center;justify-content:center;}
-.popup-overlay.active{display:flex;}
-
-/* z-index stacking so edit sits above manage */
-#popup-step   {z-index:510;}
-#popup-edit   {z-index:530;}  /* always on top of manage */
-#popup-manage {z-index:520;}
-#popup-ns     {z-index:540;}
-#popup-start  {z-index:510;}
-#popup-add-sorte{z-index:510;}
-#popup-detail {z-index:550;}
-
-.popup{background:var(--surface);border-radius:12px;padding:20px 22px 16px;
-  min-width:280px;max-width:500px;width:94%;
-  box-shadow:0 8px 32px rgba(0,0,0,.28);
-  position:relative;max-height:92vh;overflow-y:auto;}
-.popup h2{font-size:.92rem;margin-bottom:12px;color:var(--accent);}
-.popup-close{position:absolute;top:8px;right:11px;background:none;border:none;
-  font-size:1.3rem;cursor:pointer;color:var(--muted);line-height:1;padding:2px 6px;}
-.popup-close:hover{color:var(--warn);}
-.popup table{width:100%;border-collapse:collapse;font-size:.8rem;}
-.popup td{padding:5px 3px;border-bottom:1px solid var(--border);}
-.popup td:first-child{font-weight:600;color:var(--muted);width:42%;}
-.popup-actions{display:flex;gap:7px;margin-top:12px;justify-content:flex-end;flex-wrap:wrap;}
-.form-row{margin-bottom:8px;}
-.form-row label{font-size:.74rem;color:var(--muted);display:block;margin-bottom:2px;}
-.form-row input[type=text],.form-row input[type=number]{
-  border:1px solid var(--border);border-radius:5px;padding:5px 7px;
-  font-size:.82rem;width:100%;background:#fff;color:var(--text);}
-.form-row select{border:1px solid var(--border);border-radius:5px;padding:5px 7px;
-  font-size:.82rem;width:100%;background:#fff;color:var(--text);}
-
-/* Step manager list */
-.step-list{margin:6px 0;max-height:300px;overflow-y:auto;
-  border:1px solid var(--border);border-radius:6px;}
-.step-row{display:flex;align-items:center;gap:5px;padding:6px 7px;
-  border-bottom:1px solid var(--border);font-size:.76rem;background:#fff;}
-.step-row:last-child{border-bottom:none;}
-.step-row:hover{background:rgba(74,124,89,.05);}
-.step-num{color:var(--muted);width:16px;flex-shrink:0;font-size:.7rem;text-align:right;}
-.step-name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600;}
-.step-info{color:var(--muted);font-size:.7rem;white-space:nowrap;padding:0 4px;}
-.step-actions{display:flex;gap:2px;flex-shrink:0;}
-
-/* Detail popup badge */
-.detail-badge{display:inline-block;padding:2px 10px;border-radius:20px;
-  color:#fff;font-weight:700;font-size:.78rem;margin-bottom:10px;}
-
-/* ══════════════════════════════════════
-   MOBILE FAB + BOTTOM SHEET
-══════════════════════════════════════ */
-.fab{display:none;position:fixed;bottom:20px;right:20px;z-index:400;
-  width:52px;height:52px;border-radius:50%;background:var(--accent);
-  color:#fff;font-size:1.5rem;border:none;cursor:pointer;
-  box-shadow:0 4px 16px rgba(0,0,0,.3);align-items:center;justify-content:center;}
-
-.bottom-sheet-overlay{display:none;position:fixed;inset:0;
-  background:rgba(0,0,0,.4);z-index:450;}
-.bottom-sheet-overlay.active{display:block;}
-.bottom-sheet{position:fixed;bottom:0;left:0;right:0;z-index:460;
-  background:var(--surface);border-radius:16px 16px 0 0;
-  padding:14px 16px 34px;box-shadow:0 -4px 24px rgba(0,0,0,.2);
-  transform:translateY(100%);transition:transform .28s cubic-bezier(.4,0,.2,1);
-  max-height:88vh;overflow-y:auto;position:fixed;}
-.bottom-sheet.open{transform:translateY(0);}
-.bottom-sheet h3{font-size:.9rem;margin-bottom:4px;color:var(--accent);
-  text-align:center;padding-right:40px;}
-.bs-handle{width:40px;height:4px;border-radius:2px;background:var(--border);
-  margin:0 auto 10px;}
-.bs-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;}
-.bs-btn{padding:11px 8px;border-radius:8px;border:none;cursor:pointer;
-  font-size:.78rem;font-weight:600;text-align:center;background:#e8e3d8;color:var(--text);}
-.bs-btn.primary{background:var(--accent);color:#fff;}
-.bs-btn.blue{background:#2e6da4;color:#fff;}
-.bs-btn.orange{background:#b5600e;color:#fff;}
-
-/* ══════════════════════════════════════
-   PRINT
-══════════════════════════════════════ */
-@media print{
-  header,#overlap-banner,#overlap-list,.toolbar,.vis-panel,.row-btns,
-  .fab,.bottom-sheet-overlay,.branding-bar,#mobile-hint{display:none!important;}
-  #kaese-modul{background:#fff;}
-  .chart-wrap{padding:0;overflow:visible;}
-  .step-bar{-webkit-print-color-adjust:exact;print-color-adjust:exact;}
-}
-
-/* ══════════════════════════════════════
-   RESPONSIVE
-══════════════════════════════════════ */
-@media(max-width:680px){
-  #kaese-modul{--label-w:130px;}
-  header h1{font-size:.88rem;}
-  header .meta{display:none;}
-  .toolbar{display:none;}
-  .fab{display:flex;}
-  .vis-panel{padding:5px 10px;}
-  .vis-chip{font-size:.68rem;padding:2px 7px;}
-  .gantt-header,.gantt-row{font-size:.7rem;}
-  .lbl-btn{font-size:.55rem;padding:2px 3px;}
-  #mobile-hint{display:block!important;}
-}
-@media(min-width:681px) and (max-width:1024px){
-  #kaese-modul{--label-w:170px;}
-  .toolbar{gap:5px;}
-  .btn{padding:4px 9px;font-size:.74rem;}
-}
-
-#kaese-modul header {
-  background:linear-gradient(135deg,#1a5a08,#2d7a10) !important;
-  position:sticky;
-  top:var(--topbar-h,56px);
-}
-#kaese-modul .branding-bar {
-  background:linear-gradient(135deg,#1a3a0a,#0d2004) !important;
-}
+/* Käse module styles */
+.kp-toolbar { display:flex;gap:.5rem;align-items:center;flex-wrap:wrap;padding:.5rem .6rem;border-bottom:1px solid var(--border);background:var(--bg2); }
+.kp-row { display:flex;align-items:center;border-bottom:1px solid var(--border);height:68px; }
+.kp-row-label { width:180px;flex-shrink:0;font-size:.74rem;font-weight:600;padding-right:4px;color:var(--text);display:flex;align-items:center;gap:3px; }
+.kp-dot { width:9px;height:9px;border-radius:50%;flex-shrink:0; }
+.kp-label-text { flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }
+.kp-row-btns { display:flex;gap:2px;flex-shrink:0; }
+.kp-lbl-btn { font-size:.58rem;padding:2px 4px;border-radius:4px;border:1px solid var(--border);cursor:pointer;background:var(--bg3);color:var(--text3);font-weight:700; }
+.kp-lbl-btn:hover { background:var(--green);color:#fff;border-color:var(--green); }
+.kp-lbl-btn.kp-del-btn:hover { background:var(--red);border-color:var(--red); }
+.kp-timeline { flex:1;position:relative;height:100%;overflow:visible; }
+.kp-bar-wrap { position:absolute;top:50%;transform:translateY(-50%);height:50px;pointer-events:none;overflow:hidden; }
+.kp-bar { position:absolute;inset:0;border-radius:6px;border:2px solid transparent;box-shadow:0 1px 4px rgba(0,0,0,.3);pointer-events:all;cursor:pointer;transition:filter .12s; }
+.kp-bar:hover { filter:brightness(1.15); }
+.kp-bar.kp-overlap { border-color:var(--red)!important;animation:kp-pulse 1.1s ease-in-out infinite; }
+@keyframes kp-pulse { 0%,100%{box-shadow:0 0 0 0 rgba(200,60,60,.5)}50%{box-shadow:0 0 0 5px rgba(200,60,60,0)} }
+.kp-bar-label { position:absolute;inset:0;display:flex;align-items:center;justify-content:center;padding:2px 5px;pointer-events:none;overflow:hidden; }
+.kp-bar-label span { font-size:.64rem;font-weight:700;color:#fff;text-shadow:0 1px 2px rgba(0,0,0,.6);text-align:center;word-break:break-word;line-height:1.2; }
+.kp-tick { position:absolute;top:0;bottom:0;display:flex;align-items:flex-end;padding-bottom:2px;font-size:.6rem;color:var(--text3);border-left:1px solid var(--border);padding-left:2px;white-space:nowrap; }
+.kp-midnight { border-left:2px dashed var(--red)!important; }
+.kp-midnight span { color:var(--red);font-weight:bold; }
+.kp-vis-chip { display:flex;align-items:center;gap:4px;padding:2px 8px;border-radius:16px;border:1px solid;cursor:pointer;font-size:.72rem; }
+.kp-vis-chip.kp-hidden { opacity:.35; }
 </style>
 
 </head>
@@ -1345,7 +1065,8 @@ function render() {
 // ══════════════════════════════════════════════════════════════════════════════
 // Käse module stub - assigned to window for global access
 window.renderKaese = function() {
-  return '<div id="kaese-modul" style="padding:0;margin:0;overflow-x:hidden;min-height:100%"></div>';
+  return `<div class="page-header"><h2>🧀 Käseproduktion</h2></div>
+    <div id="kp-container" style="padding:0"></div>`;
 };
 
 function renderDashboard() {
@@ -1661,7 +1382,9 @@ function behandlungCard(bid,b){
   const wzAb=wzMilchAb||wzFleischAb;
   // Safe JSON for onclick
   const safeData=JSON.stringify(b).replace(/\\/g,'\\\\').replace(/'/g,"\\'").replace(/"/g,'&quot;');
-  return`<div class="history-card ${b.aktiv?'history-active':''}">
+  const _behColor = b.behandler==='tierarzt' ? '#3a8fd4' : 'var(--green)';
+  const _behIcon = b.behandler==='tierarzt' ? '🩺' : '🌿';
+  return`<div class="history-card ${b.aktiv?'history-active':''}" data-behandler="${b.behandler||'personal'}">
   <div class="history-top">
     <span class="history-date">${new Date(b.datum).toLocaleDateString('de-AT')}</span>
     ${b.aktiv?'<span class="tag tag-red">aktiv</span>':''}
@@ -1670,6 +1393,11 @@ function behandlungCard(bid,b){
   <div class="history-title">${b.diagnose||b.medikament||'Behandlung'} ${k?`<span style="color:var(--text3);font-size:.75rem">· #${k.nr} ${k.name||''}</span>`:''}</div>
   ${b.medikament?`<div class="history-sub">${b.medikament}${b.dosis?' · '+b.dosis:''}${b.tierarzt?' · Dr.'+b.tierarzt:''}</div>`:''}
   ${b.symptome?`<div class="history-note">${b.symptome}</div>`:''}
+  <div style="display:flex;align-items:center;gap:.3rem;margin-top:.3rem;font-size:.72rem;color:${b.behandler==='tierarzt'?'#3a8fd4':'var(--green)'}">
+    ${behIcon} ${b.behandler==='tierarzt'?'Tierarzt':'Almpersonal'}
+  </div>
+  ${b.fotoData?`<div style="margin-top:.4rem"><img src="${b.fotoData}" style="max-width:100%;max-height:90px;border-radius:8px;object-fit:cover;border:1px solid var(--border);cursor:pointer" onclick="showFotoPopup(behandlungen['${bid}']?.fotoData||'')" /></div>`:''}
+  ${b.tazettelData?`<div style="margin-top:.3rem"><div style="font-size:.7rem;color:#3a8fd4;margin-bottom:.2rem">📋 Tierarztzettel</div><img src="${b.tazettelData}" style="max-width:100%;max-height:80px;border-radius:6px;object-fit:cover;cursor:pointer;border:1px solid #3a8fd4" onclick="showFotoPopup(behandlungen['${bid}']?.tazettelData||'')" /></div>`:''}
   ${b.abgabeDatum?`<div class="history-sub">💊 Abgabe: ${new Date(b.abgabeDatum).toLocaleDateString('de-AT')}</div>`:''}
   ${b.wzMilchEnde?`<div class="wartezeit-bar"><span>🥛 WZ Milch bis ${new Date(b.wzMilchEnde).toLocaleDateString('de-AT')}</span>${wzMilchAb?'<span class="tag tag-red">abgelaufen</span>':'<span class="tag tag-orange">läuft</span>'}</div>`:''}
   ${b.wzFleischEnde?`<div class="wartezeit-bar"><span>🥩 WZ Fleisch bis ${new Date(b.wzFleischEnde).toLocaleDateString('de-AT')}</span>${wzFleischAb?'<span class="tag tag-red">abgelaufen</span>':'<span class="tag tag-orange">läuft</span>'}</div>`:''}
@@ -1695,6 +1423,7 @@ function besamungCard(bsid,bs){
   ${bs.trockenstell?`<div class="history-sub">💧 Trockenstell: ${new Date(bs.trockenstell).toLocaleDateString('de-AT')}</div>`:''}
   ${bs.kalbDatum?`<div class="history-sub">✓ Kalbung: ${new Date(bs.kalbDatum).toLocaleDateString('de-AT')} · ${bs.kalbGeschlecht||''} ${bs.kalbNr?'#'+bs.kalbNr:''}</div>`:''}
   ${bs.notiz?`<div class="history-note">${bs.notiz}</div>`:''}
+  ${bs.scheinFoto?`<div style="margin-top:.3rem"><div style="font-size:.7rem;color:var(--text3);margin-bottom:.2rem">📋 Besamungsschein</div><img src="${bs.scheinFoto}" style="max-width:100%;max-height:80px;border-radius:6px;object-fit:cover;cursor:pointer;border:1px solid var(--border)" onclick="showFotoPopup(besamungen['${bsid}']?.scheinFoto||'')" /></div>`:''}
   <div style="display:flex;gap:.4rem;margin-top:.5rem;flex-wrap:wrap">
     <button class="btn-xs" onclick="window.editBesamung('${bsid}')">✎ Bearbeiten</button>
     ${bs.status==='tragend'?`<button class="btn-xs" onclick="showKalbungForm('${bsid}','${bs.kuhId}')">🐄 Kalbung</button>`:''}
@@ -1728,6 +1457,18 @@ function behandlungFormHTML(vorId, editId, editData) {
         </div>
         <input id="b-diagnose" class="inp" placeholder="Diagnose" value="${d.diagnose||''}" />
         <input id="b-symptome" class="inp" placeholder="Symptome" value="${d.symptome||''}" />
+        <!-- Behandler -->
+        <div style="display:flex;gap:.4rem;margin-bottom:.4rem">
+          <button id="b-btn-personal" onclick="setBehBehandler('personal',this)"
+            style="flex:1;padding:.45rem;border-radius:var(--radius-sm);border:2px solid var(--green);background:var(--green);color:#fff;font-weight:bold;font-family:inherit;font-size:.82rem;cursor:pointer">
+            🌿 Almpersonal
+          </button>
+          <button id="b-btn-tierarzt" onclick="setBehBehandler('tierarzt',this)"
+            style="flex:1;padding:.45rem;border-radius:var(--radius-sm);border:1px solid var(--border);background:transparent;color:var(--text3);font-family:inherit;font-size:.82rem;cursor:pointer">
+            🩺 Tierarzt
+          </button>
+        </div>
+        <input type="hidden" id="b-behandler" value="${d.behandler||'personal'}" />
         <input id="b-medikament" class="inp" placeholder="Medikament" value="${d.medikament||''}" />
         <input id="b-dosis" class="inp" placeholder="Dosis / Menge" value="${d.dosis||''}" />
         <input id="b-tierarzt" class="inp" placeholder="Tierarzt" value="${d.tierarzt||''}" />
@@ -1756,17 +1497,34 @@ function behandlungFormHTML(vorId, editId, editData) {
         <label class="inp-label">Folgetermin</label>
         <input id="b-folge" class="inp" type="date" value="${d.folgeTermin?isoDate(new Date(d.folgeTermin)):''}" />
         <textarea id="b-notiz" class="inp" rows="2" placeholder="Notizen">${d.notiz||''}</textarea>
-        <label class="inp-label">Foto (optional)</label>
-        <div style="display:flex;gap:.5rem;align-items:center">
-          <label style="cursor:pointer;flex:1">
-            <span class="btn-secondary" style="display:block;text-align:center;padding:.4rem;border-radius:var(--radius-sm);font-size:.82rem">📷 Foto aufnehmen / wählen</span>
-            <input type="file" accept="image/*" capture="environment" style="display:none" onchange="behandlungFotoPreview(this)" />
-          </label>
-          <div id="b-foto-preview" style="width:48px;height:48px;border-radius:8px;overflow:hidden;display:none">
-            <img id="b-foto-img" style="width:100%;height:100%;object-fit:cover" />
+        <!-- Foto Almpersonal -->
+        <div id="b-foto-block">
+          <label class="inp-label">Foto (optional)</label>
+          <div style="display:flex;gap:.5rem;align-items:center">
+            <label style="cursor:pointer;flex:1">
+              <span class="btn-secondary" style="display:block;text-align:center;padding:.4rem;border-radius:var(--radius-sm);font-size:.82rem">📷 Foto aufnehmen</span>
+              <input type="file" accept="image/*" capture="environment" style="display:none" onchange="behandlungFotoPreview(this)" />
+            </label>
+            <div id="b-foto-preview" style="width:48px;height:48px;border-radius:8px;overflow:hidden;display:none">
+              <img id="b-foto-img" style="width:100%;height:100%;object-fit:cover" />
+            </div>
+          </div>
+        </div>
+        <!-- Foto Tierarztzettel (nur bei Tierarzt) -->
+        <div id="b-tazettel-block" style="display:none">
+          <label class="inp-label">📋 Foto Tierarztzettel</label>
+          <div style="display:flex;gap:.5rem;align-items:center">
+            <label style="cursor:pointer;flex:1">
+              <span class="btn-secondary" style="display:block;text-align:center;padding:.4rem;border-radius:var(--radius-sm);font-size:.82rem;border-color:#3a8fd4;color:#3a8fd4">📷 Tierarztzettel fotografieren</span>
+              <input type="file" accept="image/*" capture="environment" style="display:none" onchange="tazettelFotoPreview(this)" />
+            </label>
+            <div id="b-tazettel-preview" style="width:48px;height:48px;border-radius:8px;overflow:hidden;display:none">
+              <img id="b-tazettel-img" style="width:100%;height:100%;object-fit:cover" />
+            </div>
           </div>
         </div>
         <input type="hidden" id="b-foto-data" />
+        <input type="hidden" id="b-tazettel-data" />
         <label class="checkbox-row"><input type="checkbox" id="b-aktiv" ${d.aktiv!==false?'checked':''} /> Behandlung aktiv</label>
         <div class="form-actions">
           <button class="btn-secondary" onclick="closeForm('behandlung-form-overlay')">Abbrechen</button>
@@ -1808,6 +1566,18 @@ function besamungFormHTML(vorId, editBsId=null, editData=null) {
           Erinnerung 3 Wochen nach Besamung (Trächtigkeitsprüfung)
         </label>
         <textarea id="bs-notiz" class="inp" rows="2" placeholder="Notizen">${d.notiz||''}</textarea>
+        <!-- Besamungsschein Foto -->
+        <label class="inp-label">📋 Foto Besamungsschein (optional)</label>
+        <div style="display:flex;gap:.5rem;align-items:center;margin-bottom:.4rem">
+          <label style="cursor:pointer;flex:1">
+            <span class="btn-secondary" style="display:block;text-align:center;padding:.4rem;border-radius:var(--radius-sm);font-size:.82rem">📷 Besamungsschein fotografieren</span>
+            <input type="file" accept="image/*" capture="environment" style="display:none" onchange="bsmFotoPreview(this)" />
+          </label>
+          <div id="bsm-foto-preview" style="width:48px;height:48px;border-radius:8px;overflow:hidden;display:${d.scheinFoto?'block':'none'}">
+            <img id="bsm-foto-img" src="${d.scheinFoto||''}" style="width:100%;height:100%;object-fit:cover" />
+          </div>
+        </div>
+        <input type="hidden" id="bsm-foto-data" value="${d.scheinFoto||''}" />
         <div class="form-actions">
           <button class="btn-secondary" onclick="closeForm('besamung-form-overlay')">Abbrechen</button>
           <button class="btn-primary" onclick="saveBesamung()">Speichern</button>
@@ -1937,7 +1707,9 @@ window.saveBehandlung=async function(){
     folgeTermin:fl?new Date(fl).getTime():null,
     notiz:document.getElementById('b-notiz')?.value.trim()||'',
     aktiv:document.getElementById('b-aktiv')?.checked!==false,
+    behandler:document.getElementById('b-behandler')?.value||'personal',
     fotoData:document.getElementById('b-foto-data')?.value||null,
+    tazettelData:document.getElementById('b-tazettel-data')?.value||null,
   };
   if(editId){await update(ref(db,'behandlungen/'+editId),{...data,updatedAt:Date.now()});}
   else{await push(ref(db,'behandlungen'),{...data,createdAt:Date.now()});}
@@ -2831,309 +2603,29 @@ window.exportSaisonPDF = function() {
   </style>
 <!-- KÄSE MODUL CSS -->
 <style id="kaese-css">
-#kaese-modul {
-  --bg:#1a2a10; --surface:#1e3012; --border:#2e5c14;
-  --text:#e8f0e0; --muted:#8aaa7a; --accent:#4db84e;
-  --warn:#e05050; --warn-bg:#3a1a1a;
-  --row-h:72px; --label-w:210px; --bar-h:52px;
-  background:var(--bg-dark, #0a1a04);
-  min-height:calc(100vh - var(--topbar-h,56px) - var(--nav-h,60px));
-}
-
-/* ══════════════════════════════════════
-   TOKENS
-══════════════════════════════════════ */
-#kaese-modul{
-  --bg:#f4f1eb; --surface:#fffdf8; --border:#d6cfc0;
-  --text:#2c2416; --muted:#7a6f5e; --accent:#4a7c59;
-  --warn:#c0392b; --warn-bg:#fdf0ee;
-  --row-h:72px; --label-w:210px;
-  --bar-h:52px;
-}
-*{box-sizing:border-box;margin:0;padding:0;}
-#kaese-modul{font-family:'Segoe UI',system-ui,sans-serif;background:var(--bg);
-  color:var(--text);min-height:100vh;-webkit-tap-highlight-color:transparent;}
-
-/* ══════════════════════════════════════
-   HEADER
-══════════════════════════════════════ */
-#kaese-modul header{background:var(--accent);color:#fff;padding:10px 18px;display:flex;
-  align-items:center;justify-content:space-between;
-  position:sticky;top:0;z-index:300;box-shadow:0 2px 8px rgba(0,0,0,.2);}
-header h1{font-size:1rem;font-weight:700;}
-header .meta{font-size:.72rem;opacity:.85;}
-
-/* ══════════════════════════════════════
-   BRANDING BAR
-══════════════════════════════════════ */
-.branding-bar{
-  display:flex;align-items:center;justify-content:center;
-  gap:10px;flex-wrap:wrap;
-  padding:6px 16px;
-  background:linear-gradient(135deg,#3a6347 0%,#2e5039 100%);
-  border-bottom:2px solid rgba(255,255,255,.15);
-  font-size:.78rem;color:rgba(255,255,255,.9);
-  letter-spacing:.02em;
-}
-.branding-bar strong{color:#fff;font-weight:700;}
-.brand-sep{opacity:.4;font-size:.9rem;}
-.brand-recipes,.brand-eng{display:flex;align-items:center;gap:4px;}
-
-/* ══════════════════════════════════════
-   TOOLBAR (desktop)
-══════════════════════════════════════ */
-.toolbar{display:flex;gap:7px;align-items:center;flex-wrap:wrap;
-  padding:8px 16px;background:var(--surface);border-bottom:1px solid var(--border);}
-.toolbar label{font-size:.76rem;color:var(--muted);display:flex;align-items:center;gap:4px;}
-.toolbar input[type=number]{border:1px solid var(--border);border-radius:5px;
-  padding:4px 6px;font-size:.8rem;background:#fff;color:var(--text);width:72px;}
-.sep{width:1px;height:20px;background:var(--border);margin:0 2px;}
-
-/* ══════════════════════════════════════
-   BUTTONS
-══════════════════════════════════════ */
-.btn{padding:5px 11px;border-radius:6px;border:none;cursor:pointer;font-size:.78rem;
-  font-weight:600;transition:opacity .12s,transform .09s;white-space:nowrap;
-  -webkit-user-select:none;user-select:none;}
-.btn:hover{opacity:.85;} .btn:active{transform:scale(.96);}
-.btn-primary{background:var(--accent);color:#fff;}
-.btn-warn{background:var(--warn);color:#fff;}
-.btn-neutral{background:#e0dbd0;color:var(--text);}
-.btn-blue{background:#2e6da4;color:#fff;}
-.btn-orange{background:#b5600e;color:#fff;}
-.btn-purple{background:#7a3a8b;color:#fff;}
-.btn-sm{padding:3px 7px;font-size:.7rem;}
-
-/* ══════════════════════════════════════
-   VISIBILITY PANEL
-══════════════════════════════════════ */
-.vis-panel{display:flex;flex-wrap:wrap;gap:6px;
-  padding:6px 16px 5px;background:var(--surface);border-bottom:1px solid var(--border);}
-.vis-chip{display:flex;align-items:center;gap:5px;padding:3px 9px;border-radius:20px;
-  border:2px solid transparent;cursor:pointer;font-size:.74rem;font-weight:600;
-  transition:opacity .12s,filter .12s;user-select:none;}
-.vis-chip .chip-dot{width:9px;height:9px;border-radius:50%;flex-shrink:0;}
-.vis-chip.hidden-sorte{opacity:.35;filter:grayscale(.7);}
-.vis-chip:hover{opacity:.8;}
-
-/* ══════════════════════════════════════
-   OVERLAP
-══════════════════════════════════════ */
-#overlap-banner{display:none;background:var(--warn-bg);border-left:4px solid var(--warn);
-  padding:7px 16px;font-size:.8rem;color:var(--warn);font-weight:600;}
-#overlap-list{display:none;padding:3px 16px 7px;font-size:.74rem;color:var(--warn);line-height:1.9;}
-
-/* ══════════════════════════════════════
-   CHART
-══════════════════════════════════════ */
-.chart-wrap{padding:12px 16px 60px;overflow-x:auto;-webkit-overflow-scrolling:touch;}
-.gantt{min-width:600px;user-select:none;}
-.gantt-#kaese-modul header{margin-left:var(--label-w);height:24px;position:relative;
-  border-bottom:2px solid var(--border);margin-bottom:2px;}
-.time-tick{position:absolute;top:0;bottom:0;display:flex;align-items:flex-end;
-  padding-bottom:2px;font-size:.62rem;color:var(--muted);
-  border-left:1px solid var(--border);padding-left:3px;white-space:nowrap;}
-/* Midnight marker */
-.time-tick.midnight{border-left:2px dashed #c0392b;}
-.time-tick.midnight span{color:#c0392b;font-weight:700;}
-
-.gantt-row{display:flex;align-items:center;border-bottom:1px solid var(--border);
-  height:var(--row-h);transition:background .1s;}
-.gantt-row:hover{background:rgba(74,124,89,.04);}
-.gantt-row.row-hidden{display:none;}
-
-/* ══════════════════════════════════════
-   ROW LABEL
-══════════════════════════════════════ */
-.row-label{width:var(--label-w);flex-shrink:0;font-size:.76rem;font-weight:600;
-  padding-right:3px;color:var(--text);display:flex;align-items:center;gap:3px;}
-.row-label .dot{width:9px;height:9px;border-radius:50%;flex-shrink:0;}
-.row-label-text{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
-.row-btns{display:flex;gap:2px;flex-shrink:0;}
-.lbl-btn{font-size:.58rem;padding:2px 4px;border-radius:4px;border:1px solid var(--border);
-  cursor:pointer;background:#fff;color:var(--muted);font-weight:700;white-space:nowrap;
-  line-height:1.4;}
-.lbl-btn:hover{background:var(--accent);color:#fff;border-color:var(--accent);}
-.lbl-btn.del-btn:hover{background:var(--warn);border-color:var(--warn);}
-
-/* ══════════════════════════════════════
-   TIMELINE + BARS
-══════════════════════════════════════ */
-/* row-timeline defined below with cursor:grab */
-.step-wrap{
-  position:absolute;
-  top:50%;
-  transform:translateY(-50%);
-  height:var(--bar-h);
-  pointer-events:none;
-  overflow:hidden;
-}
-/* Coloured capsule */
-.step-bar{
-  position:absolute;
-  inset:0;
-  border-radius:6px;
-  border:2px solid transparent;
-  box-shadow:0 1px 4px rgba(0,0,0,.2);
-  pointer-events:all;
-  cursor:pointer;
-  transition:filter .12s,box-shadow .12s;
-}
-.step-bar:hover{filter:brightness(1.1);box-shadow:0 2px 10px rgba(0,0,0,.3);}
-.step-bar.overlap{border-color:var(--warn)!important;
-  animation:pulse-warn 1.1s ease-in-out infinite;}
-@keyframes pulse-warn{
-  0%,100%{box-shadow:0 0 0 0 rgba(192,57,43,.5);}
-  50%{box-shadow:0 0 0 6px rgba(192,57,43,0);}
-}
-/* Row drag handle: the timeline background itself is draggable */
-.row-timeline{flex:1;position:relative;height:100%;overflow:visible;cursor:grab;}
-.row-timeline.dragging{cursor:grabbing;}
-/* Text inside bar – wraps if needed, never overflows bar */
-.step-label{
-  position:absolute;
-  inset:0;
-  z-index:4;
-  display:flex;
-  align-items:center;
-  justify-content:center;
-  padding:3px 6px;
-  pointer-events:none;
-  overflow:hidden;
-}
-.step-label span{
-  font-size:.67rem;
-  font-weight:700;
-  color:#fff;
-  text-shadow:0 1px 2px rgba(0,0,0,.5);
-  white-space:normal;
-  word-break:break-word;
-  overflow-wrap:break-word;
-  text-align:center;
-  line-height:1.25;
-  display:block;
-}
-
-/* ══════════════════════════════════════
-   POPUPS
-══════════════════════════════════════ */
-#kaese-modul .popup-overlay{display:none;position:fixed;inset:0;
-  background:rgba(0,0,0,.4);align-items:center;justify-content:center;}
-.popup-overlay.active{display:flex;}
-
-/* z-index stacking so edit sits above manage */
-#popup-step   {z-index:510;}
-#popup-edit   {z-index:530;}  /* always on top of manage */
-#popup-manage {z-index:520;}
-#popup-ns     {z-index:540;}
-#popup-start  {z-index:510;}
-#popup-add-sorte{z-index:510;}
-#popup-detail {z-index:550;}
-
-.popup{background:var(--surface);border-radius:12px;padding:20px 22px 16px;
-  min-width:280px;max-width:500px;width:94%;
-  box-shadow:0 8px 32px rgba(0,0,0,.28);
-  position:relative;max-height:92vh;overflow-y:auto;}
-.popup h2{font-size:.92rem;margin-bottom:12px;color:var(--accent);}
-.popup-close{position:absolute;top:8px;right:11px;background:none;border:none;
-  font-size:1.3rem;cursor:pointer;color:var(--muted);line-height:1;padding:2px 6px;}
-.popup-close:hover{color:var(--warn);}
-.popup table{width:100%;border-collapse:collapse;font-size:.8rem;}
-.popup td{padding:5px 3px;border-bottom:1px solid var(--border);}
-.popup td:first-child{font-weight:600;color:var(--muted);width:42%;}
-.popup-actions{display:flex;gap:7px;margin-top:12px;justify-content:flex-end;flex-wrap:wrap;}
-.form-row{margin-bottom:8px;}
-.form-row label{font-size:.74rem;color:var(--muted);display:block;margin-bottom:2px;}
-.form-row input[type=text],.form-row input[type=number]{
-  border:1px solid var(--border);border-radius:5px;padding:5px 7px;
-  font-size:.82rem;width:100%;background:#fff;color:var(--text);}
-.form-row select{border:1px solid var(--border);border-radius:5px;padding:5px 7px;
-  font-size:.82rem;width:100%;background:#fff;color:var(--text);}
-
-/* Step manager list */
-.step-list{margin:6px 0;max-height:300px;overflow-y:auto;
-  border:1px solid var(--border);border-radius:6px;}
-.step-row{display:flex;align-items:center;gap:5px;padding:6px 7px;
-  border-bottom:1px solid var(--border);font-size:.76rem;background:#fff;}
-.step-row:last-child{border-bottom:none;}
-.step-row:hover{background:rgba(74,124,89,.05);}
-.step-num{color:var(--muted);width:16px;flex-shrink:0;font-size:.7rem;text-align:right;}
-.step-name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600;}
-.step-info{color:var(--muted);font-size:.7rem;white-space:nowrap;padding:0 4px;}
-.step-actions{display:flex;gap:2px;flex-shrink:0;}
-
-/* Detail popup badge */
-.detail-badge{display:inline-block;padding:2px 10px;border-radius:20px;
-  color:#fff;font-weight:700;font-size:.78rem;margin-bottom:10px;}
-
-/* ══════════════════════════════════════
-   MOBILE FAB + BOTTOM SHEET
-══════════════════════════════════════ */
-.fab{display:none;position:fixed;bottom:20px;right:20px;z-index:400;
-  width:52px;height:52px;border-radius:50%;background:var(--accent);
-  color:#fff;font-size:1.5rem;border:none;cursor:pointer;
-  box-shadow:0 4px 16px rgba(0,0,0,.3);align-items:center;justify-content:center;}
-
-.bottom-sheet-overlay{display:none;position:fixed;inset:0;
-  background:rgba(0,0,0,.4);z-index:450;}
-.bottom-sheet-overlay.active{display:block;}
-.bottom-sheet{position:fixed;bottom:0;left:0;right:0;z-index:460;
-  background:var(--surface);border-radius:16px 16px 0 0;
-  padding:14px 16px 34px;box-shadow:0 -4px 24px rgba(0,0,0,.2);
-  transform:translateY(100%);transition:transform .28s cubic-bezier(.4,0,.2,1);
-  max-height:88vh;overflow-y:auto;position:fixed;}
-.bottom-sheet.open{transform:translateY(0);}
-.bottom-sheet h3{font-size:.9rem;margin-bottom:4px;color:var(--accent);
-  text-align:center;padding-right:40px;}
-.bs-handle{width:40px;height:4px;border-radius:2px;background:var(--border);
-  margin:0 auto 10px;}
-.bs-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;}
-.bs-btn{padding:11px 8px;border-radius:8px;border:none;cursor:pointer;
-  font-size:.78rem;font-weight:600;text-align:center;background:#e8e3d8;color:var(--text);}
-.bs-btn.primary{background:var(--accent);color:#fff;}
-.bs-btn.blue{background:#2e6da4;color:#fff;}
-.bs-btn.orange{background:#b5600e;color:#fff;}
-
-/* ══════════════════════════════════════
-   PRINT
-══════════════════════════════════════ */
-@media print{
-  header,#overlap-banner,#overlap-list,.toolbar,.vis-panel,.row-btns,
-  .fab,.bottom-sheet-overlay,.branding-bar,#mobile-hint{display:none!important;}
-  #kaese-modul{background:#fff;}
-  .chart-wrap{padding:0;overflow:visible;}
-  .step-bar{-webkit-print-color-adjust:exact;print-color-adjust:exact;}
-}
-
-/* ══════════════════════════════════════
-   RESPONSIVE
-══════════════════════════════════════ */
-@media(max-width:680px){
-  #kaese-modul{--label-w:130px;}
-  header h1{font-size:.88rem;}
-  header .meta{display:none;}
-  .toolbar{display:none;}
-  .fab{display:flex;}
-  .vis-panel{padding:5px 10px;}
-  .vis-chip{font-size:.68rem;padding:2px 7px;}
-  .gantt-header,.gantt-row{font-size:.7rem;}
-  .lbl-btn{font-size:.55rem;padding:2px 3px;}
-  #mobile-hint{display:block!important;}
-}
-@media(min-width:681px) and (max-width:1024px){
-  #kaese-modul{--label-w:170px;}
-  .toolbar{gap:5px;}
-  .btn{padding:4px 9px;font-size:.74rem;}
-}
-
-#kaese-modul header {
-  background:linear-gradient(135deg,#1a5a08,#2d7a10) !important;
-  position:sticky;
-  top:var(--topbar-h,56px);
-}
-#kaese-modul .branding-bar {
-  background:linear-gradient(135deg,#1a3a0a,#0d2004) !important;
-}
+/* Käse module styles */
+.kp-toolbar { display:flex;gap:.5rem;align-items:center;flex-wrap:wrap;padding:.5rem .6rem;border-bottom:1px solid var(--border);background:var(--bg2); }
+.kp-row { display:flex;align-items:center;border-bottom:1px solid var(--border);height:68px; }
+.kp-row-label { width:180px;flex-shrink:0;font-size:.74rem;font-weight:600;padding-right:4px;color:var(--text);display:flex;align-items:center;gap:3px; }
+.kp-dot { width:9px;height:9px;border-radius:50%;flex-shrink:0; }
+.kp-label-text { flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }
+.kp-row-btns { display:flex;gap:2px;flex-shrink:0; }
+.kp-lbl-btn { font-size:.58rem;padding:2px 4px;border-radius:4px;border:1px solid var(--border);cursor:pointer;background:var(--bg3);color:var(--text3);font-weight:700; }
+.kp-lbl-btn:hover { background:var(--green);color:#fff;border-color:var(--green); }
+.kp-lbl-btn.kp-del-btn:hover { background:var(--red);border-color:var(--red); }
+.kp-timeline { flex:1;position:relative;height:100%;overflow:visible; }
+.kp-bar-wrap { position:absolute;top:50%;transform:translateY(-50%);height:50px;pointer-events:none;overflow:hidden; }
+.kp-bar { position:absolute;inset:0;border-radius:6px;border:2px solid transparent;box-shadow:0 1px 4px rgba(0,0,0,.3);pointer-events:all;cursor:pointer;transition:filter .12s; }
+.kp-bar:hover { filter:brightness(1.15); }
+.kp-bar.kp-overlap { border-color:var(--red)!important;animation:kp-pulse 1.1s ease-in-out infinite; }
+@keyframes kp-pulse { 0%,100%{box-shadow:0 0 0 0 rgba(200,60,60,.5)}50%{box-shadow:0 0 0 5px rgba(200,60,60,0)} }
+.kp-bar-label { position:absolute;inset:0;display:flex;align-items:center;justify-content:center;padding:2px 5px;pointer-events:none;overflow:hidden; }
+.kp-bar-label span { font-size:.64rem;font-weight:700;color:#fff;text-shadow:0 1px 2px rgba(0,0,0,.6);text-align:center;word-break:break-word;line-height:1.2; }
+.kp-tick { position:absolute;top:0;bottom:0;display:flex;align-items:flex-end;padding-bottom:2px;font-size:.6rem;color:var(--text3);border-left:1px solid var(--border);padding-left:2px;white-space:nowrap; }
+.kp-midnight { border-left:2px dashed var(--red)!important; }
+.kp-midnight span { color:var(--red);font-weight:bold; }
+.kp-vis-chip { display:flex;align-items:center;gap:4px;padding:2px 8px;border-radius:16px;border:1px solid;cursor:pointer;font-size:.72rem; }
+.kp-vis-chip.kp-hidden { opacity:.35; }
 </style>
 
 </head><body>
@@ -3473,309 +2965,29 @@ window.druckeHerde = function() {
   </style>
 <!-- KÄSE MODUL CSS -->
 <style id="kaese-css">
-#kaese-modul {
-  --bg:#1a2a10; --surface:#1e3012; --border:#2e5c14;
-  --text:#e8f0e0; --muted:#8aaa7a; --accent:#4db84e;
-  --warn:#e05050; --warn-bg:#3a1a1a;
-  --row-h:72px; --label-w:210px; --bar-h:52px;
-  background:var(--bg-dark, #0a1a04);
-  min-height:calc(100vh - var(--topbar-h,56px) - var(--nav-h,60px));
-}
-
-/* ══════════════════════════════════════
-   TOKENS
-══════════════════════════════════════ */
-#kaese-modul{
-  --bg:#f4f1eb; --surface:#fffdf8; --border:#d6cfc0;
-  --text:#2c2416; --muted:#7a6f5e; --accent:#4a7c59;
-  --warn:#c0392b; --warn-bg:#fdf0ee;
-  --row-h:72px; --label-w:210px;
-  --bar-h:52px;
-}
-*{box-sizing:border-box;margin:0;padding:0;}
-#kaese-modul{font-family:'Segoe UI',system-ui,sans-serif;background:var(--bg);
-  color:var(--text);min-height:100vh;-webkit-tap-highlight-color:transparent;}
-
-/* ══════════════════════════════════════
-   HEADER
-══════════════════════════════════════ */
-#kaese-modul header{background:var(--accent);color:#fff;padding:10px 18px;display:flex;
-  align-items:center;justify-content:space-between;
-  position:sticky;top:0;z-index:300;box-shadow:0 2px 8px rgba(0,0,0,.2);}
-header h1{font-size:1rem;font-weight:700;}
-header .meta{font-size:.72rem;opacity:.85;}
-
-/* ══════════════════════════════════════
-   BRANDING BAR
-══════════════════════════════════════ */
-.branding-bar{
-  display:flex;align-items:center;justify-content:center;
-  gap:10px;flex-wrap:wrap;
-  padding:6px 16px;
-  background:linear-gradient(135deg,#3a6347 0%,#2e5039 100%);
-  border-bottom:2px solid rgba(255,255,255,.15);
-  font-size:.78rem;color:rgba(255,255,255,.9);
-  letter-spacing:.02em;
-}
-.branding-bar strong{color:#fff;font-weight:700;}
-.brand-sep{opacity:.4;font-size:.9rem;}
-.brand-recipes,.brand-eng{display:flex;align-items:center;gap:4px;}
-
-/* ══════════════════════════════════════
-   TOOLBAR (desktop)
-══════════════════════════════════════ */
-.toolbar{display:flex;gap:7px;align-items:center;flex-wrap:wrap;
-  padding:8px 16px;background:var(--surface);border-bottom:1px solid var(--border);}
-.toolbar label{font-size:.76rem;color:var(--muted);display:flex;align-items:center;gap:4px;}
-.toolbar input[type=number]{border:1px solid var(--border);border-radius:5px;
-  padding:4px 6px;font-size:.8rem;background:#fff;color:var(--text);width:72px;}
-.sep{width:1px;height:20px;background:var(--border);margin:0 2px;}
-
-/* ══════════════════════════════════════
-   BUTTONS
-══════════════════════════════════════ */
-.btn{padding:5px 11px;border-radius:6px;border:none;cursor:pointer;font-size:.78rem;
-  font-weight:600;transition:opacity .12s,transform .09s;white-space:nowrap;
-  -webkit-user-select:none;user-select:none;}
-.btn:hover{opacity:.85;} .btn:active{transform:scale(.96);}
-.btn-primary{background:var(--accent);color:#fff;}
-.btn-warn{background:var(--warn);color:#fff;}
-.btn-neutral{background:#e0dbd0;color:var(--text);}
-.btn-blue{background:#2e6da4;color:#fff;}
-.btn-orange{background:#b5600e;color:#fff;}
-.btn-purple{background:#7a3a8b;color:#fff;}
-.btn-sm{padding:3px 7px;font-size:.7rem;}
-
-/* ══════════════════════════════════════
-   VISIBILITY PANEL
-══════════════════════════════════════ */
-.vis-panel{display:flex;flex-wrap:wrap;gap:6px;
-  padding:6px 16px 5px;background:var(--surface);border-bottom:1px solid var(--border);}
-.vis-chip{display:flex;align-items:center;gap:5px;padding:3px 9px;border-radius:20px;
-  border:2px solid transparent;cursor:pointer;font-size:.74rem;font-weight:600;
-  transition:opacity .12s,filter .12s;user-select:none;}
-.vis-chip .chip-dot{width:9px;height:9px;border-radius:50%;flex-shrink:0;}
-.vis-chip.hidden-sorte{opacity:.35;filter:grayscale(.7);}
-.vis-chip:hover{opacity:.8;}
-
-/* ══════════════════════════════════════
-   OVERLAP
-══════════════════════════════════════ */
-#overlap-banner{display:none;background:var(--warn-bg);border-left:4px solid var(--warn);
-  padding:7px 16px;font-size:.8rem;color:var(--warn);font-weight:600;}
-#overlap-list{display:none;padding:3px 16px 7px;font-size:.74rem;color:var(--warn);line-height:1.9;}
-
-/* ══════════════════════════════════════
-   CHART
-══════════════════════════════════════ */
-.chart-wrap{padding:12px 16px 60px;overflow-x:auto;-webkit-overflow-scrolling:touch;}
-.gantt{min-width:600px;user-select:none;}
-.gantt-#kaese-modul header{margin-left:var(--label-w);height:24px;position:relative;
-  border-bottom:2px solid var(--border);margin-bottom:2px;}
-.time-tick{position:absolute;top:0;bottom:0;display:flex;align-items:flex-end;
-  padding-bottom:2px;font-size:.62rem;color:var(--muted);
-  border-left:1px solid var(--border);padding-left:3px;white-space:nowrap;}
-/* Midnight marker */
-.time-tick.midnight{border-left:2px dashed #c0392b;}
-.time-tick.midnight span{color:#c0392b;font-weight:700;}
-
-.gantt-row{display:flex;align-items:center;border-bottom:1px solid var(--border);
-  height:var(--row-h);transition:background .1s;}
-.gantt-row:hover{background:rgba(74,124,89,.04);}
-.gantt-row.row-hidden{display:none;}
-
-/* ══════════════════════════════════════
-   ROW LABEL
-══════════════════════════════════════ */
-.row-label{width:var(--label-w);flex-shrink:0;font-size:.76rem;font-weight:600;
-  padding-right:3px;color:var(--text);display:flex;align-items:center;gap:3px;}
-.row-label .dot{width:9px;height:9px;border-radius:50%;flex-shrink:0;}
-.row-label-text{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
-.row-btns{display:flex;gap:2px;flex-shrink:0;}
-.lbl-btn{font-size:.58rem;padding:2px 4px;border-radius:4px;border:1px solid var(--border);
-  cursor:pointer;background:#fff;color:var(--muted);font-weight:700;white-space:nowrap;
-  line-height:1.4;}
-.lbl-btn:hover{background:var(--accent);color:#fff;border-color:var(--accent);}
-.lbl-btn.del-btn:hover{background:var(--warn);border-color:var(--warn);}
-
-/* ══════════════════════════════════════
-   TIMELINE + BARS
-══════════════════════════════════════ */
-/* row-timeline defined below with cursor:grab */
-.step-wrap{
-  position:absolute;
-  top:50%;
-  transform:translateY(-50%);
-  height:var(--bar-h);
-  pointer-events:none;
-  overflow:hidden;
-}
-/* Coloured capsule */
-.step-bar{
-  position:absolute;
-  inset:0;
-  border-radius:6px;
-  border:2px solid transparent;
-  box-shadow:0 1px 4px rgba(0,0,0,.2);
-  pointer-events:all;
-  cursor:pointer;
-  transition:filter .12s,box-shadow .12s;
-}
-.step-bar:hover{filter:brightness(1.1);box-shadow:0 2px 10px rgba(0,0,0,.3);}
-.step-bar.overlap{border-color:var(--warn)!important;
-  animation:pulse-warn 1.1s ease-in-out infinite;}
-@keyframes pulse-warn{
-  0%,100%{box-shadow:0 0 0 0 rgba(192,57,43,.5);}
-  50%{box-shadow:0 0 0 6px rgba(192,57,43,0);}
-}
-/* Row drag handle: the timeline background itself is draggable */
-.row-timeline{flex:1;position:relative;height:100%;overflow:visible;cursor:grab;}
-.row-timeline.dragging{cursor:grabbing;}
-/* Text inside bar – wraps if needed, never overflows bar */
-.step-label{
-  position:absolute;
-  inset:0;
-  z-index:4;
-  display:flex;
-  align-items:center;
-  justify-content:center;
-  padding:3px 6px;
-  pointer-events:none;
-  overflow:hidden;
-}
-.step-label span{
-  font-size:.67rem;
-  font-weight:700;
-  color:#fff;
-  text-shadow:0 1px 2px rgba(0,0,0,.5);
-  white-space:normal;
-  word-break:break-word;
-  overflow-wrap:break-word;
-  text-align:center;
-  line-height:1.25;
-  display:block;
-}
-
-/* ══════════════════════════════════════
-   POPUPS
-══════════════════════════════════════ */
-#kaese-modul .popup-overlay{display:none;position:fixed;inset:0;
-  background:rgba(0,0,0,.4);align-items:center;justify-content:center;}
-.popup-overlay.active{display:flex;}
-
-/* z-index stacking so edit sits above manage */
-#popup-step   {z-index:510;}
-#popup-edit   {z-index:530;}  /* always on top of manage */
-#popup-manage {z-index:520;}
-#popup-ns     {z-index:540;}
-#popup-start  {z-index:510;}
-#popup-add-sorte{z-index:510;}
-#popup-detail {z-index:550;}
-
-.popup{background:var(--surface);border-radius:12px;padding:20px 22px 16px;
-  min-width:280px;max-width:500px;width:94%;
-  box-shadow:0 8px 32px rgba(0,0,0,.28);
-  position:relative;max-height:92vh;overflow-y:auto;}
-.popup h2{font-size:.92rem;margin-bottom:12px;color:var(--accent);}
-.popup-close{position:absolute;top:8px;right:11px;background:none;border:none;
-  font-size:1.3rem;cursor:pointer;color:var(--muted);line-height:1;padding:2px 6px;}
-.popup-close:hover{color:var(--warn);}
-.popup table{width:100%;border-collapse:collapse;font-size:.8rem;}
-.popup td{padding:5px 3px;border-bottom:1px solid var(--border);}
-.popup td:first-child{font-weight:600;color:var(--muted);width:42%;}
-.popup-actions{display:flex;gap:7px;margin-top:12px;justify-content:flex-end;flex-wrap:wrap;}
-.form-row{margin-bottom:8px;}
-.form-row label{font-size:.74rem;color:var(--muted);display:block;margin-bottom:2px;}
-.form-row input[type=text],.form-row input[type=number]{
-  border:1px solid var(--border);border-radius:5px;padding:5px 7px;
-  font-size:.82rem;width:100%;background:#fff;color:var(--text);}
-.form-row select{border:1px solid var(--border);border-radius:5px;padding:5px 7px;
-  font-size:.82rem;width:100%;background:#fff;color:var(--text);}
-
-/* Step manager list */
-.step-list{margin:6px 0;max-height:300px;overflow-y:auto;
-  border:1px solid var(--border);border-radius:6px;}
-.step-row{display:flex;align-items:center;gap:5px;padding:6px 7px;
-  border-bottom:1px solid var(--border);font-size:.76rem;background:#fff;}
-.step-row:last-child{border-bottom:none;}
-.step-row:hover{background:rgba(74,124,89,.05);}
-.step-num{color:var(--muted);width:16px;flex-shrink:0;font-size:.7rem;text-align:right;}
-.step-name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600;}
-.step-info{color:var(--muted);font-size:.7rem;white-space:nowrap;padding:0 4px;}
-.step-actions{display:flex;gap:2px;flex-shrink:0;}
-
-/* Detail popup badge */
-.detail-badge{display:inline-block;padding:2px 10px;border-radius:20px;
-  color:#fff;font-weight:700;font-size:.78rem;margin-bottom:10px;}
-
-/* ══════════════════════════════════════
-   MOBILE FAB + BOTTOM SHEET
-══════════════════════════════════════ */
-.fab{display:none;position:fixed;bottom:20px;right:20px;z-index:400;
-  width:52px;height:52px;border-radius:50%;background:var(--accent);
-  color:#fff;font-size:1.5rem;border:none;cursor:pointer;
-  box-shadow:0 4px 16px rgba(0,0,0,.3);align-items:center;justify-content:center;}
-
-.bottom-sheet-overlay{display:none;position:fixed;inset:0;
-  background:rgba(0,0,0,.4);z-index:450;}
-.bottom-sheet-overlay.active{display:block;}
-.bottom-sheet{position:fixed;bottom:0;left:0;right:0;z-index:460;
-  background:var(--surface);border-radius:16px 16px 0 0;
-  padding:14px 16px 34px;box-shadow:0 -4px 24px rgba(0,0,0,.2);
-  transform:translateY(100%);transition:transform .28s cubic-bezier(.4,0,.2,1);
-  max-height:88vh;overflow-y:auto;position:fixed;}
-.bottom-sheet.open{transform:translateY(0);}
-.bottom-sheet h3{font-size:.9rem;margin-bottom:4px;color:var(--accent);
-  text-align:center;padding-right:40px;}
-.bs-handle{width:40px;height:4px;border-radius:2px;background:var(--border);
-  margin:0 auto 10px;}
-.bs-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;}
-.bs-btn{padding:11px 8px;border-radius:8px;border:none;cursor:pointer;
-  font-size:.78rem;font-weight:600;text-align:center;background:#e8e3d8;color:var(--text);}
-.bs-btn.primary{background:var(--accent);color:#fff;}
-.bs-btn.blue{background:#2e6da4;color:#fff;}
-.bs-btn.orange{background:#b5600e;color:#fff;}
-
-/* ══════════════════════════════════════
-   PRINT
-══════════════════════════════════════ */
-@media print{
-  header,#overlap-banner,#overlap-list,.toolbar,.vis-panel,.row-btns,
-  .fab,.bottom-sheet-overlay,.branding-bar,#mobile-hint{display:none!important;}
-  #kaese-modul{background:#fff;}
-  .chart-wrap{padding:0;overflow:visible;}
-  .step-bar{-webkit-print-color-adjust:exact;print-color-adjust:exact;}
-}
-
-/* ══════════════════════════════════════
-   RESPONSIVE
-══════════════════════════════════════ */
-@media(max-width:680px){
-  #kaese-modul{--label-w:130px;}
-  header h1{font-size:.88rem;}
-  header .meta{display:none;}
-  .toolbar{display:none;}
-  .fab{display:flex;}
-  .vis-panel{padding:5px 10px;}
-  .vis-chip{font-size:.68rem;padding:2px 7px;}
-  .gantt-header,.gantt-row{font-size:.7rem;}
-  .lbl-btn{font-size:.55rem;padding:2px 3px;}
-  #mobile-hint{display:block!important;}
-}
-@media(min-width:681px) and (max-width:1024px){
-  #kaese-modul{--label-w:170px;}
-  .toolbar{gap:5px;}
-  .btn{padding:4px 9px;font-size:.74rem;}
-}
-
-#kaese-modul header {
-  background:linear-gradient(135deg,#1a5a08,#2d7a10) !important;
-  position:sticky;
-  top:var(--topbar-h,56px);
-}
-#kaese-modul .branding-bar {
-  background:linear-gradient(135deg,#1a3a0a,#0d2004) !important;
-}
+/* Käse module styles */
+.kp-toolbar { display:flex;gap:.5rem;align-items:center;flex-wrap:wrap;padding:.5rem .6rem;border-bottom:1px solid var(--border);background:var(--bg2); }
+.kp-row { display:flex;align-items:center;border-bottom:1px solid var(--border);height:68px; }
+.kp-row-label { width:180px;flex-shrink:0;font-size:.74rem;font-weight:600;padding-right:4px;color:var(--text);display:flex;align-items:center;gap:3px; }
+.kp-dot { width:9px;height:9px;border-radius:50%;flex-shrink:0; }
+.kp-label-text { flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }
+.kp-row-btns { display:flex;gap:2px;flex-shrink:0; }
+.kp-lbl-btn { font-size:.58rem;padding:2px 4px;border-radius:4px;border:1px solid var(--border);cursor:pointer;background:var(--bg3);color:var(--text3);font-weight:700; }
+.kp-lbl-btn:hover { background:var(--green);color:#fff;border-color:var(--green); }
+.kp-lbl-btn.kp-del-btn:hover { background:var(--red);border-color:var(--red); }
+.kp-timeline { flex:1;position:relative;height:100%;overflow:visible; }
+.kp-bar-wrap { position:absolute;top:50%;transform:translateY(-50%);height:50px;pointer-events:none;overflow:hidden; }
+.kp-bar { position:absolute;inset:0;border-radius:6px;border:2px solid transparent;box-shadow:0 1px 4px rgba(0,0,0,.3);pointer-events:all;cursor:pointer;transition:filter .12s; }
+.kp-bar:hover { filter:brightness(1.15); }
+.kp-bar.kp-overlap { border-color:var(--red)!important;animation:kp-pulse 1.1s ease-in-out infinite; }
+@keyframes kp-pulse { 0%,100%{box-shadow:0 0 0 0 rgba(200,60,60,.5)}50%{box-shadow:0 0 0 5px rgba(200,60,60,0)} }
+.kp-bar-label { position:absolute;inset:0;display:flex;align-items:center;justify-content:center;padding:2px 5px;pointer-events:none;overflow:hidden; }
+.kp-bar-label span { font-size:.64rem;font-weight:700;color:#fff;text-shadow:0 1px 2px rgba(0,0,0,.6);text-align:center;word-break:break-word;line-height:1.2; }
+.kp-tick { position:absolute;top:0;bottom:0;display:flex;align-items:flex-end;padding-bottom:2px;font-size:.6rem;color:var(--text3);border-left:1px solid var(--border);padding-left:2px;white-space:nowrap; }
+.kp-midnight { border-left:2px dashed var(--red)!important; }
+.kp-midnight span { color:var(--red);font-weight:bold; }
+.kp-vis-chip { display:flex;align-items:center;gap:4px;padding:2px 8px;border-radius:16px;border:1px solid;cursor:pointer;font-size:.72rem; }
+.kp-vis-chip.kp-hidden { opacity:.35; }
 </style>
 
 </head><body>
@@ -7455,992 +6667,435 @@ window.selectMilchZeit = function(zeit, btn) {
 // ══════════════════════════════════════════════════════════════
 //  KÄSE PRODUKTION MODULE
 // ══════════════════════════════════════════════════════════════
-// KÄSE MODULE - global scope
+// KÄSE MODULE - rewritten for HerdenPro
+// All functions prefixed with kp_ to avoid collisions
 
-// ══════════════════════════════════════
-//  KONSTANTEN & DATEN
-// ══════════════════════════════════════
-const COLORS=['#4a7c59','#2e6da4','#c0751a','#8b3a8b','#b5451b','#1d7a7a','#7a5c00','#3d5c8a'];
-const DAY_START_H=4; // Produktionsstart = 04:00 Uhr
+window.kp_sorten = [];
+window.kp_pxPerHour = 28;
+window.kp_viewHours = 32;
 
-let sorten=[
-  {
-    name:'Schnittkäse', color:COLORS[0], startH:0, visible:true,
-    schritte:[
-      {name:'Milch pasteurisieren', dur:20,  pause:0,  note:'72°C, 15 Sek.'},
-      {name:'Kulturen zugeben',     dur:30,  pause:0,  note:'mesophile Kulturen'},
-      {name:'Lab zugeben & Bruch',  dur:45,  pause:0,  note:'Bruch walnussgroß schneiden'},
-      {name:'Nachwärmen & Rühren',  dur:30,  pause:0,  note:'auf 38°C erhitzen'},
-      {name:'Formen & Pressen',     dur:360, pause:0,  note:'6 Std. pressen'},
-      {name:'Salzbad',              dur:480, pause:0,  note:'8 Std. bei 12°C'},
-      {name:'Anreifen',             dur:720, pause:0,  note:'erste Lagerphase 12h'},
-    ]
-  },
-  {
-    name:'Graukäse spezial', color:COLORS[1], startH:1, visible:true,
-    schritte:[
-      {name:'Magermilch säuern', dur:480, pause:0,  note:'spontane Säuerung 8h'},
-      {name:'Erwärmen',          dur:30,  pause:0,  note:'50–55°C'},
-      {name:'Bruch abschöpfen',  dur:20,  pause:0,  note:''},
-      {name:'Formen & Pressen',  dur:60,  pause:0,  note:'leichter Druck'},
-      {name:'Trockensalzen',     dur:15,  pause:0,  note:'beidseitig'},
-      {name:'Wenden',            dur:5,   pause:60, note:'alle 2h wiederholen'},
-      {name:'Kurze Reife',       dur:120, pause:0,  note:'Minimalreife 2h'},
-    ]
-  },
-  {
-    name:'Grillkäse 1', color:COLORS[2], startH:2, visible:true,
-    schritte:[
-      {name:'Milch wärmen',     dur:15,  pause:0, note:'38°C'},
-      {name:'Lab & Kulturen',   dur:40,  pause:0, note:''},
-      {name:'Bruch schneiden',  dur:15,  pause:0, note:''},
-      {name:'Molke abschöpfen', dur:20,  pause:0, note:''},
-      {name:'Formen',           dur:30,  pause:0, note:'Quaderform'},
-      {name:'Salzen',           dur:20,  pause:0, note:'Trockensalzung'},
-      {name:'Pressen',          dur:120, pause:0, note:'2 Std.'},
-      {name:'Kühlen',           dur:60,  pause:0, note:'Kühlhaus'},
-    ]
-  },
-  {
-    name:'Grillkäse 2', color:COLORS[3], startH:1.5, visible:true,
-    schritte:[
-      {name:'Milch & Ziegenmilch', dur:15,  pause:0, note:'50/50 Mischung'},
-      {name:'Lab & Kulturen',      dur:50,  pause:0, note:''},
-      {name:'Bruch & Molke',       dur:30,  pause:0, note:''},
-      {name:'Kräuter einarbeiten', dur:10,  pause:0, note:'Oregano, Rosmarin'},
-      {name:'Formen',              dur:20,  pause:0, note:''},
-      {name:'Salzen & Pressen',    dur:150, pause:0, note:''},
-      {name:'Kühlen',              dur:60,  pause:0, note:''},
-    ]
-  },
-  {
-    name:'Mozzarella', color:COLORS[4], startH:3, visible:true,
-    schritte:[
-      {name:'Milch anwärmen',    dur:15,  pause:0, note:'38°C'},
-      {name:'Lab & Ruhezeit',    dur:45,  pause:0, note:''},
-      {name:'Bruch prüfen',      dur:10,  pause:0, note:'Sauberkeitstest'},
-      {name:'Molke abschöpfen',  dur:20,  pause:0, note:''},
-      {name:'Reifen (Säuerung)', dur:180, pause:0, note:'pH-Kontrolle'},
-      {name:'Ziehen & Formen',   dur:30,  pause:0, note:'Heißwasser 80°C'},
-      {name:'Kühlen',            dur:60,  pause:0, note:'Eiswasser'},
-    ]
-  },
-  {
-    name:'Brie', color:COLORS[5], startH:0.5, visible:true,
-    schritte:[
-      {name:'Rohmilch bereitstellen', dur:20,   pause:0,  note:''},
-      {name:'Kulturen & Lab',         dur:90,   pause:0,  note:'Penicillium cam.'},
-      {name:'Abtropfen in Form',      dur:480,  pause:0,  note:'8 Std.'},
-      {name:'Wenden (1)',             dur:10,   pause:60, note:''},
-      {name:'Wenden (2)',             dur:10,   pause:0,  note:''},
-      {name:'Salzen (Oberfläche)',    dur:10,   pause:0,  note:''},
-      {name:'Reifekammer I',          dur:1560, pause:0,  note:'26 Std. erste Phase'},
-    ]
-  },
-];
+// ── Colors & helpers ──
+window.kp_COLORS = ['#4db84e','#3a8fd4','#d4882a','#9b4db8','#d45a3a','#3ab8a0','#b8a03a','#b83a6e'];
+window.kp_hhmm = function(m){ const h=Math.floor(m/60)%24,mm=m%60; return h+':'+(mm<10?'0':'')+mm; };
 
-// ══════════════════════════════════════
-//  STATE
-// ══════════════════════════════════════
-let curSi=null, curAi=null, editStartSi=null;
-let pxPerHour=28, viewHours=32;
-let drag=null;
-let returnToManager=false;
-
-// ══════════════════════════════════════
-//  UTILS
-// ══════════════════════════════════════
-function kaese_hhmm(m){
-  const tot=m+DAY_START_H*60;
-  const h=Math.floor(tot/60)%24;
-  const mm=Math.round(tot%60);
-  return String(h).padStart(2,'0')+':'+String(mm).padStart(2,'0');
-}
-function durLabel(m){
-  if(m<60) return m+' min';
-  const h=Math.floor(m/60),r=m%60;
-  return r?h+'h '+r+'min':h+'h';
-}
-function kaese_getTimings(sorte){
-  let c=sorte.startH*60;
-  return sorte.schritte.map(s=>{
-    const a=c,b=c+s.dur; c=b+(s.pause||0);
-    return {startMin:a,endMin:b};
-  });
-}
-
-// ══════════════════════════════════════
-//  OVERLAP
-// ══════════════════════════════════════
-function detectOverlaps(){
-  const res=[];
-  for(let si=0;si<sorten.length;si++){
-    if(!sorten[si].visible) continue;
-    const tA=kaese_getTimings(sorten[si]);
-    for(let sj=si+1;sj<sorten.length;sj++){
-      if(!sorten[sj].visible) continue;
-      const tB=kaese_getTimings(sorten[sj]);
-      for(let ai=0;ai<tA.length;ai++){
-        for(let aj=0;aj<tB.length;aj++){
-          if(sorten[si].schritte[ai].name===sorten[sj].schritte[aj].name){
-            if(tA[ai].startMin<tB[aj].endMin&&tB[aj].startMin<tA[ai].endMin)
-              res.push({si,ai,sj,aj});
-          }
+// ── Build overlap set ──
+window.kp_buildOverlapSet = function() {
+  const s = new Set();
+  kp_sorten.forEach((sorte, si) => {
+    const tim = kp_getTimings(sorte);
+    tim.forEach((t1, ai) => {
+      tim.forEach((t2, bi) => {
+        if(ai >= bi) return;
+        if(t1.startMin < t2.endMin && t1.endMin > t2.startMin) {
+          s.add(si+'-'+ai); s.add(si+'-'+bi);
         }
-      }
-    }
-  }
-  return res;
-}
-function kaese_buildOverlapSet(){
-  const s=new Set(),ol=detectOverlaps();
-  ol.forEach(o=>{s.add(o.si+'-'+o.ai);s.add(o.sj+'-'+o.aj);});
-  return {s,ol};
-}
-
-// ══════════════════════════════════════
-//  VISIBILITY CHIPS
-// ══════════════════════════════════════
-function kaese_renderVisChips(){
-  const panel=document.getElementById('vis-panel');
-  panel.innerHTML='';
-  sorten.forEach((s,si)=>{
-    const chip=document.createElement('div');
-    chip.className='vis-chip'+(s.visible?'':' hidden-sorte');
-    chip.style.borderColor=s.color;
-    chip.style.background=s.visible?s.color+'18':'transparent';
-    chip.innerHTML=`<div class="chip-dot" style="background:${s.color}"></div><span>${s.name}</span>`;
-    chip.title=s.visible?'Zeile ausblenden':'Zeile einblenden';
-    chip.onclick=()=>{
-      s.visible=!s.visible;
-      kaese_renderVisChips();
-      kaese_redraw();
-    };
-    panel.appendChild(chip);
-  });
-}
-
-// ══════════════════════════════════════
-//  RENDER
-// ══════════════════════════════════════
-function kaese_redraw(){
-  pxPerHour=parseInt(document.getElementById('px-per-hour').value)||28;
-  viewHours=parseInt(document.getElementById('view-hours').value)||32;
-  const totalPx=pxPerHour*viewHours;
-  // Tick interval: 1h when zoomed in, else 2h or 4h
-  const tick=pxPerHour>=80?1:pxPerHour>=30?2:4;
-
-  const {s:olSet,ol:overlaps}=kaese_buildOverlapSet();
-
-  // Overlap banner
-  const banner=document.getElementById('overlap-banner');
-  const olList=document.getElementById('overlap-list');
-  if(overlaps.length){
-    banner.style.display='block';
-    olList.style.display='block';
-    olList.innerHTML=overlaps.map(o=>
-      `⚠ <b>${sorten[o.si].name}</b> „${sorten[o.si].schritte[o.ai].name}" ↔ <b>${sorten[o.sj].name}</b> „${sorten[o.sj].schritte[o.aj].name}"<br>`
-    ).join('');
-  } else {
-    banner.style.display='none';
-    olList.style.display='none';
-  }
-
-  kaese_renderVisChips();
-
-  const gantt=document.getElementById('gantt');
-  gantt.innerHTML='';
-
-  // ── Header ──
-  const hdr=document.createElement('div');
-  hdr.className='gantt-header';
-  hdr.style.width=totalPx+'px';
-  for(let h=0;h<=viewHours;h+=tick){
-    const realH=(h*60+DAY_START_H*60)/60;
-    const isMidnight=realH%24===0&&h>0;
-    const t=document.createElement('div');
-    t.className='time-tick'+(isMidnight?' midnight':'');
-    t.style.left=(h*pxPerHour)+'px';
-    if(isMidnight){
-      const sp=document.createElement('span');
-      sp.textContent=kaese_hhmm(h*60);
-      t.appendChild(sp);
-    } else {
-      t.textContent=kaese_hhmm(h*60);
-    }
-    hdr.appendChild(t);
-  }
-  gantt.appendChild(hdr);
-
-  // ── Rows ──
-  sorten.forEach((sorte,si)=>{
-    const timings=kaese_getTimings(sorte);
-    const row=document.createElement('div');
-    row.className='gantt-row'+(sorte.visible?'':' row-hidden');
-    row.dataset.si=si;
-
-    // Label area
-    const lbl=document.createElement('div');
-    lbl.className='row-label';
-    lbl.innerHTML=`<div class="dot" style="background:${sorte.color}"></div>`+
-      `<span class="row-label-text" title="${sorte.name}">${sorte.name}</span>`;
-
-    const btns=document.createElement('div');
-    btns.className='row-btns';
-
-    // Start-Zeit Button
-    const sb=document.createElement('button');
-    sb.className='lbl-btn'; sb.title='Startzeit bearbeiten';
-    sb.textContent='▶'+kaese_hhmm(sorte.startH*60);
-    sb.onclick=e=>{e.stopPropagation();openStartPopup(si);};
-
-    // Manage Button
-    const mb=document.createElement('button');
-    mb.className='lbl-btn'; mb.title='Schritte verwalten';
-    mb.textContent='⚙';
-    mb.onclick=e=>{e.stopPropagation();openManageSorteFor(si);};
-
-    // Delete Sorte Button
-    const db=document.createElement('button');
-    db.className='lbl-btn del-btn'; db.title='Sorte löschen';
-    db.textContent='🗑';
-    db.onclick=e=>{e.stopPropagation();deleteSorte(si);};
-
-    btns.appendChild(sb); btns.appendChild(mb); btns.appendChild(db);
-    lbl.appendChild(btns);
-    row.appendChild(lbl);
-
-    // Timeline
-    const tl=document.createElement('div');
-    tl.className='row-timeline';
-    tl.style.width=totalPx+'px';
-
-    // Gridlines
-    for(let h=0;h<=viewHours;h+=tick){
-      const gl=document.createElement('div');
-      const realH=(h+DAY_START_H)%24;
-      gl.style.cssText=`position:absolute;left:${h*pxPerHour}px;top:0;bottom:0;`+
-        `width:1px;background:${realH===0?'rgba(192,57,43,.2)':'rgba(0,0,0,.06)'};pointer-events:none;`;
-      tl.appendChild(gl);
-    }
-
-    // Timeline drag: mousedown on empty timeline area (not on a bar)
-    tl.addEventListener('mousedown',e=>{
-      if(e.button!==0) return;
-      if(e.target.classList.contains('step-bar')) return;
-      e.preventDefault();
-      drag={si, startX:e.clientX, origH:sorte.startH, moved:false, tl};
-      tl.classList.add('dragging');
-    });
-    // Touch on timeline background: let browser handle scroll (no drag from background on mobile)
-
-    timings.forEach((t,ai)=>{
-      const s=sorte.schritte[ai];
-      const wx=Math.max((t.endMin-t.startMin)/60*pxPerHour, 4);
-      const lx=(t.startMin/60)*pxPerHour;
-      const isOl=olSet.has(si+'-'+ai);
-      const tip=`${s.name} | ${kaese_hhmm(t.startMin)}–${kaese_hhmm(t.endMin)} (${durLabel(s.dur)})`;
-
-      const wrap=document.createElement('div');
-      wrap.className='step-wrap';
-      wrap.style.cssText=`left:${lx}px;width:${wx}px;z-index:${ai+2};`;
-
-      const bar=document.createElement('div');
-      bar.className='step-bar'+(isOl?' overlap':'');
-      bar.style.background=sorte.color;
-      bar.title=tip;
-      bar.dataset.si=si; bar.dataset.ai=ai;
-
-      // Click: single click opens info popup, dblclick opens detail popup.
-      bar.addEventListener('click',e=>{
-        e.stopPropagation();
-        if(bar._wasDragged){ bar._wasDragged=false; return; } // suppress click after drag
-        clearTimeout(bar._clickTimer);
-        bar._clickTimer=setTimeout(()=>{ openStepPopup(si,ai,t); }, 230);
       });
-      bar.addEventListener('dblclick',e=>{
-        e.stopPropagation();
-        clearTimeout(bar._clickTimer);
-        openDetailPopup(si,ai,t);
-      });
-
-      // Mouse drag on bar
-      bar.addEventListener('mousedown',e=>{
-        if(e.button!==0) return;
-        e.preventDefault();
-        e.stopPropagation();
-        const startX=e.clientX;
-        const origH=sorte.startH;
-        let dragging=false;
-        function onMove(ev){
-          const dx=ev.clientX-startX;
-          if(!dragging && Math.abs(dx)<6) return;
-          dragging=true;
-          tl.classList.add('dragging');
-          const newH=Math.max(0, Math.round((origH+dx/pxPerHour)*4)/4);
-          sorten[si].startH=newH;
-          showDragTooltip(ev.clientX, ev.clientY, newH, false);
-          kaese_redraw();
-        }
-        function onUp(){
-          document.removeEventListener('mousemove',onMove);
-          document.removeEventListener('mouseup',onUp);
-          tl.classList.remove('dragging');
-          hideDragTooltip();
-          if(dragging) bar._wasDragged=true;
-        }
-        document.addEventListener('mousemove',onMove);
-        document.addEventListener('mouseup',onUp);
-      });
-
-      // Touch auf Balken (Mobile):
-      // - Kurz tippen → Popup (touchend ohne Bewegung)
-      // - Lang drücken 400ms → Drag-Modus, Scroll wird geblockt
-      // - Kein kaese_redraw() während Drag → ganze Zeile per CSS translate verschoben
-      // - kaese_redraw() erst beim Loslassen
-      bar.addEventListener('touchstart', e=>{
-        e.stopPropagation();
-        const touch=e.touches[0];
-        const startX=touch.clientX;
-        const startY=touch.clientY;
-        const origH=sorte.startH;
-        const chartWrap=document.querySelector('.chart-wrap');
-        const startScrollLeft=chartWrap.scrollLeft; // Scroll-Position beim Start merken
-        let dragActive=false;
-        let cancelled=false;
-        let moved=false;
-        let currentDeltaH=0; // finales Delta in Stunden
-
-        const longPressTimer=setTimeout(()=>{
-          if(cancelled) return;
-          dragActive=true;
-          tl.style.opacity='.65';
-          tl.style.outline='2px solid '+sorte.color;
-          if(navigator.vibrate) navigator.vibrate(40);
-        }, 400);
-
-        let edgeScrollInterval=null;
-
-        function startEdgeScroll(screenX){
-          stopEdgeScroll();
-          const margin=60;
-          const speed=8;
-          const w=window.innerWidth;
-          if(screenX<margin){
-            edgeScrollInterval=setInterval(()=>{
-              chartWrap.scrollLeft-=speed;
-              if(lastTouch) updateTransform(lastTouch);
-            },16);
-          } else if(screenX>w-margin){
-            edgeScrollInterval=setInterval(()=>{
-              chartWrap.scrollLeft+=speed;
-              if(lastTouch) updateTransform(lastTouch);
-            },16);
-          }
-        }
-        function stopEdgeScroll(){
-          if(edgeScrollInterval){ clearInterval(edgeScrollInterval); edgeScrollInterval=null; }
-        }
-
-        // Gesamtversatz = Finger-Delta + Scroll-Delta
-        // → Balken folgt sowohl dem Finger als auch dem Auto-Scroll
-        let lastTouch=null;
-        function updateTransform(t2){
-          if(!t2) return;
-          const fingerDx=t2.clientX-startX;
-          const scrollDx=chartWrap.scrollLeft-startScrollLeft;
-          const totalDx=fingerDx+scrollDx;
-          currentDeltaH=totalDx/pxPerHour;
-          tl.style.transform=`translateX(${totalDx}px)`;
-          const newH=Math.max(0, origH+currentDeltaH);
-          showDragTooltip(t2.clientX, t2.clientY, newH, true);
-        }
-
-        function onMove(ev){
-          if(cancelled) return;
-          const t2=ev.touches[0];
-          lastTouch=t2;
-          const dx=t2.clientX-startX;
-          const dy=t2.clientY-startY;
-          if(!dragActive){
-            if(Math.abs(dy)>10||Math.abs(dx)>12){
-              cancelled=true;
-              clearTimeout(longPressTimer);
-            }
-            return;
-          }
-          ev.preventDefault();
-          moved=true;
-          updateTransform(t2);
-          startEdgeScroll(t2.clientX);
-        }
-
-        function onEnd(){
-          clearTimeout(longPressTimer);
-          stopEdgeScroll();
-          document.removeEventListener('touchmove',onMove);
-          document.removeEventListener('touchend',onEnd);
-          document.removeEventListener('touchcancel',onEnd);
-          tl.style.opacity='';
-          tl.style.outline='';
-          tl.style.transform='';
-          hideDragTooltip();
-          if(dragActive&&moved){
-            sorten[si].startH=Math.max(0,Math.round((origH+currentDeltaH)*4)/4);
-            bar._wasDragged=true;
-            kaese_redraw();
-          }
-        }
-
-        document.addEventListener('touchmove',onMove,{passive:false});
-        document.addEventListener('touchend',onEnd);
-        document.addEventListener('touchcancel',onEnd);
-      },{passive:true});
-
-      // Text label
-      const lblDiv=document.createElement('div');
-      lblDiv.className='step-label';
-      const lblSpan=document.createElement('span');
-      lblSpan.textContent=s.name;
-      lblDiv.appendChild(lblSpan);
-
-      wrap.appendChild(bar);
-      wrap.appendChild(lblDiv);
-      tl.appendChild(wrap);
     });
-
-    row.appendChild(tl);
-    gantt.appendChild(row);
   });
-}
+  return {s};
+};
 
-// ══════════════════════════════════════
-//  DRAG TOOLTIP
-// ══════════════════════════════════════
-const _dragTip=document.getElementById('drag-tooltip');
-function showDragTooltip(screenX, screenY, newH, isTouch){
-  const timeStr=kaese_hhmm(newH*60);
-  _dragTip.textContent='▶ '+timeStr;
-  _dragTip.style.left=screenX+'px';
-  // On touch: place 110px above finger so thumb never covers it
-  // On mouse: place 36px above cursor
-  _dragTip.style.top=(screenY-(isTouch?110:36))+'px';
-  _dragTip.style.display='block';
-}
-function hideDragTooltip(){
-  _dragTip.style.display='none';
-}
-
-// ══════════════════════════════════════
-//  TEXT MEASUREMENT
-// ══════════════════════════════════════
-const _mc=document.createElement('canvas');
-const _mx=_mc.getContext('2d');
-_mx.font='bold 11px Segoe UI, system-ui, sans-serif'; // ~.68rem at 16px base
-function measureText(txt){
-  // Use a generous multiplier to account for browser font rendering differences
-  return _mx.measureText(txt).width * 1.15;
-}
-
-// ══════════════════════════════════════
-//  DRAG (Mouse only — Touch handled per-bar above)
-// ══════════════════════════════════════
-document.addEventListener('mousemove',e=>{
-  if(!drag) return;
-  const dx=e.clientX-drag.startX;
-  if(Math.abs(dx)>4){
-    drag.moved=true;
-    sorten[drag.si].startH=Math.max(0,Math.round((drag.origH+dx/pxPerHour)*4)/4);
-    kaese_redraw();
-  }
-});
-document.addEventListener('mouseup',()=>{
-  if(!drag) return;
-  if(drag.tl) drag.tl.classList.remove('dragging');
-  drag=null;
-});
-
-// ══════════════════════════════════════
-//  POPUP HELPERS
-// ══════════════════════════════════════
-function openPopup(id){document.getElementById(id).classList.add('active');}
-function closePopup(id){document.getElementById(id).classList.remove('active');}
-
-// Schritt-Info (Einfachklick)
-function openStepPopup(si,ai,t){
-  curSi=si; curAi=ai;
-  const s=sorten[si], sc=s.schritte[ai];
-  document.getElementById('ps-title').textContent=s.name+' – Schritt '+(ai+1);
-  document.getElementById('ps-sorte').textContent=s.name;
-  document.getElementById('ps-name').textContent=sc.name;
-  document.getElementById('ps-start').textContent=kaese_hhmm(t.startMin);
-  document.getElementById('ps-end').textContent=kaese_hhmm(t.endMin);
-  document.getElementById('ps-dur').textContent=durLabel(sc.dur);
-  document.getElementById('ps-pause').textContent=sc.pause?durLabel(sc.pause):'–';
-  document.getElementById('ps-note').textContent=sc.note||'–';
-  openPopup('popup-step');
-}
-
-// Detail-Popup (Doppelklick)
-function openDetailPopup(si,ai,t){
-  curSi=si; curAi=ai;
-  const s=sorten[si], sc=s.schritte[ai];
-  document.getElementById('pd-title').textContent=sc.name;
-  const badge=document.getElementById('pd-badge');
-  badge.textContent=s.name;
-  badge.style.background=s.color;
-  document.getElementById('pd-dur').textContent=durLabel(sc.dur);
-  document.getElementById('pd-start').textContent=kaese_hhmm(t.startMin);
-  document.getElementById('pd-end').textContent=kaese_hhmm(t.endMin);
-  document.getElementById('pd-pause').textContent=sc.pause?durLabel(sc.pause):'–';
-  document.getElementById('pd-note').textContent=sc.note||'(keine Notiz)';
-  openPopup('popup-detail');
-}
-
-function editFromDetail(){
-  closePopup('popup-detail');
-  editCurrentStep();
-}
-
-function editCurrentStep(){
-  closePopup('popup-step');
-  const sc=sorten[curSi].schritte[curAi];
-  document.getElementById('edit-title').textContent=
-    sorten[curSi].name+' – „'+sc.name+'" bearbeiten';
-  document.getElementById('edit-name').value=sc.name;
-  document.getElementById('edit-dur').value=sc.dur;
-  document.getElementById('edit-pause').value=sc.pause||0;
-  document.getElementById('edit-note').value=sc.note||'';
-  openPopup('popup-edit');
-}
-
-function cancelEdit(){
-  closePopup('popup-edit');
-  if(returnToManager){
-    returnToManager=false;
-    populateManageSel();
-    document.getElementById('manage-sel').value=curSi;
-    renderManageList();
-    // popup-manage stays open (was not closed)
-  }
-}
-
-function saveStep(){
-  const sc=sorten[curSi].schritte[curAi];
-  sc.name=document.getElementById('edit-name').value.trim()||sc.name;
-  sc.dur=parseInt(document.getElementById('edit-dur').value)||sc.dur;
-  sc.pause=parseInt(document.getElementById('edit-pause').value)||0;
-  sc.note=document.getElementById('edit-note').value.trim();
-  closePopup('popup-edit');
-  kaese_redraw();
-  if(returnToManager){
-    returnToManager=false;
-    populateManageSel();
-    document.getElementById('manage-sel').value=curSi;
-    renderManageList();
-    // popup-manage was never closed, so it's still showing
-  }
-}
-
-function deleteStep(){
-  const name=sorten[curSi].schritte[curAi].name;
-  if(!confirm('Schritt „'+name+'" löschen?')) return;
-  sorten[curSi].schritte.splice(curAi,1);
-  closePopup('popup-edit');
-  kaese_redraw();
-  if(returnToManager){
-    returnToManager=false;
-    populateManageSel();
-    document.getElementById('manage-sel').value=curSi;
-    renderManageList();
-  }
-}
-
-// Startzeit
-let editStartIdx=null;
-function openStartPopup(si){
-  editStartIdx=si;
-  document.getElementById('popup-start-title').textContent='Startzeit: '+sorten[si].name;
-  // Convert internal startH (hours from midnight, offset by DAY_START_H) to HH:MM
-  const totalMin=Math.round(sorten[si].startH*60) + DAY_START_H*60;
-  const realH=Math.floor(totalMin/60)%24;
-  const realM=totalMin%60;
-  document.getElementById('start-val').value=
-    String(realH).padStart(2,'0')+':'+String(realM).padStart(2,'0');
-  openPopup('popup-start');
-}
-function saveStart(){
-  const val=document.getElementById('start-val').value; // "HH:MM"
-  if(!val) return;
-  const parts=val.split(':');
-  const h=parseInt(parts[0]), m=parseInt(parts[1]||0);
-  if(isNaN(h)||isNaN(m)) return;
-  // Convert real clock time back to internal startH (hours since production start)
-  const realTotalMin=h*60+m;
-  const dayStartMin=DAY_START_H*60;
-  // Handle wrap around midnight
-  let internalMin=realTotalMin-dayStartMin;
-  if(internalMin<0) internalMin+=24*60;
-  sorten[editStartIdx].startH=Math.round(internalMin/15)*15/60; // snap to 15min
-  closePopup('popup-start'); kaese_redraw();
-}
-
-// Neue Sorte
-function openAddSorte(){openPopup('popup-add-sorte');}
-function addSorte(){
-  const n=document.getElementById('new-sorte-name').value.trim();
-  if(!n) return;
-  sorten.push({name:n,color:COLORS[sorten.length%COLORS.length],
-    startH:0,visible:true,
-    schritte:[{name:'Schritt 1',dur:60,pause:0,note:''}]});
-  document.getElementById('new-sorte-name').value='';
-  closePopup('popup-add-sorte'); kaese_redraw();
-}
-
-// Sorte löschen (direkt per Index)
-function deleteSorte(si){
-  if(!confirm('Käsesorte „'+sorten[si].name+'" und alle ihre Schritte löschen?')) return;
-  sorten.splice(si,1);
-  kaese_redraw();
-}
-
-// Sorte löschen aus Manager
-function deleteSorteFromManager(){
-  const si=getManageSi();
-  if(!confirm('Käsesorte „'+sorten[si].name+'" und alle ihre Schritte löschen?')) return;
-  sorten.splice(si,1);
-  closePopup('popup-manage'); kaese_redraw();
-}
-
-function resetStartzeiten(){
-  if(!confirm('Alle Startzeiten auf 0 zurücksetzen?')) return;
-  sorten.forEach(s=>s.startH=0); kaese_redraw();
-}
-
-// ══════════════════════════════════════
-//  SCHRITT-MANAGER
-// ══════════════════════════════════════
-function populateManageSel(){
-  const sel=document.getElementById('manage-sel');
-  sel.innerHTML=sorten.map((s,i)=>`<option value="${i}">${s.name}</option>`).join('');
-}
-function getManageSi(){return parseInt(document.getElementById('manage-sel').value)||0;}
-
-function openManageSorte(){
-  populateManageSel();
-  renderManageList();
-  openPopup('popup-manage');
-}
-function openManageSorteFor(si){
-  populateManageSel();
-  document.getElementById('manage-sel').value=si;
-  renderManageList();
-  openPopup('popup-manage');
-}
-function renderManageList(){
-  const si=getManageSi();
-  if(si>=sorten.length){return;}
-  const sorte=sorten[si];
-  const timings=kaese_getTimings(sorte);
-  const list=document.getElementById('manage-list');
-  list.innerHTML='';
-  if(!sorte.schritte.length){
-    list.innerHTML='<div style="padding:10px 8px;font-size:.76rem;color:var(--muted)">Keine Schritte vorhanden.</div>';
-    return;
-  }
-  sorte.schritte.forEach((s,ai)=>{
-    const t=timings[ai];
-    const row=document.createElement('div');
-    row.className='step-row';
-    row.innerHTML=
-      `<span class="step-num">${ai+1}</span>`+
-      `<span class="step-name" title="${s.name}">${s.name}</span>`+
-      `<span class="step-info">${durLabel(s.dur)} ${kaese_hhmm(t.startMin)}–${kaese_hhmm(t.endMin)}</span>`+
-      `<span class="step-actions">`+
-        `<button class="btn btn-primary btn-sm" onclick="editFromManager(${si},${ai})">✏</button>`+
-        `<button class="btn btn-neutral btn-sm" onclick="moveStep(${si},${ai},-1)">↑</button>`+
-        `<button class="btn btn-neutral btn-sm" onclick="moveStep(${si},${ai},1)">↓</button>`+
-        `<button class="btn btn-warn btn-sm" onclick="removeStep(${si},${ai})">🗑</button>`+
-      `</span>`;
-    list.appendChild(row);
+// ── Get timings ──
+window.kp_getTimings = function(sorte) {
+  let cur = sorte.startMin || 0;
+  return (sorte.schritte||[]).map(sc => {
+    const start = cur;
+    const end = cur + (sc.dauer||0);
+    if(!sc.parallel) cur = end;
+    return {startMin: start, endMin: end};
   });
-}
+};
 
-function editFromManager(si,ai){
-  // Keep popup-manage open, open popup-edit on top (z-index 530 > 520)
-  curSi=si; curAi=ai; returnToManager=true;
-  const sc=sorten[si].schritte[ai];
-  document.getElementById('edit-title').textContent=
-    sorten[si].name+' – „'+sc.name+'" bearbeiten';
-  document.getElementById('edit-name').value=sc.name;
-  document.getElementById('edit-dur').value=sc.dur;
-  document.getElementById('edit-pause').value=sc.pause||0;
-  document.getElementById('edit-note').value=sc.note||'';
-  // Do NOT close popup-manage — edit opens on top via z-index
-  openPopup('popup-edit');
-}
-
-function moveStep(si,ai,dir){
-  const arr=sorten[si].schritte,ni=ai+dir;
-  if(ni<0||ni>=arr.length) return;
-  [arr[ai],arr[ni]]=[arr[ni],arr[ai]];
-  renderManageList(); kaese_redraw();
-}
-function removeStep(si,ai){
-  if(!confirm('Schritt „'+sorten[si].schritte[ai].name+'" löschen?')) return;
-  sorten[si].schritte.splice(ai,1);
-  renderManageList(); kaese_redraw();
-}
-function openNewStep(){
-  document.getElementById('ns-name').value='';
-  document.getElementById('ns-dur').value=60;
-  document.getElementById('ns-pause').value=0;
-  document.getElementById('ns-note').value='';
-  openPopup('popup-ns');
-}
-function saveNewStep(){
-  const n=document.getElementById('ns-name').value.trim();
-  if(!n){alert('Bitte Bezeichnung eingeben');return;}
-  const si=getManageSi();
-  sorten[si].schritte.push({
-    name:n,
-    dur:parseInt(document.getElementById('ns-dur').value)||60,
-    pause:parseInt(document.getElementById('ns-pause').value)||0,
-    note:document.getElementById('ns-note').value.trim()
-  });
-  closePopup('popup-ns');
-  renderManageList(); kaese_redraw();
-}
-
-// ══════════════════════════════════════
-//  JSON SAVE / LOAD
-// ══════════════════════════════════════
-function saveJSON(){
-  const blob=new Blob([JSON.stringify({sorten},null,2)],{type:'application/json'});
-  const a=document.createElement('a');
-  a.href=URL.createObjectURL(blob);
-  a.download='kaese_produktion_'+new Date().toISOString().slice(0,10)+'.json';
-  a.click();
-}
-function loadJSON(evt){
-  const file=evt.target.files[0]; if(!file) return;
-  const r=new FileReader();
-  r.onload=e=>{
-    try{
-      const obj=JSON.parse(e.target.result);
-      if(!Array.isArray(obj.sorten)) throw new Error('Kein sorten-Array');
-      // Ensure visible field
-      obj.sorten.forEach(s=>{ if(s.visible===undefined) s.visible=true; });
-      sorten=obj.sorten; kaese_redraw();
-      alert('✓ Daten geladen');
-    } catch(err){alert('Fehler: '+err.message);}
-  };
-  r.readAsText(file);
-  evt.target.value='';
-}
-
-// ══════════════════════════════════════
-//  PNG EXPORT
-// ══════════════════════════════════════
-function kaese_roundRect(ctx,x,y,w,h,r){
-  r=Math.min(r,w/2,h/2);
-  ctx.beginPath();
-  ctx.moveTo(x+r,y);
-  ctx.lineTo(x+w-r,y); ctx.quadraticCurveTo(x+w,y,x+w,y+r);
-  ctx.lineTo(x+w,y+h-r); ctx.quadraticCurveTo(x+w,y+h,x+w-r,y+h);
-  ctx.lineTo(x+r,y+h); ctx.quadraticCurveTo(x,y+h,x,y+h-r);
-  ctx.lineTo(x,y+r); ctx.quadraticCurveTo(x,y,x+r,y);
-  ctx.closePath();
-}
-function kaese_exportPNG(){
-  const LABEL=210, ROW=58, HEADER=26, PAD=18, TITLE=28;
-  const totalPx=pxPerHour*viewHours;
-  const visibleSorten=sorten.filter(s=>s.visible);
-  const W=LABEL+totalPx+PAD*2;
-  const H=TITLE+HEADER+ROW*visibleSorten.length+PAD*2+10;
-
-  const canvas=document.createElement('canvas');
-  canvas.width=W; canvas.height=H;
-  const ctx=canvas.getContext('2d');
-  ctx.fillStyle='#fffdf8'; ctx.fillRect(0,0,W,H);
-
-  ctx.fillStyle='#4a7c59';
-  ctx.font='bold 14px Segoe UI, sans-serif';
-  ctx.fillText('Käseproduktion – Ablaufplanung ('+new Date().toLocaleDateString('de-AT')+')',PAD,20);
-
-  const tick=pxPerHour>=80?1:pxPerHour>=30?2:4;
-  let y=TITLE+PAD;
-
-  ctx.font='9px Segoe UI, sans-serif';
-  for(let h=0;h<=viewHours;h+=tick){
-    const x=PAD+LABEL+h*pxPerHour;
-    ctx.fillStyle='#7a6f5e'; ctx.fillText(kaese_hhmm(h*60),x+2,y+12);
-    ctx.fillStyle='rgba(0,0,0,0.08)'; ctx.fillRect(x,y+14,1,H-y-14);
-  }
-  y+=HEADER;
-  ctx.fillStyle='#d6cfc0'; ctx.fillRect(PAD,y-1,W-PAD*2,1); y+=3;
-
-  const {s:olSet}=kaese_buildOverlapSet();
-
-  visibleSorten.forEach((sorte,idx)=>{
-    // find real si for overlap keys
-    const si=sorten.indexOf(sorte);
-    const timings=kaese_getTimings(sorte);
-    const rowY=y;
-
-    ctx.fillStyle=sorte.color;
-    ctx.beginPath(); ctx.arc(PAD+8,rowY+ROW/2,5,0,Math.PI*2); ctx.fill();
-    ctx.fillStyle='#2c2416';
-    ctx.font='bold 11px Segoe UI, sans-serif';
-    ctx.fillText(sorte.name,PAD+18,rowY+ROW/2+4);
-
-    timings.forEach((t,ai)=>{
-      const s=sorte.schritte[ai];
-      const lx=PAD+LABEL+(t.startMin/60)*pxPerHour;
-      const wx=Math.max(((t.endMin-t.startMin)/60)*pxPerHour,4);
-      ctx.fillStyle=sorte.color;
-      kaese_roundRect(ctx,lx,rowY+13,wx,28,4); ctx.fill();
-      if(olSet.has(si+'-'+ai)){
-        ctx.strokeStyle='#c0392b'; ctx.lineWidth=2;
-        kaese_roundRect(ctx,lx,rowY+13,wx,28,4); ctx.stroke(); ctx.lineWidth=1;
-      }
-      ctx.fillStyle='rgba(255,255,255,.93)';
-      ctx.font='bold 9px Segoe UI, sans-serif';
-      ctx.save();
-      ctx.beginPath(); ctx.rect(lx+2,rowY+13,wx+60,28); ctx.clip();
-      ctx.fillText(s.name,lx+5,rowY+31);
-      ctx.restore();
+// ── Firebase save/load ──
+window.kp_save = async function() {
+  try {
+    if(!db) return;
+    await firebase.database().ref('kaese_produktion').set({
+      sorten: JSON.parse(JSON.stringify(kp_sorten)),
+      pxPerHour: kp_pxPerHour,
+      viewHours: kp_viewHours
     });
-    ctx.fillStyle='#d6cfc0'; ctx.fillRect(PAD,rowY+ROW,W-PAD*2,1);
-    y+=ROW;
-  });
+  } catch(e) { console.warn('Käse save:', e); }
+};
 
-  const a=document.createElement('a');
-  a.download='kaese_produktion_'+new Date().toISOString().slice(0,10)+'.png';
-  a.href=canvas.toDataURL('image/png');
-  a.click();
-}
-
-// ══════════════════════════════════════
-//  MOBILE BOTTOM SHEET
-// ══════════════════════════════════════
-function applyMobileZoom(){
-  const ph=parseInt(document.getElementById('px-per-hour-m').value)||28;
-  const vh=parseInt(document.getElementById('view-hours-m').value)||32;
-  document.getElementById('px-per-hour').value=ph;
-  document.getElementById('view-hours').value=vh;
-  kaese_redraw();
-  kaese_closeBottomSheet();
-}
-
-function kaese_openBottomSheet(){
-  // Sync mobile inputs with current desktop values
-  document.getElementById('px-per-hour-m').value=
-    document.getElementById('px-per-hour').value;
-  document.getElementById('view-hours-m').value=
-    document.getElementById('view-hours').value;
-
-  // Render visibility toggles
-  const list=document.getElementById('bs-vis-list');
-  list.innerHTML='';
-  sorten.forEach((s,si)=>{
-    const row=document.createElement('div');
-    row.style.cssText='display:flex;align-items:center;justify-content:space-between;'+
-      'background:#fff;border-radius:8px;padding:7px 10px;border:2px solid '+s.color+';';
-    const nameSpan=document.createElement('span');
-    nameSpan.style.cssText='font-size:.8rem;font-weight:700;color:'+s.color+';';
-    nameSpan.textContent=s.name;
-    const toggle=document.createElement('button');
-    toggle.style.cssText='border:none;border-radius:14px;padding:4px 12px;font-size:.75rem;'+
-      'font-weight:700;cursor:pointer;background:'+(s.visible?s.color:'#ccc')+';color:#fff;';
-    toggle.textContent=s.visible?'✓ Sichtbar':'✕ Ausgeblendet';
-    toggle.onclick=()=>{
-      s.visible=!s.visible;
-      toggle.style.background=s.visible?s.color:'#ccc';
-      toggle.textContent=s.visible?'✓ Sichtbar':'✕ Ausgeblendet';
-      kaese_renderVisChips();
-      kaese_redraw();
-    };
-    row.appendChild(nameSpan);
-    row.appendChild(toggle);
-    list.appendChild(row);
-  });
-  document.getElementById('bs-overlay').classList.add('active');
-  document.getElementById('bottom-sheet').classList.add('open');
-}
-function kaese_closeBottomSheet(){
-  document.getElementById('bs-overlay').classList.remove('active');
-  document.getElementById('bottom-sheet').classList.remove('open');
-}
-
-// ══════════════════════════════════════
-//  LOKALER SPEICHER (Browser)
-// ══════════════════════════════════════
-// Firebase-backed storage
-
-window.kaeseFirebaseSave = async function(){
-  try{
-    if(typeof db !== 'undefined') {
-      const payload = {
-        sorten: JSON.parse(JSON.stringify(sorten)),
-        pxPerHour: parseInt(document.getElementById('px-per-hour')?.value)||28,
-        viewHours: parseInt(document.getElementById('view-hours')?.value)||32
-      };
-      await firebase.database().ref('kaese_produktion').set(payload);
-    }
-  } catch(e){ console.warn('Kaese save error:', e); }
-}
-
-window.kaeseFirebaseLoad = async function(){
-  try{
-    if(typeof db === 'undefined') return false;
+window.kp_load = async function() {
+  try {
+    if(!db) return false;
     const snap = await firebase.database().ref('kaese_produktion').get();
     const obj = snap.val();
     if(!obj || !Array.isArray(obj.sorten)) return false;
-    obj.sorten.forEach(s=>{ if(s.visible===undefined) s.visible=true; });
-    sorten=obj.sorten;
-    if(obj.pxPerHour){
-      const ph=document.getElementById('px-per-hour');
-      const phm=document.getElementById('px-per-hour-m');
-      if(ph) ph.value=obj.pxPerHour;
-      if(phm) phm.value=obj.pxPerHour;
-    }
-    if(obj.viewHours){
-      const vh=document.getElementById('view-hours');
-      const vhm=document.getElementById('view-hours-m');
-      if(vh) vh.value=obj.viewHours;
-      if(vhm) vhm.value=obj.viewHours;
-    }
+    obj.sorten.forEach(s => { if(s.visible===undefined) s.visible=true; });
+    kp_sorten = obj.sorten;
+    kp_pxPerHour = obj.pxPerHour || 28;
+    kp_viewHours = obj.viewHours || 32;
     return true;
-  } catch(e){ return false; }
-}
-
-// Patch kaese_redraw to auto-save after every render – using a wrapper
-(function(){
-  const orig=kaese_redraw;
-  window.kaese_redraw=function(){
-    orig();
-    // Debounced Firebase save
-    clearTimeout(window._kaeseSaveTimer);
-    window._kaeseSaveTimer = setTimeout(()=>{ window.kaeseFirebaseSave&&window.kaeseFirebaseSave(); }, 1500);
-  };
-}());
-
-// ══════════════════════════════════════
-//  INIT
-// ══════════════════════════════════════
-// Load from Firebase on init
-window.kaeseInit = async function() {
-  const loaded = await window.kaeseFirebaseLoad();
-  if(loaded) {
-    window.showSaveToast && showSaveToast('Käse-Daten geladen');
-  }
-  kaese_redraw();
+  } catch(e) { return false; }
 };
 
+// ── Debounced save ──
+window.kp_debounceSave = function() {
+  clearTimeout(window._kpSaveTimer);
+  window._kpSaveTimer = setTimeout(() => kp_save(), 1500);
+};
 
+// ── Default sorten ──
+window.kp_defaultSorten = function() {
+  return [
+    { name:'Bergkäse', color:'#4db84e', visible:true, startMin:360,
+      schritte:[
+        {name:'Erwärmen',dauer:30,parallel:false},{name:'Lab zugeben',dauer:45,parallel:false},
+        {name:'Schneiden',dauer:20,parallel:false},{name:'Rühren/Brennen',dauer:60,parallel:false},
+        {name:'Abfüllen',dauer:20,parallel:false},{name:'Pressen',dauer:240,parallel:false},
+        {name:'Salzbad',dauer:720,parallel:false},{name:'Reifen',dauer:2880,parallel:false}
+      ]},
+    { name:'Frischkäse', color:'#3a8fd4', visible:true, startMin:480,
+      schritte:[
+        {name:'Erwärmen',dauer:20,parallel:false},{name:'Kultur/Lab',dauer:30,parallel:false},
+        {name:'Gerinnen',dauer:120,parallel:false},{name:'Abtropfen',dauer:240,parallel:false},
+        {name:'Würzen',dauer:15,parallel:false}
+      ]}
+  ];
+};
 
+// ── Render the Gantt chart ──
+window.kp_render = function() {
+  const container = document.getElementById('kp-container');
+  if(!container) return;
+  
+  const ph = kp_pxPerHour;
+  const vh = kp_viewHours;
+  const {s: olSet} = kp_buildOverlapSet();
+  const visSorten = kp_sorten.filter(s => s.visible);
+  
+  let html_str = '';
+  
+  // Header ticks
+  let ticks = '';
+  const tick = ph >= 80 ? 1 : ph >= 30 ? 2 : 4;
+  for(let h=0; h<=vh; h+=tick) {
+    const pct = (h/vh)*100;
+    const isMid = h > 0 && h % 24 === 0;
+    ticks += `<div class="kp-tick${isMid?' kp-midnight':''}" style="left:${pct}%">
+      <span>${kp_hhmm(h*60)}</span></div>`;
+  }
+  
+  // Rows
+  let rows = '';
+  visSorten.forEach((sorte, vi) => {
+    const si = kp_sorten.indexOf(sorte);
+    const timings = kp_getTimings(sorte);
+    
+    let bars = '';
+    timings.forEach((t, ai) => {
+      const sc = sorte.schritte[ai];
+      const leftPct = (t.startMin / (vh*60)) * 100;
+      const widthPct = ((t.endMin - t.startMin) / (vh*60)) * 100;
+      const isOl = olSet.has(si+'-'+ai);
+      bars += `<div class="kp-bar-wrap" style="left:${leftPct}%;width:${Math.max(widthPct,0.3)}%">
+        <div class="kp-bar${isOl?' kp-overlap':''}" style="background:${sorte.color};border-color:${sorte.color}"
+          onclick="kp_showStep(${si},${ai})">
+          <div class="kp-bar-label"><span>${sc.name}</span></div>
+        </div>
+      </div>`;
+    });
+    
+    rows += `<div class="kp-row">
+      <div class="kp-row-label">
+        <div class="kp-dot" style="background:${sorte.color}"></div>
+        <span class="kp-label-text">${sorte.name}</span>
+        <div class="kp-row-btns">
+          <button class="kp-lbl-btn" onclick="kp_editSorte(${si})">✎</button>
+          <button class="kp-lbl-btn" onclick="kp_shiftStart(${si},-30)" title="-30min">◀</button>
+          <button class="kp-lbl-btn" onclick="kp_shiftStart(${si},30)" title="+30min">▶</button>
+          <button class="kp-lbl-btn kp-del-btn" onclick="kp_deleteSorte(${si})">✕</button>
+        </div>
+      </div>
+      <div class="kp-timeline" ondragover="event.preventDefault()" 
+        ondrop="kp_onDrop(event,${si})" 
+        ondragstart="kp_onDragStart(event,${si})"
+        draggable="false">
+        ${bars}
+      </div>
+    </div>`;
+  });
+  
+  if(visSorten.length === 0) {
+    rows = '<div style="text-align:center;padding:2rem;color:var(--text3)">Keine Käsesorten. + Neue Sorte klicken.</div>';
+  }
+  
+  // Overlap warning
+  const olCount = olSet.size;
+  const olWarn = olCount > 0 ? 
+    `<div style="background:rgba(200,60,60,.15);border-left:3px solid var(--red);padding:.4rem .8rem;font-size:.78rem;color:var(--red);margin-bottom:.5rem">
+      ⚠ ${Math.ceil(olCount/2)} Überschneidung(en) erkannt
+    </div>` : '';
+  
+  container.innerHTML = `
+    ${olWarn}
+    <!-- Toolbar -->
+    <div class="kp-toolbar">
+      <label style="font-size:.75rem;color:var(--text3)">px/h
+        <input type="number" id="kp-ph" value="${ph}" min="10" max="120" 
+          onchange="kp_pxPerHour=+this.value;kp_render()" 
+          style="width:52px;padding:3px 5px;background:var(--bg3);border:1px solid var(--border);border-radius:4px;color:var(--text);font-size:.78rem;margin-left:3px">
+      </label>
+      <label style="font-size:.75rem;color:var(--text3)">Stunden
+        <input type="number" id="kp-vh" value="${vh}" min="8" max="96"
+          onchange="kp_viewHours=+this.value;kp_render()"
+          style="width:52px;padding:3px 5px;background:var(--bg3);border:1px solid var(--border);border-radius:4px;color:var(--text);font-size:.78rem;margin-left:3px">
+      </label>
+      <div style="flex:1"></div>
+      <button class="btn-primary" onclick="kp_newSorte()" style="font-size:.78rem;padding:.3rem .7rem">+ Neue Sorte</button>
+      <button class="btn-secondary" onclick="kp_exportPNG()" style="font-size:.78rem;padding:.3rem .7rem">↓ PNG</button>
+      <button class="btn-secondary" onclick="kp_resetDefault()" style="font-size:.78rem;padding:.3rem .7rem">↺ Reset</button>
+    </div>
+    <!-- Vis chips -->
+    <div style="display:flex;flex-wrap:wrap;gap:.3rem;padding:.4rem .6rem;border-bottom:1px solid var(--border)">
+      ${kp_sorten.map((s,si)=>`
+        <div class="kp-vis-chip${s.visible?'':' kp-hidden'}" onclick="kp_toggleVis(${si})"
+          style="border-color:${s.color}20;background:${s.visible?s.color+'20':'transparent'}">
+          <div style="width:8px;height:8px;border-radius:50%;background:${s.color};flex-shrink:0"></div>
+          <span style="font-size:.72rem">${s.name}</span>
+        </div>`).join('')}
+    </div>
+    <!-- Chart -->
+    <div style="overflow-x:auto;padding:.5rem .5rem 3rem">
+      <div style="min-width:500px">
+        <!-- Time header -->
+        <div style="margin-left:180px;height:22px;position:relative;border-bottom:1px solid var(--border);margin-bottom:2px">
+          ${ticks}
+        </div>
+        <!-- Rows -->
+        ${rows}
+      </div>
+    </div>
+  `;
+};
 
+// ── Shift start time ──
+window.kp_shiftStart = function(si, delta) {
+  if(!kp_sorten[si]) return;
+  kp_sorten[si].startMin = Math.max(0, (kp_sorten[si].startMin||0) + delta);
+  kp_render(); kp_debounceSave();
+};
+
+// ── Toggle visibility ──
+window.kp_toggleVis = function(si) {
+  if(!kp_sorten[si]) return;
+  kp_sorten[si].visible = !kp_sorten[si].visible;
+  kp_render(); kp_debounceSave();
+};
+
+// ── Show step detail ──
+window.kp_showStep = function(si, ai) {
+  const sorte = kp_sorten[si];
+  if(!sorte) return;
+  const sc = sorte.schritte[ai];
+  const tim = kp_getTimings(sorte);
+  const t = tim[ai];
+  showPopupHTML(
+    '<div style="font-weight:bold;font-size:.95rem;color:var(--gold);margin-bottom:.5rem">' + sc.name + '</div>' +
+    '<table style="width:100%;font-size:.82rem"><tbody>' +
+    '<tr><td style="color:var(--text3);padding:.2rem 0">Sorte</td><td style="color:var(--text)">' + sorte.name + '</td></tr>' +
+    '<tr><td style="color:var(--text3)">Start</td><td>' + kp_hhmm(t.startMin) + '</td></tr>' +
+    '<tr><td style="color:var(--text3)">Ende</td><td>' + kp_hhmm(t.endMin) + '</td></tr>' +
+    '<tr><td style="color:var(--text3)">Dauer</td><td>' + sc.dauer + ' min</td></tr>' +
+    '</tbody></table>' +
+    '<div style="display:flex;gap:.5rem;margin-top:.8rem">' +
+    '<button class="btn-secondary" style="flex:1" onclick="closePopup()">Schließen</button>' +
+    '<button class="btn-primary" onclick="closePopup();kp_editSchritt(' + si + ',' + ai + ')">✎ Bearbeiten</button>' +
+    '</div>'
+  );
+};
+
+// ── New Sorte ──
+window.kp_newSorte = function() {
+  const col = kp_COLORS[kp_sorten.length % kp_COLORS.length];
+  showPopupHTML(
+    '<div style="font-weight:bold;margin-bottom:.8rem">Neue Käsesorte</div>' +
+    '<label class="inp-label">Name</label>' +
+    '<input id="kp-ns-name" class="inp" placeholder="z.B. Bergkäse" style="margin-bottom:.4rem" />' +
+    '<label class="inp-label">Startzeit (Minuten ab 00:00)</label>' +
+    '<input id="kp-ns-start" class="inp" type="number" value="360" placeholder="360 = 06:00" style="margin-bottom:.4rem" />' +
+    '<label class="inp-label">Farbe</label>' +
+    '<input id="kp-ns-color" class="inp" type="color" value="' + col + '" style="margin-bottom:.8rem;height:38px" />' +
+    '<div style="display:flex;gap:.5rem">' +
+    '<button class="btn-secondary" style="flex:1" onclick="closePopup()">Abbrechen</button>' +
+    '<button class="btn-primary" onclick="kp_addSorte()">Hinzufügen</button>' +
+    '</div>'
+  );
+};
+
+window.kp_addSorte = function() {
+  const name = document.getElementById('kp-ns-name')?.value.trim();
+  if(!name) { alert('Name erforderlich'); return; }
+  const start = parseInt(document.getElementById('kp-ns-start')?.value)||0;
+  const color = document.getElementById('kp-ns-color')?.value || kp_COLORS[0];
+  kp_sorten.push({name, color, visible:true, startMin:start, schritte:[]});
+  closePopup(); kp_render(); kp_debounceSave();
+};
+
+// ── Delete Sorte ──
+window.kp_deleteSorte = function(si) {
+  if(!confirm('Sorte "' + kp_sorten[si]?.name + '" löschen?')) return;
+  kp_sorten.splice(si, 1);
+  kp_render(); kp_debounceSave();
+};
+
+// ── Edit Sorte (name/color/start + manage schritte) ──
+window.kp_editSorte = function(si) {
+  const s = kp_sorten[si];
+  if(!s) return;
+  const schritteHTML = (s.schritte||[]).map((sc,ai) =>
+    '<div style="display:flex;align-items:center;gap:.4rem;padding:.25rem 0;border-bottom:1px solid var(--border);font-size:.8rem">' +
+    '<span style="flex:1">' + sc.name + ' (' + sc.dauer + ' min)</span>' +
+    '<button class="btn-xs" onclick="closePopup();kp_editSchritt(' + si + ',' + ai + ')">✎</button>' +
+    '<button class="btn-xs-danger" onclick="kp_sorten[' + si + '].schritte.splice(' + ai + ',1);closePopup();kp_render();kp_editSorte(' + si + ')">✕</button>' +
+    '</div>'
+  ).join('');
+  
+  showPopupHTML(
+    '<div style="font-weight:bold;margin-bottom:.6rem">✎ ' + s.name + '</div>' +
+    '<label class="inp-label">Name</label>' +
+    '<input id="kp-es-name" class="inp" value="' + s.name + '" style="margin-bottom:.4rem" />' +
+    '<label class="inp-label">Startzeit (Min ab 00:00, 360=06:00)</label>' +
+    '<input id="kp-es-start" class="inp" type="number" value="' + (s.startMin||0) + '" style="margin-bottom:.4rem" />' +
+    '<label class="inp-label">Farbe</label>' +
+    '<input id="kp-es-color" class="inp" type="color" value="' + s.color + '" style="margin-bottom:.8rem;height:38px" />' +
+    '<div style="font-size:.78rem;font-weight:bold;color:var(--text3);margin-bottom:.3rem">SCHRITTE (' + s.schritte.length + ')</div>' +
+    '<div style="max-height:160px;overflow-y:auto;margin-bottom:.5rem">' + (schritteHTML||'<div style="color:var(--text3);font-size:.78rem">Noch keine Schritte</div>') + '</div>' +
+    '<button class="btn-secondary" style="width:100%;margin-bottom:.6rem" onclick="closePopup();kp_addSchritt(' + si + ')">+ Schritt hinzufügen</button>' +
+    '<div style="display:flex;gap:.5rem">' +
+    '<button class="btn-secondary" style="flex:1" onclick="closePopup();kp_render()">Schließen</button>' +
+    '<button class="btn-primary" onclick="kp_saveSorteEdit(' + si + ')">💾 Speichern</button>' +
+    '</div>'
+  );
+};
+
+window.kp_saveSorteEdit = function(si) {
+  const name = document.getElementById('kp-es-name')?.value.trim();
+  const start = parseInt(document.getElementById('kp-es-start')?.value)||0;
+  const color = document.getElementById('kp-es-color')?.value;
+  if(!name) { alert('Name erforderlich'); return; }
+  kp_sorten[si].name = name;
+  kp_sorten[si].startMin = start;
+  kp_sorten[si].color = color;
+  closePopup(); kp_render(); kp_debounceSave();
+};
+
+// ── Add Schritt ──
+window.kp_addSchritt = function(si) {
+  showPopupHTML(
+    '<div style="font-weight:bold;margin-bottom:.8rem">+ Schritt zu ' + kp_sorten[si]?.name + '</div>' +
+    '<label class="inp-label">Name</label>' +
+    '<input id="kp-sc-name" class="inp" placeholder="z.B. Pressen" style="margin-bottom:.4rem" />' +
+    '<label class="inp-label">Dauer (Minuten)</label>' +
+    '<input id="kp-sc-dauer" class="inp" type="number" value="60" style="margin-bottom:.8rem" />' +
+    '<div style="display:flex;gap:.5rem">' +
+    '<button class="btn-secondary" style="flex:1" onclick="closePopup();kp_editSorte(' + si + ')">Abbrechen</button>' +
+    '<button class="btn-primary" onclick="kp_saveSchritt(' + si + ')">Hinzufügen</button>' +
+    '</div>'
+  );
+};
+
+window.kp_saveSchritt = function(si) {
+  const name = document.getElementById('kp-sc-name')?.value.trim();
+  const dauer = parseInt(document.getElementById('kp-sc-dauer')?.value)||60;
+  if(!name) { alert('Name erforderlich'); return; }
+  if(!kp_sorten[si].schritte) kp_sorten[si].schritte = [];
+  kp_sorten[si].schritte.push({name, dauer, parallel:false});
+  closePopup(); kp_render(); kp_debounceSave();
+};
+
+// ── Edit Schritt ──
+window.kp_editSchritt = function(si, ai) {
+  const sc = kp_sorten[si]?.schritte[ai];
+  if(!sc) return;
+  showPopupHTML(
+    '<div style="font-weight:bold;margin-bottom:.8rem">✎ Schritt bearbeiten</div>' +
+    '<label class="inp-label">Name</label>' +
+    '<input id="kp-esc-name" class="inp" value="' + sc.name + '" style="margin-bottom:.4rem" />' +
+    '<label class="inp-label">Dauer (Minuten)</label>' +
+    '<input id="kp-esc-dauer" class="inp" type="number" value="' + sc.dauer + '" style="margin-bottom:.8rem" />' +
+    '<div style="display:flex;gap:.5rem">' +
+    '<button class="btn-secondary" style="flex:1" onclick="closePopup();kp_editSorte(' + si + ')">Abbrechen</button>' +
+    '<button class="btn-primary" onclick="kp_saveSchrittEdit(' + si + ',' + ai + ')">💾 Speichern</button>' +
+    '</div>'
+  );
+};
+
+window.kp_saveSchrittEdit = function(si, ai) {
+  const name = document.getElementById('kp-esc-name')?.value.trim();
+  const dauer = parseInt(document.getElementById('kp-esc-dauer')?.value)||60;
+  if(!name) return;
+  kp_sorten[si].schritte[ai].name = name;
+  kp_sorten[si].schritte[ai].dauer = dauer;
+  closePopup(); kp_render(); kp_debounceSave();
+};
+
+// ── Reset to defaults ──
+window.kp_resetDefault = function() {
+  if(!confirm('Alle Daten zurücksetzen?')) return;
+  kp_sorten = kp_defaultSorten();
+  kp_render(); kp_debounceSave();
+};
+
+// ── PNG Export ──
+window.kp_exportPNG = function() {
+  const LABEL=180, ROW=60, HEADER=24, PAD=16;
+  const ph = kp_pxPerHour, vh = kp_viewHours;
+  const totalPx = ph * vh;
+  const visSorten = kp_sorten.filter(s=>s.visible);
+  const W = LABEL + totalPx + PAD*2;
+  const H = HEADER + ROW*visSorten.length + PAD*2 + 30;
+  const canvas = document.createElement('canvas');
+  canvas.width = W; canvas.height = H;
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#0a1a04'; ctx.fillRect(0,0,W,H);
+  ctx.fillStyle = '#4db84e'; ctx.font = 'bold 13px Arial';
+  ctx.fillText('Käseproduktion – ' + new Date().toLocaleDateString('de-AT'), PAD, 18);
+  const tick = ph>=80?1:ph>=30?2:4;
+  let y = HEADER + PAD;
+  ctx.font = '9px Arial';
+  for(let h=0;h<=vh;h+=tick){
+    const x = PAD+LABEL+(h/vh)*totalPx;
+    ctx.fillStyle='#8aaa7a'; ctx.fillText(kp_hhmm(h*60),x+2,y-4);
+    ctx.fillStyle='rgba(255,255,255,.06)'; ctx.fillRect(x,y-4,1,H);
+  }
+  const {s:olSet} = kp_buildOverlapSet();
+  visSorten.forEach((sorte) => {
+    const si = kp_sorten.indexOf(sorte);
+    const timings = kp_getTimings(sorte);
+    ctx.fillStyle = sorte.color;
+    ctx.beginPath(); ctx.arc(PAD+7,y+ROW/2,5,0,Math.PI*2); ctx.fill();
+    ctx.fillStyle = '#e8f0e0'; ctx.font = 'bold 11px Arial';
+    ctx.fillText(sorte.name, PAD+16, y+ROW/2+4);
+    timings.forEach((t,ai) => {
+      const sc = sorte.schritte[ai];
+      const lx = PAD+LABEL+(t.startMin/(vh*60))*totalPx;
+      const wx = Math.max(((t.endMin-t.startMin)/(vh*60))*totalPx, 4);
+      ctx.fillStyle = sorte.color;
+      ctx.beginPath(); ctx.roundRect(lx, y+12, wx, 28, 4); ctx.fill();
+      if(olSet.has(si+'-'+ai)){ ctx.strokeStyle='#e05050';ctx.lineWidth=2;ctx.stroke();ctx.lineWidth=1; }
+      ctx.fillStyle='rgba(255,255,255,.9)'; ctx.font='bold 9px Arial';
+      ctx.save(); ctx.beginPath(); ctx.rect(lx+2,y+12,wx,28); ctx.clip();
+      ctx.fillText(sc.name, lx+4, y+30); ctx.restore();
+    });
+    ctx.fillStyle='rgba(255,255,255,.08)'; ctx.fillRect(PAD,y+ROW,W-PAD*2,1);
+    y += ROW;
+  });
+  const a = document.createElement('a');
+  a.download = 'kaese_'+new Date().toISOString().slice(0,10)+'.png';
+  a.href = canvas.toDataURL('image/png'); a.click();
+};
+
+// ── Init ──
+window.kaeseInit = async function() {
+  const loaded = await kp_load();
+  if(!loaded) kp_sorten = kp_defaultSorten();
+  kp_render();
+  if(loaded) showSaveToast&&showSaveToast('Käse-Daten geladen');
+};
 
 
 // Load kaese data when navigating to kaese
@@ -8449,23 +7104,64 @@ window.navigate = function(view) {
   _origNavKaese(view);
   if(view === 'kaese') {
     setTimeout(() => {
-      // Inject template into #kaese-modul
-      const tmpl = document.getElementById('kaese-template');
-      const container = document.getElementById('kaese-modul');
-      if(tmpl && container && !container.hasAttribute('data-initialized')) {
-        container.innerHTML = tmpl.cloneNode(true).innerHTML;
-        container.setAttribute('data-initialized', '1');
-        // Fix popup z-index within HerdenPro
-        container.querySelectorAll('.popup-overlay').forEach(p => {
-          p.style.position = 'fixed';
-          p.style.zIndex = '500';
-        });
-        window.kaeseInit && window.kaeseInit();
-      } else if(container) {
-        window.redraw && window.redraw();
+      const container = document.getElementById('kp-container');
+      if(container) {
+        window.kaeseInit ? window.kaeseInit() : window.kp_render && window.kp_render();
       }
-    }, 100);
+    }, 150);
   }
+};
+
+window.setBehBehandler = function(typ, btn) {
+  document.getElementById('b-behandler').value = typ;
+  const btnP = document.getElementById('b-btn-personal');
+  const btnT = document.getElementById('b-btn-tierarzt');
+  const taBlock = document.getElementById('b-tazettel-block');
+  const fotoBlock = document.getElementById('b-foto-block');
+  if(btnP) { btnP.style.background = typ==='personal'?'var(--green)':'transparent'; btnP.style.color=typ==='personal'?'#fff':'var(--text3)'; btnP.style.border=typ==='personal'?'2px solid var(--green)':'1px solid var(--border)'; }
+  if(btnT) { btnT.style.background = typ==='tierarzt'?'#3a8fd4':'transparent'; btnT.style.color=typ==='tierarzt'?'#fff':'var(--text3)'; btnT.style.border=typ==='tierarzt'?'2px solid #3a8fd4':'1px solid var(--border)'; }
+  if(taBlock) taBlock.style.display = typ==='tierarzt' ? '' : 'none';
+};
+
+window.tazettelFotoPreview = function(input) {
+  const file = input.files[0];
+  if(!file) return;
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    const preview = document.getElementById('b-tazettel-preview');
+    const img = document.getElementById('b-tazettel-img');
+    const data = document.getElementById('b-tazettel-data');
+    if(preview && img && data) {
+      img.src = e.target.result;
+      preview.style.display = '';
+      data.value = e.target.result;
+    }
+  };
+  reader.readAsDataURL(file);
+};
+
+window.filterBehandlung = function(typ, btn) {
+  document.querySelectorAll('#beh-filter-alle,#beh-filter-personal,#beh-filter-tierarzt').forEach(b=>b.classList.remove('active'));
+  if(btn) btn.classList.add('active');
+  document.querySelectorAll('.list-card[data-behandler]').forEach(card => {
+    if(typ==='alle') card.style.display='';
+    else card.style.display = card.dataset.behandler===typ ? '' : 'none';
+  });
+};
+
+window.bsmFotoPreview = function(input) {
+  const file = input.files[0];
+  if(!file) return;
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    const preview = document.getElementById('bsm-foto-preview');
+    const img = document.getElementById('bsm-foto-img');
+    const data = document.getElementById('bsm-foto-data');
+    if(img) img.src = e.target.result;
+    if(preview) preview.style.display = 'block';
+    if(data) data.value = e.target.result;
+  };
+  reader.readAsDataURL(file);
 };
   initApp();
         }
@@ -10315,23 +9011,64 @@ window.navigate = function(view) {
   _origNavKaese(view);
   if(view === 'kaese') {
     setTimeout(() => {
-      // Inject template into #kaese-modul
-      const tmpl = document.getElementById('kaese-template');
-      const container = document.getElementById('kaese-modul');
-      if(tmpl && container && !container.hasAttribute('data-initialized')) {
-        container.innerHTML = tmpl.cloneNode(true).innerHTML;
-        container.setAttribute('data-initialized', '1');
-        // Fix popup z-index within HerdenPro
-        container.querySelectorAll('.popup-overlay').forEach(p => {
-          p.style.position = 'fixed';
-          p.style.zIndex = '500';
-        });
-        window.kaeseInit && window.kaeseInit();
-      } else if(container) {
-        window.redraw && window.redraw();
+      const container = document.getElementById('kp-container');
+      if(container) {
+        window.kaeseInit ? window.kaeseInit() : window.kp_render && window.kp_render();
       }
-    }, 100);
+    }, 150);
   }
+};
+
+window.setBehBehandler = function(typ, btn) {
+  document.getElementById('b-behandler').value = typ;
+  const btnP = document.getElementById('b-btn-personal');
+  const btnT = document.getElementById('b-btn-tierarzt');
+  const taBlock = document.getElementById('b-tazettel-block');
+  const fotoBlock = document.getElementById('b-foto-block');
+  if(btnP) { btnP.style.background = typ==='personal'?'var(--green)':'transparent'; btnP.style.color=typ==='personal'?'#fff':'var(--text3)'; btnP.style.border=typ==='personal'?'2px solid var(--green)':'1px solid var(--border)'; }
+  if(btnT) { btnT.style.background = typ==='tierarzt'?'#3a8fd4':'transparent'; btnT.style.color=typ==='tierarzt'?'#fff':'var(--text3)'; btnT.style.border=typ==='tierarzt'?'2px solid #3a8fd4':'1px solid var(--border)'; }
+  if(taBlock) taBlock.style.display = typ==='tierarzt' ? '' : 'none';
+};
+
+window.tazettelFotoPreview = function(input) {
+  const file = input.files[0];
+  if(!file) return;
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    const preview = document.getElementById('b-tazettel-preview');
+    const img = document.getElementById('b-tazettel-img');
+    const data = document.getElementById('b-tazettel-data');
+    if(preview && img && data) {
+      img.src = e.target.result;
+      preview.style.display = '';
+      data.value = e.target.result;
+    }
+  };
+  reader.readAsDataURL(file);
+};
+
+window.filterBehandlung = function(typ, btn) {
+  document.querySelectorAll('#beh-filter-alle,#beh-filter-personal,#beh-filter-tierarzt').forEach(b=>b.classList.remove('active'));
+  if(btn) btn.classList.add('active');
+  document.querySelectorAll('.list-card[data-behandler]').forEach(card => {
+    if(typ==='alle') card.style.display='';
+    else card.style.display = card.dataset.behandler===typ ? '' : 'none';
+  });
+};
+
+window.bsmFotoPreview = function(input) {
+  const file = input.files[0];
+  if(!file) return;
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    const preview = document.getElementById('bsm-foto-preview');
+    const img = document.getElementById('bsm-foto-img');
+    const data = document.getElementById('bsm-foto-data');
+    if(img) img.src = e.target.result;
+    if(preview) preview.style.display = 'block';
+    if(data) data.value = e.target.result;
+  };
+  reader.readAsDataURL(file);
 };
   initApp();
   }
