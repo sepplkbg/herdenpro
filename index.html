@@ -1394,7 +1394,7 @@ function behandlungCard(bid,b){
   ${b.medikament?`<div class="history-sub">${b.medikament}${b.dosis?' · '+b.dosis:''}${b.tierarzt?' · Dr.'+b.tierarzt:''}</div>`:''}
   ${b.symptome?`<div class="history-note">${b.symptome}</div>`:''}
   <div style="display:flex;align-items:center;gap:.3rem;margin-top:.3rem;font-size:.72rem;color:${b.behandler==='tierarzt'?'#3a8fd4':'var(--green)'}">
-    ${behIcon} ${b.behandler==='tierarzt'?'Tierarzt':'Almpersonal'}
+    ${_behIcon} ${b.behandler==='tierarzt'?'Tierarzt':'Almpersonal'}
   </div>
   ${b.fotoData?`<div style="margin-top:.4rem"><img src="${b.fotoData}" style="max-width:100%;max-height:90px;border-radius:8px;object-fit:cover;border:1px solid var(--border);cursor:pointer" onclick="showFotoPopup(behandlungen['${bid}']?.fotoData||'')" /></div>`:''}
   ${b.tazettelData?`<div style="margin-top:.3rem"><div style="font-size:.7rem;color:#3a8fd4;margin-bottom:.2rem">📋 Tierarztzettel</div><img src="${b.tazettelData}" style="max-width:100%;max-height:80px;border-radius:6px;object-fit:cover;cursor:pointer;border:1px solid #3a8fd4" onclick="showFotoPopup(behandlungen['${bid}']?.tazettelData||'')" /></div>`:''}
