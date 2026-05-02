@@ -19,11 +19,11 @@
 ═══════════════════════════════════════════════════════════════════════════ -->
 <script>
 // Force clear cache if version changed
-if(localStorage.getItem('hp_version') !== 'v25.1') {
+if(localStorage.getItem('hp_version') !== 'v25.2') {
   // Keep Firebase auth but clear nav/order caches
   localStorage.removeItem('mainNav');
   localStorage.removeItem('mehrOrder');
-  localStorage.setItem('hp_version','v25.1');
+  localStorage.setItem('hp_version','v25.2');
 }
 window.FIREBASE_CONFIG = {
   apiKey:            "AIzaSyB2YSWcf1Kk2QG_JcCjkgJikx-f73yj-kc",
@@ -7187,10 +7187,13 @@ window.deleteBenutzer = async function(uid, email) {
       mehrBtn.addEventListener('drop',function(e){
         e.preventDefault();
         var id=e.dataTransfer.getData('text/plain');
-        if(id&&!id.startsWith('mehr:')&&(_mainNav||[]).includes(id)&&_mainNav.length>2){
+        var protected_ids = ['dashboard','herde','saison','milch'];
+        if(id&&!id.startsWith('mehr:')&&(_mainNav||[]).includes(id)&&_mainNav.length>2&&!protected_ids.includes(id)){
           _mainNav=_mainNav.filter(function(m){return m!==id;});
           localStorage.setItem('mainNav',JSON.stringify(_mainNav));
           renderNav();renderMehrGrid();
+        } else if(protected_ids.includes(id)) {
+          window.showSaveToast && showSaveToast(id.charAt(0).toUpperCase()+id.slice(1)+' kann nicht verschoben werden');
         }
       });
     }
