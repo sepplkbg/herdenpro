@@ -1588,7 +1588,15 @@ function renderEinstellungen() {
     </div>
 
     <div class="card-section" style="margin-bottom:.8rem;border-color:var(--red)">
-      <div class="section-label" style="margin-bottom:.5rem;color:var(--red)">⚠ DATEN BEREINIGEN</div>
+      <div class="section-label" style="margin-bottom:.5rem;color:var(--red)">⚠ DATEN VERWALTEN</div>
+      <!-- Neue Saison / Alles löschen -->
+      <div style="background:rgba(200,60,60,.08);border:1px solid rgba(200,60,60,.3);border-radius:var(--radius-sm);padding:.8rem;margin-bottom:.8rem">
+        <div style="font-size:.82rem;font-weight:bold;color:var(--red);margin-bottom:.4rem">🗑 Alle Daten löschen</div>
+        <p style="font-size:.78rem;color:var(--text2);margin-bottom:.7rem">Löscht ALLE Daten (Kühe, Milch, Behandlungen, Bauern, Saison usw.) – z.B. für neue Saison. Nicht rückgängig machbar!</p>
+        <button class="btn-secondary" style="border-color:var(--red);color:var(--red);width:100%" onclick="loescheAlleDaten()">
+          ☢ ALLE DATEN LÖSCHEN
+        </button>
+      </div>
       <p style="font-size:.8rem;color:var(--text2);margin-bottom:.8rem">
         Löscht alle Daten die <b>nicht</b> in der aktuellen Bauern/Kühe-Liste sind.
         Nützlich nach einem Rohdaten-Import wenn alte Testdaten entfernt werden sollen.
@@ -4704,6 +4712,7 @@ window.showMilchDetail = function(id, e) {
     kuhZeilen +
     '<div style="margin-top:1rem;display:flex;gap:.5rem">' +
     '<button class="btn-secondary" style="flex:1" onclick="closePopup()">Schließen</button>' +
+    '<button class="btn-primary" onclick="closePopup();editMilchEintrag(window._milchDetailId)">✎ Bearbeiten</button>' +
     '<button class="btn-xs-danger" onclick="closePopup();window.deleteMilch(window._milchDetailId)">Löschen</button>' +
     '</div>'
   );
@@ -4787,8 +4796,8 @@ window._showZaehlungAnim = function(cb) {
     @keyframes za-sub    { 0%,25%{opacity:0;transform:translateY(6px)} 40%{opacity:1;transform:translateY(0)} 85%{opacity:1} 100%{opacity:0} }
     @keyframes za-bar    { 0%{width:0} 85%{width:100%} 100%{width:100%} }
     @keyframes za-count  { 0%,60%{opacity:0} 75%{opacity:1} 90%{opacity:1} 100%{opacity:0} }
-    @keyframes za-kuh    { 0%{transform:translateX(110vw) scaleX(-1)} 100%{transform:translateX(-30vw) scaleX(-1)} }
-    @keyframes za-hirte  { 0%{transform:translateX(120vw)} 100%{transform:translateX(-10vw)} }
+    @keyframes za-kuh    { 0%{transform:translateX(70vw) scaleX(-1)} 100%{transform:translateX(-40vw) scaleX(-1)} }
+    @keyframes za-hirte  { 0%{transform:translateX(85vw)} 100%{transform:translateX(-15vw)} }
     @keyframes za-cloud  { 0%{transform:translateX(0)} 100%{transform:translateX(-15px)} }
     @keyframes za-grass  { 0%,100%{transform:rotate(-2deg)} 50%{transform:rotate(2deg)} }
     @keyframes za-leg-f  { 0%,100%{transform:rotate(30deg)} 50%{transform:rotate(-30deg)} }
@@ -4850,7 +4859,7 @@ window._showZaehlungAnim = function(cb) {
 
   <!-- KUH SVG - läuft von rechts nach links -->
   <div id="za-kuh" style="position:absolute;bottom:28%;right:0;
-    animation:za-kuh ${DURATION * 0.95}ms cubic-bezier(.25,.1,.25,1) both">
+    animation:za-kuh ${DURATION * 0.88}ms cubic-bezier(.2,.0,.25,1) both">
     <svg width="90" height="60" viewBox="0 0 90 60" xmlns="http://www.w3.org/2000/svg">
       <!-- Beine (animiert) -->
       <g transform="translate(22,42)">
@@ -4900,7 +4909,7 @@ window._showZaehlungAnim = function(cb) {
 
   <!-- HIRTE SVG - läuft von rechts nach links, etwas langsamer = jagt -->
   <div id="za-hirte" style="position:absolute;bottom:27%;right:0;
-    animation:za-hirte ${DURATION * 0.98}ms cubic-bezier(.25,.1,.2,1) both">
+    animation:za-hirte ${DURATION * 0.92}ms cubic-bezier(.2,.0,.2,1) both">
     <svg width="50" height="80" viewBox="0 0 50 80" xmlns="http://www.w3.org/2000/svg">
       <!-- Beine -->
       <rect x="17" y="55" width="7" height="22" rx="3.5" fill="#2a3a6a"
@@ -5233,6 +5242,130 @@ const _origParseFloat = window.parseFloat;
 window.parseFloat = function(v) {
   if(typeof v === 'string') v = v.replace(',', '.');
   return _origParseFloat(v);
+};
+
+window.editMilchEintrag = function(id) {
+  const e = milchEintraege[id];
+  if(!e) return;
+  
+  // Open milch form pre-filled
+  const ov = document.getElementById('milch-form-overlay');
+  if(!ov) return;
+  
+  // Set edit ID
+  let eid = document.getElementById('m-edit-id');
+  if(!eid) {
+    eid = document.createElement('input');
+    eid.type = 'hidden'; eid.id = 'm-edit-id';
+    ov.querySelector('.form-body').appendChild(eid);
+  }
+  eid.value = id;
+  
+  // Fill form
+  document.getElementById('m-datum').value = isoDate(new Date(e.datum));
+  
+  // Zeit
+  const zeitVal = e.zeit || 'morgen';
+  document.getElementById('m-zeit').value = zeitVal;
+  document.querySelector('#m-zeit-morgen')?.classList.toggle('active', zeitVal === 'morgen');
+  document.querySelector('#m-zeit-abend')?.classList.toggle('active', zeitVal === 'abend');
+  
+  // Modus
+  const modus = e.art === 'gesamt' ? 'gesamt' : 'prokuh';
+  setMilchModus(modus);
+  
+  // Molkerei + Notiz
+  const molkereiEl = document.getElementById('m-molkerei');
+  if(molkereiEl) molkereiEl.checked = e.molkerei || false;
+  const notizEl = document.getElementById('m-notiz');
+  if(notizEl) notizEl.value = e.notiz || '';
+  
+  if(modus === 'gesamt') {
+    const gestEl = document.getElementById('m-gesamt');
+    if(gestEl) gestEl.value = e.gesamt || '';
+  } else if(e.prokuh) {
+    // Fill per-cow values
+    document.querySelectorAll('.kuh-liter').forEach(inp => {
+      inp.value = '';
+      const row = inp.closest('.milch-kuh-row');
+      if(row) { row.style.background=''; inp.closest('.milch-kuh-row')?.querySelector('.nr-badge')?.style && (inp.closest('.milch-kuh-row').querySelector('.nr-badge').style.background=''); }
+    });
+    Object.entries(e.prokuh).forEach(([kuhId, liter]) => {
+      const inp = document.querySelector(`.kuh-liter[data-id="${kuhId}"]`);
+      if(inp) {
+        inp.value = liter;
+        onMilchInput(inp);
+      }
+    });
+  }
+  
+  // Update title
+  const titleEl = document.getElementById('m-form-title');
+  if(titleEl) titleEl.textContent = '✎ Milcheintrag bearbeiten';
+  
+  ov.style.display = 'flex';
+};
+
+// Update saveMilch to handle edit
+const _origSaveMilch = window.saveMilch;
+window.saveMilch = async function() {
+  const editId = document.getElementById('m-edit-id')?.value;
+  if(editId) {
+    // Edit mode: delete old + save new
+    const datum = document.getElementById('m-datum')?.value;
+    if(!datum) { alert('Datum fehlt'); return; }
+    const prokuhBlock = document.getElementById('m-prokuh-block');
+    const modus = prokuhBlock && prokuhBlock.style.display !== 'none' ? 'prokuh' : 'gesamt';
+    const zeit = document.getElementById('m-zeit')?.value || 'morgen';
+    const molkerei = document.getElementById('m-molkerei')?.checked || false;
+    const notiz = document.getElementById('m-notiz')?.value.trim() || '';
+    let gesamt = 0, prokuh = {};
+    if(modus === 'prokuh') {
+      document.querySelectorAll('.kuh-liter').forEach(inp => {
+        const l = parseFloat(inp.value)||0;
+        if(l > 0) { prokuh[inp.dataset.id] = l; gesamt += l; }
+      });
+      if(Object.keys(prokuh).length === 0) { alert('Bitte mindestens eine Kuh eintragen'); return; }
+    } else {
+      gesamt = parseFloat(document.getElementById('m-gesamt')?.value) || 0;
+      if(!gesamt) { alert('Bitte Menge eingeben'); return; }
+    }
+    await update(ref(db, 'milch/' + editId), {
+      datum: new Date(datum).getTime(), art: modus, zeit, gesamt: Math.round(gesamt*10)/10,
+      prokuh: modus==='prokuh' ? prokuh : null, molkerei, notiz, updatedAt: Date.now()
+    });
+    document.getElementById('m-edit-id').value = '';
+    const titleEl = document.getElementById('m-form-title');
+    if(titleEl) titleEl.textContent = '🥛 Milch erfassen';
+    closeForm('milch-form-overlay');
+    return;
+  }
+  _origSaveMilch();
+};
+
+window.loescheAlleDaten = async function() {
+  // Triple confirmation
+  if(!confirm('⚠ ACHTUNG\n\nALLE Daten werden unwiderruflich gelöscht!\n\nKühe, Bauern, Milch, Behandlungen, Besamungen, Kraftfutter, Saison, Journal, Weide, Zählung, Chat...\n\nWirklich fortfahren?')) return;
+  if(!confirm('Bist du SICHER?\n\nDiese Aktion kann NICHT rückgängig gemacht werden!')) return;
+  
+  const eingabe = prompt('Zur Bestätigung "LÖSCHEN" eingeben:');
+  if(eingabe !== 'LÖSCHEN') { alert('Abgebrochen.'); return; }
+  
+  const paths = ['kuehe','behandlungen','besamungen','milch','weideTage','weiden','bauern',
+    'saison','journal','kontakte','gruppen','fotos','herde_session','chat','kraftfutter',
+    'zaehlung','zaehlVerlauf'];
+  
+  for(const p of paths) {
+    try { await remove(ref(db, p)); } catch(e) {}
+  }
+  
+  // Clear localStorage too
+  const hp_v = localStorage.getItem('hp_version');
+  localStorage.clear();
+  if(hp_v) localStorage.setItem('hp_version', hp_v);
+  
+  alert('✓ Alle Daten gelöscht.\nApp wird neu geladen.');
+  location.reload();
 };
   initApp();
 
