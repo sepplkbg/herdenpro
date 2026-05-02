@@ -866,7 +866,10 @@ textarea.inp{resize:vertical;min-height:64px}
 
   <!-- Top Bar -->
   <div id="topbar">
-    <span id="topbar-title">🐄 HerdenPro</span>
+    <div style="display:flex;flex-direction:column;line-height:1.1">
+      <span id="topbar-title">🐄 HerdenPro</span>
+      <span style="font-size:.48rem;color:var(--text3);letter-spacing:.06em;opacity:.8">Engineering by LN Machinery</span>
+    </div>
     <div class="sync-indicator" id="sync-dot" title="Verbunden"></div>
   </div>
 
@@ -1396,7 +1399,9 @@ function behandlungCard(bid,b){
   <div style="display:flex;align-items:center;gap:.3rem;margin-top:.3rem;font-size:.72rem;color:${b.behandler==='tierarzt'?'#3a8fd4':'var(--green)'}">
     ${_behIcon} ${b.behandler==='tierarzt'?'Tierarzt':'Almpersonal'}
   </div>
-  ${b.fotoData?`<div style="margin-top:.4rem"><img src="${b.fotoData}" style="max-width:100%;max-height:90px;border-radius:8px;object-fit:cover;border:1px solid var(--border);cursor:pointer" onclick="showFotoPopup(behandlungen['${bid}']?.fotoData||'')" /></div>`:''}
+  ${b.fotoData?`<div style="margin-top:.4rem"><img src="${b.fotoData}" style="max-width:100%;max-height:90px;border-radius:8px;object-fit:cover;border:1px solid var(--border);cursor:pointer" onclick="showFotoPopup(behandlungen['${bid}']?.fotoData||'')" />
+          <button onclick="deleteFoto('behandlung','${bid}')" style="position:absolute;top:2px;right:2px;background:rgba(200,60,60,.8);border:none;border-radius:50%;width:18px;height:18px;color:#fff;font-size:.6rem;cursor:pointer;display:flex;align-items:center;justify-content:center">✕</button>
+          </div></div>`:''}
   ${b.tazettelData?`<div style="margin-top:.3rem"><div style="font-size:.7rem;color:#3a8fd4;margin-bottom:.2rem">📋 Tierarztzettel</div><img src="${b.tazettelData}" style="max-width:100%;max-height:80px;border-radius:6px;object-fit:cover;cursor:pointer;border:1px solid #3a8fd4" onclick="showFotoPopup(behandlungen['${bid}']?.tazettelData||'')" /></div>`:''}
   ${b.abgabeDatum?`<div class="history-sub">💊 Abgabe: ${new Date(b.abgabeDatum).toLocaleDateString('de-AT')}</div>`:''}
   ${b.wzMilchEnde?`<div class="wartezeit-bar"><span>🥛 WZ Milch bis ${new Date(b.wzMilchEnde).toLocaleDateString('de-AT')}</span>${wzMilchAb?'<span class="tag tag-red">abgelaufen</span>':'<span class="tag tag-orange">läuft</span>'}</div>`:''}
@@ -2688,244 +2693,7 @@ window.exportSaisonPDF = function() {
   </div><!-- /app -->
 
 <!-- KÄSE MODUL TEMPLATE -->
-<div id="kaese-template" style="display:none">
-<header>
-  <h1>🧀 Käseproduktion – Ablaufplanung</h1>
-</header>
-<div class="branding-bar">
-  <span class="brand-recipes">🧑‍🍳 Recipes by: <strong>Lisi Huber</strong></span>
-  <span class="brand-sep">|</span>
-  <span class="brand-eng">⚙️ Engineering by: <strong>LN machinery</strong></span>
-</div>
 
-<!-- ── TOOLBAR (Desktop) ── -->
-<div class="toolbar">
-  <label>Stunden:<input type="number" id="view-hours" value="32" min="4" max="72" step="1"></label>
-  <label>Px/h:<input type="number" id="px-per-hour" value="28" min="8" max="300" step="4"></label>
-  <button class="btn btn-primary" onclick="redraw()">↺ Neu</button>
-  <div class="sep"></div>
-  <button class="btn btn-neutral" onclick="openManageSorte()">⚙ Schritte</button>
-  <button class="btn btn-neutral" onclick="openAddSorte()">+ Sorte</button>
-  <div class="sep"></div>
-  <button class="btn btn-blue" onclick="saveJSON()">💾 Speichern</button>
-  <button class="btn btn-blue" onclick="document.getElementById('fi').click()">📂 Laden</button>
-  <input type="file" id="fi" accept=".json" style="display:none" onchange="loadJSON(event)">
-  <div class="sep"></div>
-  <button class="btn btn-orange" onclick="exportPNG()">🖼 PNG</button>
-  <button class="btn btn-neutral" onclick="window.print()">🖨 Drucken</button>
-  <div class="sep"></div>
-  <button class="btn btn-warn btn-sm" onclick="resetStartzeiten()">Reset Starts</button>
-</div>
-
-<!-- ── VISIBILITY CHIPS ── -->
-<div class="vis-panel" id="vis-panel"></div>
-<div id="mobile-hint" style="display:none;padding:4px 16px;font-size:.7rem;color:var(--muted);background:var(--surface);border-bottom:1px solid var(--border);">
-  💡 Balken lang drücken (ca. 0,4 Sek.) zum Verschieben
-</div>
-
-<div id="drag-tooltip" style="
-  display:none;position:fixed;z-index:999;
-  background:#2c2416;color:#fff;
-  padding:5px 12px;border-radius:20px;
-  font-size:.82rem;font-weight:700;
-  box-shadow:0 3px 12px rgba(0,0,0,.35);
-  pointer-events:none;white-space:nowrap;
-  transform:translate(-50%,-100%);
-"></div>
-
-<div id="overlap-banner">⚠ Überlappungen erkannt! Betroffene Schritte sind rot markiert.</div>
-<div id="overlap-list"></div>
-
-<div class="chart-wrap"><div class="gantt" id="gantt"></div></div>
-
-<!-- ── MOBILE FAB ── -->
-<button class="fab" onclick="openBottomSheet()" aria-label="Menü öffnen">☰</button>
-<div class="bottom-sheet-overlay" id="bs-overlay" onclick="closeBottomSheet()"></div>
-<div class="bottom-sheet" id="bottom-sheet">
-  <!-- Schließen-Button oben rechts, groß und deutlich -->
-  <button onclick="closeBottomSheet()" style="
-    position:absolute;top:10px;right:12px;
-    background:var(--warn);color:#fff;border:none;border-radius:50%;
-    width:36px;height:36px;font-size:1.2rem;cursor:pointer;
-    display:flex;align-items:center;justify-content:center;
-    box-shadow:0 2px 8px rgba(0,0,0,.25);z-index:10;">✕</button>
-  <div class="bs-handle"></div>
-  <h3 style="margin-bottom:10px;">Menü</h3>
-
-  <!-- Zoom-Einstellungen zuerst, prominent -->
-  <div style="background:#f0ede6;border-radius:10px;padding:12px;margin-bottom:12px;">
-    <div style="font-size:.76rem;font-weight:700;color:var(--accent);margin-bottom:8px;">🔍 Ansicht anpassen</div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px;">
-      <div>
-        <label style="font-size:.72rem;color:var(--muted);display:block;margin-bottom:3px;">Detailgrad (Breite)</label>
-        <input type="number" id="px-per-hour-m" value="28" min="8" max="300" step="4"
-          style="width:100%;border:1px solid var(--border);border-radius:5px;padding:6px 8px;font-size:.85rem;text-align:center;">
-      </div>
-      <div>
-        <label style="font-size:.72rem;color:var(--muted);display:block;margin-bottom:3px;">Zeitraum (Stunden)</label>
-        <input type="number" id="view-hours-m" value="32" min="4" max="72" step="1"
-          style="width:100%;border:1px solid var(--border);border-radius:5px;padding:6px 8px;font-size:.85rem;text-align:center;">
-      </div>
-    </div>
-    <button onclick="applyMobileZoom()" style="
-      width:100%;padding:9px;background:var(--accent);color:#fff;
-      border:none;border-radius:7px;font-size:.82rem;font-weight:700;cursor:pointer;">
-      ✓ Ansicht übernehmen
-    </button>
-  </div>
-
-  <!-- Aktionen -->
-  <div class="bs-grid">
-    <button class="bs-btn primary" onclick="closeBottomSheet();openManageSorte()">⚙ Schritte verwalten</button>
-    <button class="bs-btn primary" onclick="closeBottomSheet();openAddSorte()">+ Sorte hinzufügen</button>
-    <button class="bs-btn blue" onclick="closeBottomSheet();saveJSON()">💾 Daten speichern</button>
-    <button class="bs-btn blue" onclick="closeBottomSheet();document.getElementById('fi').click()">📂 Daten laden</button>
-    <button class="bs-btn orange" onclick="closeBottomSheet();exportPNG()">🖼 Als Bild exportieren</button>
-    <button class="bs-btn" onclick="closeBottomSheet();window.print()">🖨 Drucken</button>
-    <button class="bs-btn" onclick="closeBottomSheet();resetStartzeiten()" style="grid-column:span 2;">↺ Alle Startzeiten zurücksetzen</button>
-  </div>
-
-  <!-- Sorten ein/ausblenden -->
-  <div style="margin-top:12px;">
-    <div style="font-size:.78rem;font-weight:700;color:var(--accent);margin-bottom:7px;">👁 Sorten ein/ausblenden</div>
-    <div id="bs-vis-list" style="display:flex;flex-direction:column;gap:6px;"></div>
-  </div>
-</div>
-
-<!-- ══════════════════════════════════════
-     POPUPS
-══════════════════════════════════════ -->
-
-<!-- Schritt-Detail (Doppelklick) -->
-<div class="popup-overlay" id="popup-detail" onclick="closePopup('popup-detail')">
-  <div class="popup" onclick="event.stopPropagation()">
-    <button class="popup-close" onclick="closePopup('popup-detail')">×</button>
-    <h2 id="pd-title">Detail</h2>
-    <div id="pd-badge" class="detail-badge"></div>
-    <table>
-      <tr><td>Dauer</td><td id="pd-dur"></td></tr>
-      <tr><td>Start</td><td id="pd-start"></td></tr>
-      <tr><td>Ende</td><td id="pd-end"></td></tr>
-      <tr><td>Pause danach</td><td id="pd-pause"></td></tr>
-      <tr><td>Notiz</td><td id="pd-note" style="font-style:italic"></td></tr>
-    </table>
-    <div class="popup-actions">
-      <button class="btn btn-neutral" onclick="closePopup('popup-detail')">Schließen</button>
-      <button class="btn btn-primary" onclick="editFromDetail()">✏ Bearbeiten</button>
-    </div>
-  </div>
-</div>
-
-<!-- Schritt Info (Einfachklick - kurz, kompakt) -->
-<div class="popup-overlay" id="popup-step" onclick="closePopup('popup-step')">
-  <div class="popup" onclick="event.stopPropagation()">
-    <button class="popup-close" onclick="closePopup('popup-step')">×</button>
-    <h2 id="ps-title">Schritt</h2>
-    <table>
-      <tr><td>Käsesorte</td><td id="ps-sorte"></td></tr>
-      <tr><td>Schritt</td><td id="ps-name"></td></tr>
-      <tr><td>Start</td><td id="ps-start"></td></tr>
-      <tr><td>Ende</td><td id="ps-end"></td></tr>
-      <tr><td>Dauer</td><td id="ps-dur"></td></tr>
-      <tr><td>Pause danach</td><td id="ps-pause"></td></tr>
-      <tr><td>Notiz</td><td id="ps-note"></td></tr>
-    </table>
-    <div class="popup-actions">
-      <button class="btn btn-neutral" onclick="closePopup('popup-step')">Schließen</button>
-      <button class="btn btn-primary" onclick="editCurrentStep()">✏ Bearbeiten</button>
-    </div>
-  </div>
-</div>
-
-<!-- Schritt bearbeiten (z-index 530, immer vorne) -->
-<div class="popup-overlay" id="popup-edit" onclick="closePopup('popup-edit')">
-  <div class="popup" onclick="event.stopPropagation()">
-    <button class="popup-close" onclick="closePopup('popup-edit')">×</button>
-    <h2 id="edit-title">Schritt bearbeiten</h2>
-    <div class="form-row"><label>Bezeichnung</label><input type="text" id="edit-name"></div>
-    <div class="form-row"><label>Dauer (Minuten)</label><input type="number" id="edit-dur" min="1"></div>
-    <div class="form-row"><label>Pause nach Schritt (Minuten)</label><input type="number" id="edit-pause" min="0"></div>
-    <div class="form-row"><label>Notiz</label><input type="text" id="edit-note"></div>
-    <div class="popup-actions">
-      <button class="btn btn-warn" onclick="deleteStep()">🗑 Löschen</button>
-      <button class="btn btn-neutral" onclick="cancelEdit()">Abbrechen</button>
-      <button class="btn btn-primary" onclick="saveStep()">Speichern</button>
-    </div>
-  </div>
-</div>
-
-<!-- Startzeit -->
-<div class="popup-overlay" id="popup-start" onclick="closePopup('popup-start')">
-  <div class="popup" onclick="event.stopPropagation()">
-    <button class="popup-close" onclick="closePopup('popup-start')">×</button>
-    <h2 id="popup-start-title">Startzeit</h2>
-    <div class="form-row">
-      <label>Uhrzeit eingeben</label>
-      <input type="time" id="start-val" step="900"
-        style="font-size:1.4rem;padding:8px 12px;width:100%;border:2px solid var(--border);
-               border-radius:8px;background:#fff;color:var(--text);text-align:center;">
-    </div>
-    <div class="popup-actions">
-      <button class="btn btn-neutral" onclick="closePopup('popup-start')">Abbrechen</button>
-      <button class="btn btn-primary" onclick="saveStart()">Übernehmen</button>
-    </div>
-  </div>
-</div>
-
-<!-- Neue Sorte -->
-<div class="popup-overlay" id="popup-add-sorte" onclick="closePopup('popup-add-sorte')">
-  <div class="popup" onclick="event.stopPropagation()">
-    <button class="popup-close" onclick="closePopup('popup-add-sorte')">×</button>
-    <h2>Neue Käsesorte</h2>
-    <div class="form-row"><label>Name</label>
-      <input type="text" id="new-sorte-name" placeholder="z.B. Tilsiter"></div>
-    <div class="popup-actions">
-      <button class="btn btn-neutral" onclick="closePopup('popup-add-sorte')">Abbrechen</button>
-      <button class="btn btn-primary" onclick="addSorte()">Hinzufügen</button>
-    </div>
-  </div>
-</div>
-
-<!-- Schritte verwalten (z-index 520) -->
-<div class="popup-overlay" id="popup-manage" onclick="closePopup('popup-manage')">
-  <div class="popup" style="max-width:560px" onclick="event.stopPropagation()">
-    <button class="popup-close" onclick="closePopup('popup-manage')">×</button>
-    <h2>Schritte verwalten</h2>
-    <div class="form-row">
-      <label>Käsesorte</label>
-      <select id="manage-sel" onchange="renderManageList()"></select>
-    </div>
-    <div class="step-list" id="manage-list"></div>
-    <div class="popup-actions" style="justify-content:space-between;margin-top:10px">
-      <div style="display:flex;gap:6px;">
-        <button class="btn btn-primary btn-sm" onclick="openNewStep()">+ Schritt hinzufügen</button>
-        <button class="btn btn-warn btn-sm" onclick="deleteSorteFromManager()">🗑 Sorte löschen</button>
-      </div>
-      <button class="btn btn-neutral" onclick="closePopup('popup-manage')">Schließen</button>
-    </div>
-  </div>
-</div>
-
-<!-- Neuer Schritt -->
-<div class="popup-overlay" id="popup-ns" onclick="closePopup('popup-ns')">
-  <div class="popup" onclick="event.stopPropagation()">
-    <button class="popup-close" onclick="closePopup('popup-ns')">×</button>
-    <h2>Neuer Produktionsschritt</h2>
-    <div class="form-row"><label>Bezeichnung</label>
-      <input type="text" id="ns-name" placeholder="z.B. Milch erhitzen"></div>
-    <div class="form-row"><label>Dauer (Minuten)</label>
-      <input type="number" id="ns-dur" min="1" value="60"></div>
-    <div class="form-row"><label>Pause danach (Minuten)</label>
-      <input type="number" id="ns-pause" min="0" value="0"></div>
-    <div class="form-row"><label>Notiz</label>
-      <input type="text" id="ns-note" placeholder="optional"></div>
-    <div class="popup-actions">
-      <button class="btn btn-neutral" onclick="closePopup('popup-ns')">Abbrechen</button>
-      <button class="btn btn-primary" onclick="saveNewStep()">Hinzufügen</button>
-    </div>
-  </div>
-</div>
-</div>
 
 </body></html>`);
   w.document.close();
@@ -3032,243 +2800,6 @@ window.druckeHerde = function() {
 
 <!-- KÄSE MODUL TEMPLATE -->
 <div id="kaese-template" style="display:none">
-<header>
-  <h1>🧀 Käseproduktion – Ablaufplanung</h1>
-</header>
-<div class="branding-bar">
-  <span class="brand-recipes">🧑‍🍳 Recipes by: <strong>Lisi Huber</strong></span>
-  <span class="brand-sep">|</span>
-  <span class="brand-eng">⚙️ Engineering by: <strong>LN machinery</strong></span>
-</div>
-
-<!-- ── TOOLBAR (Desktop) ── -->
-<div class="toolbar">
-  <label>Stunden:<input type="number" id="view-hours" value="32" min="4" max="72" step="1"></label>
-  <label>Px/h:<input type="number" id="px-per-hour" value="28" min="8" max="300" step="4"></label>
-  <button class="btn btn-primary" onclick="redraw()">↺ Neu</button>
-  <div class="sep"></div>
-  <button class="btn btn-neutral" onclick="openManageSorte()">⚙ Schritte</button>
-  <button class="btn btn-neutral" onclick="openAddSorte()">+ Sorte</button>
-  <div class="sep"></div>
-  <button class="btn btn-blue" onclick="saveJSON()">💾 Speichern</button>
-  <button class="btn btn-blue" onclick="document.getElementById('fi').click()">📂 Laden</button>
-  <input type="file" id="fi" accept=".json" style="display:none" onchange="loadJSON(event)">
-  <div class="sep"></div>
-  <button class="btn btn-orange" onclick="exportPNG()">🖼 PNG</button>
-  <button class="btn btn-neutral" onclick="window.print()">🖨 Drucken</button>
-  <div class="sep"></div>
-  <button class="btn btn-warn btn-sm" onclick="resetStartzeiten()">Reset Starts</button>
-</div>
-
-<!-- ── VISIBILITY CHIPS ── -->
-<div class="vis-panel" id="vis-panel"></div>
-<div id="mobile-hint" style="display:none;padding:4px 16px;font-size:.7rem;color:var(--muted);background:var(--surface);border-bottom:1px solid var(--border);">
-  💡 Balken lang drücken (ca. 0,4 Sek.) zum Verschieben
-</div>
-
-<div id="drag-tooltip" style="
-  display:none;position:fixed;z-index:999;
-  background:#2c2416;color:#fff;
-  padding:5px 12px;border-radius:20px;
-  font-size:.82rem;font-weight:700;
-  box-shadow:0 3px 12px rgba(0,0,0,.35);
-  pointer-events:none;white-space:nowrap;
-  transform:translate(-50%,-100%);
-"></div>
-
-<div id="overlap-banner">⚠ Überlappungen erkannt! Betroffene Schritte sind rot markiert.</div>
-<div id="overlap-list"></div>
-
-<div class="chart-wrap"><div class="gantt" id="gantt"></div></div>
-
-<!-- ── MOBILE FAB ── -->
-<button class="fab" onclick="openBottomSheet()" aria-label="Menü öffnen">☰</button>
-<div class="bottom-sheet-overlay" id="bs-overlay" onclick="closeBottomSheet()"></div>
-<div class="bottom-sheet" id="bottom-sheet">
-  <!-- Schließen-Button oben rechts, groß und deutlich -->
-  <button onclick="closeBottomSheet()" style="
-    position:absolute;top:10px;right:12px;
-    background:var(--warn);color:#fff;border:none;border-radius:50%;
-    width:36px;height:36px;font-size:1.2rem;cursor:pointer;
-    display:flex;align-items:center;justify-content:center;
-    box-shadow:0 2px 8px rgba(0,0,0,.25);z-index:10;">✕</button>
-  <div class="bs-handle"></div>
-  <h3 style="margin-bottom:10px;">Menü</h3>
-
-  <!-- Zoom-Einstellungen zuerst, prominent -->
-  <div style="background:#f0ede6;border-radius:10px;padding:12px;margin-bottom:12px;">
-    <div style="font-size:.76rem;font-weight:700;color:var(--accent);margin-bottom:8px;">🔍 Ansicht anpassen</div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px;">
-      <div>
-        <label style="font-size:.72rem;color:var(--muted);display:block;margin-bottom:3px;">Detailgrad (Breite)</label>
-        <input type="number" id="px-per-hour-m" value="28" min="8" max="300" step="4"
-          style="width:100%;border:1px solid var(--border);border-radius:5px;padding:6px 8px;font-size:.85rem;text-align:center;">
-      </div>
-      <div>
-        <label style="font-size:.72rem;color:var(--muted);display:block;margin-bottom:3px;">Zeitraum (Stunden)</label>
-        <input type="number" id="view-hours-m" value="32" min="4" max="72" step="1"
-          style="width:100%;border:1px solid var(--border);border-radius:5px;padding:6px 8px;font-size:.85rem;text-align:center;">
-      </div>
-    </div>
-    <button onclick="applyMobileZoom()" style="
-      width:100%;padding:9px;background:var(--accent);color:#fff;
-      border:none;border-radius:7px;font-size:.82rem;font-weight:700;cursor:pointer;">
-      ✓ Ansicht übernehmen
-    </button>
-  </div>
-
-  <!-- Aktionen -->
-  <div class="bs-grid">
-    <button class="bs-btn primary" onclick="closeBottomSheet();openManageSorte()">⚙ Schritte verwalten</button>
-    <button class="bs-btn primary" onclick="closeBottomSheet();openAddSorte()">+ Sorte hinzufügen</button>
-    <button class="bs-btn blue" onclick="closeBottomSheet();saveJSON()">💾 Daten speichern</button>
-    <button class="bs-btn blue" onclick="closeBottomSheet();document.getElementById('fi').click()">📂 Daten laden</button>
-    <button class="bs-btn orange" onclick="closeBottomSheet();exportPNG()">🖼 Als Bild exportieren</button>
-    <button class="bs-btn" onclick="closeBottomSheet();window.print()">🖨 Drucken</button>
-    <button class="bs-btn" onclick="closeBottomSheet();resetStartzeiten()" style="grid-column:span 2;">↺ Alle Startzeiten zurücksetzen</button>
-  </div>
-
-  <!-- Sorten ein/ausblenden -->
-  <div style="margin-top:12px;">
-    <div style="font-size:.78rem;font-weight:700;color:var(--accent);margin-bottom:7px;">👁 Sorten ein/ausblenden</div>
-    <div id="bs-vis-list" style="display:flex;flex-direction:column;gap:6px;"></div>
-  </div>
-</div>
-
-<!-- ══════════════════════════════════════
-     POPUPS
-══════════════════════════════════════ -->
-
-<!-- Schritt-Detail (Doppelklick) -->
-<div class="popup-overlay" id="popup-detail" onclick="closePopup('popup-detail')">
-  <div class="popup" onclick="event.stopPropagation()">
-    <button class="popup-close" onclick="closePopup('popup-detail')">×</button>
-    <h2 id="pd-title">Detail</h2>
-    <div id="pd-badge" class="detail-badge"></div>
-    <table>
-      <tr><td>Dauer</td><td id="pd-dur"></td></tr>
-      <tr><td>Start</td><td id="pd-start"></td></tr>
-      <tr><td>Ende</td><td id="pd-end"></td></tr>
-      <tr><td>Pause danach</td><td id="pd-pause"></td></tr>
-      <tr><td>Notiz</td><td id="pd-note" style="font-style:italic"></td></tr>
-    </table>
-    <div class="popup-actions">
-      <button class="btn btn-neutral" onclick="closePopup('popup-detail')">Schließen</button>
-      <button class="btn btn-primary" onclick="editFromDetail()">✏ Bearbeiten</button>
-    </div>
-  </div>
-</div>
-
-<!-- Schritt Info (Einfachklick - kurz, kompakt) -->
-<div class="popup-overlay" id="popup-step" onclick="closePopup('popup-step')">
-  <div class="popup" onclick="event.stopPropagation()">
-    <button class="popup-close" onclick="closePopup('popup-step')">×</button>
-    <h2 id="ps-title">Schritt</h2>
-    <table>
-      <tr><td>Käsesorte</td><td id="ps-sorte"></td></tr>
-      <tr><td>Schritt</td><td id="ps-name"></td></tr>
-      <tr><td>Start</td><td id="ps-start"></td></tr>
-      <tr><td>Ende</td><td id="ps-end"></td></tr>
-      <tr><td>Dauer</td><td id="ps-dur"></td></tr>
-      <tr><td>Pause danach</td><td id="ps-pause"></td></tr>
-      <tr><td>Notiz</td><td id="ps-note"></td></tr>
-    </table>
-    <div class="popup-actions">
-      <button class="btn btn-neutral" onclick="closePopup('popup-step')">Schließen</button>
-      <button class="btn btn-primary" onclick="editCurrentStep()">✏ Bearbeiten</button>
-    </div>
-  </div>
-</div>
-
-<!-- Schritt bearbeiten (z-index 530, immer vorne) -->
-<div class="popup-overlay" id="popup-edit" onclick="closePopup('popup-edit')">
-  <div class="popup" onclick="event.stopPropagation()">
-    <button class="popup-close" onclick="closePopup('popup-edit')">×</button>
-    <h2 id="edit-title">Schritt bearbeiten</h2>
-    <div class="form-row"><label>Bezeichnung</label><input type="text" id="edit-name"></div>
-    <div class="form-row"><label>Dauer (Minuten)</label><input type="number" id="edit-dur" min="1"></div>
-    <div class="form-row"><label>Pause nach Schritt (Minuten)</label><input type="number" id="edit-pause" min="0"></div>
-    <div class="form-row"><label>Notiz</label><input type="text" id="edit-note"></div>
-    <div class="popup-actions">
-      <button class="btn btn-warn" onclick="deleteStep()">🗑 Löschen</button>
-      <button class="btn btn-neutral" onclick="cancelEdit()">Abbrechen</button>
-      <button class="btn btn-primary" onclick="saveStep()">Speichern</button>
-    </div>
-  </div>
-</div>
-
-<!-- Startzeit -->
-<div class="popup-overlay" id="popup-start" onclick="closePopup('popup-start')">
-  <div class="popup" onclick="event.stopPropagation()">
-    <button class="popup-close" onclick="closePopup('popup-start')">×</button>
-    <h2 id="popup-start-title">Startzeit</h2>
-    <div class="form-row">
-      <label>Uhrzeit eingeben</label>
-      <input type="time" id="start-val" step="900"
-        style="font-size:1.4rem;padding:8px 12px;width:100%;border:2px solid var(--border);
-               border-radius:8px;background:#fff;color:var(--text);text-align:center;">
-    </div>
-    <div class="popup-actions">
-      <button class="btn btn-neutral" onclick="closePopup('popup-start')">Abbrechen</button>
-      <button class="btn btn-primary" onclick="saveStart()">Übernehmen</button>
-    </div>
-  </div>
-</div>
-
-<!-- Neue Sorte -->
-<div class="popup-overlay" id="popup-add-sorte" onclick="closePopup('popup-add-sorte')">
-  <div class="popup" onclick="event.stopPropagation()">
-    <button class="popup-close" onclick="closePopup('popup-add-sorte')">×</button>
-    <h2>Neue Käsesorte</h2>
-    <div class="form-row"><label>Name</label>
-      <input type="text" id="new-sorte-name" placeholder="z.B. Tilsiter"></div>
-    <div class="popup-actions">
-      <button class="btn btn-neutral" onclick="closePopup('popup-add-sorte')">Abbrechen</button>
-      <button class="btn btn-primary" onclick="addSorte()">Hinzufügen</button>
-    </div>
-  </div>
-</div>
-
-<!-- Schritte verwalten (z-index 520) -->
-<div class="popup-overlay" id="popup-manage" onclick="closePopup('popup-manage')">
-  <div class="popup" style="max-width:560px" onclick="event.stopPropagation()">
-    <button class="popup-close" onclick="closePopup('popup-manage')">×</button>
-    <h2>Schritte verwalten</h2>
-    <div class="form-row">
-      <label>Käsesorte</label>
-      <select id="manage-sel" onchange="renderManageList()"></select>
-    </div>
-    <div class="step-list" id="manage-list"></div>
-    <div class="popup-actions" style="justify-content:space-between;margin-top:10px">
-      <div style="display:flex;gap:6px;">
-        <button class="btn btn-primary btn-sm" onclick="openNewStep()">+ Schritt hinzufügen</button>
-        <button class="btn btn-warn btn-sm" onclick="deleteSorteFromManager()">🗑 Sorte löschen</button>
-      </div>
-      <button class="btn btn-neutral" onclick="closePopup('popup-manage')">Schließen</button>
-    </div>
-  </div>
-</div>
-
-<!-- Neuer Schritt -->
-<div class="popup-overlay" id="popup-ns" onclick="closePopup('popup-ns')">
-  <div class="popup" onclick="event.stopPropagation()">
-    <button class="popup-close" onclick="closePopup('popup-ns')">×</button>
-    <h2>Neuer Produktionsschritt</h2>
-    <div class="form-row"><label>Bezeichnung</label>
-      <input type="text" id="ns-name" placeholder="z.B. Milch erhitzen"></div>
-    <div class="form-row"><label>Dauer (Minuten)</label>
-      <input type="number" id="ns-dur" min="1" value="60"></div>
-    <div class="form-row"><label>Pause danach (Minuten)</label>
-      <input type="number" id="ns-pause" min="0" value="0"></div>
-    <div class="form-row"><label>Notiz</label>
-      <input type="text" id="ns-note" placeholder="optional"></div>
-    <div class="popup-actions">
-      <button class="btn btn-neutral" onclick="closePopup('popup-ns')">Abbrechen</button>
-      <button class="btn btn-primary" onclick="saveNewStep()">Hinzufügen</button>
-    </div>
-  </div>
-</div>
-</div>
 
 </body></html>`);
   w.document.close();
@@ -7176,6 +6707,94 @@ window.setAlmStatus = async function(id, s) {
   await update(ref(db, 'kuehe/' + id), {almStatus: s});
   render();
 };
+window.druckeBestandsbuch=function(){
+  const alm=saisonInfo?.alm||'Alm';const jahr=saisonInfo?.jahr||new Date().getFullYear();
+  const z=Object.values(behandlungen).filter(b=>b.medikament).sort((a,b)=>a.datum-b.datum).map(b=>{const k=kuehe[b.kuhId];return`<tr><td>${new Date(b.datum).toLocaleDateString('de-AT')}</td><td>#${k?.nr||'?'} ${k?.name||''}</td><td>${b.diagnose||'–'}</td><td>${b.medikament}</td><td>${b.dosis||'–'}</td><td>${b.abgabeDatum?new Date(b.abgabeDatum).toLocaleDateString('de-AT'):'–'}</td><td>${b.wartezeitEnde?new Date(b.wartezeitEnde).toLocaleDateString('de-AT'):'–'}</td><td>${b.tierarzt||'–'}</td></tr>`;}).join('');
+  const w=window.open('','_blank');
+  w.document.write(`<!DOCTYPE html><html lang="de"><head><meta charset="UTF-8"/><title>Bestandsbuch ${alm} ${jahr}</title><style>body{font-family:Arial,sans-serif;font-size:11pt;margin:2cm}h1{font-size:14pt}p{font-size:9pt;color:#555;margin-bottom:12px}table{width:100%;border-collapse:collapse;font-size:9pt}th{background:#1a3a0a;color:#fff;padding:5px 8px;text-align:left}td{padding:4px 8px;border-bottom:1px solid #ddd}tr:nth-child(even){background:#f8f8f0}@media print{@page{margin:1.5cm}}</style></head><body><h1>Bestandsbuch – ${alm} · Saison ${jahr}</h1><p>Erstellt: ${new Date().toLocaleDateString('de-AT')} · § 12 TAKG</p><table><thead><tr><th>Datum</th><th>Tier</th><th>Diagnose</th><th>Medikament</th><th>Dosis</th><th>Wartezeit bis</th><th>Tierarzt</th></tr></thead><tbody>${z}</tbody></table><script>window.onload=()=>window.print()<\/script></body></html>`);
+  w.document.close();
+};
+
+// ══════════════════════════════════════════════════════════════════════════════
+//  EINSTELLUNGEN
+// ══════════════════════════════════════════════════════════════════════════════
+
+window.saveAbtrieb=async function(){const datum=document.getElementById('ab-datum')?.value;await update(ref(db,'saison'),{abtriebtDatum:datum?new Date(datum).getTime():Date.now(),abtriebtNotiz:document.getElementById('ab-notiz')?.value.trim(),aktiv:false});const u={};Object.keys(kuehe).filter(id=>kuehe[id].almStatus==='oben').forEach(id=>{u[`kuehe/${id}/almStatus`]='unten';});if(Object.keys(u).length)await update(ref(db),u);closeForm('abtrieb-overlay');};
+
+// ══════════════════════════════════════════════════════════════════════════════
+//  MILCH
+// ══════════════════════════════════════════════════════════════════════════════
+
+window.showAbtriebbForm=function(){document.getElementById('abtrieb-overlay').style.display='flex';};
+
+window.startSaison=async function(){const alm=document.getElementById('s-alm')?.value.trim();const datum=document.getElementById('s-datum')?.value;await set(ref(db,'saison'),{aktiv:true,alm,auftriebDatum:datum?new Date(datum).getTime():Date.now(),jahr:new Date().getFullYear()});};
+
+window.showBauerForm=function(){document.getElementById('bauer-overlay').style.display='flex';};
+
+window.deleteBauer=async id=>{if(confirm('Bauer löschen?'))await remove(ref(db,'bauern/'+id));};
+
+// ══════════════════════════════════════════════════════════════════════════════
+//  HERDE
+// ══════════════════════════════════════════════════════════════════════════════
+
+window.showWeideForm=function(){document.getElementById('weide-overlay').style.display='flex';};
+
+window.saveWeide=async function(){const name=document.getElementById('w-name')?.value.trim();if(!name)return;await push(ref(db,'weiden'),{name,ha:parseFloat(document.getElementById('w-ha')?.value)||null,notiz:document.getElementById('w-notiz')?.value.trim()});closeForm('weide-overlay');};
+
+window.deleteWeide=async id=>{if(confirm('Weide löschen?'))await remove(ref(db,'weiden/'+id));};
+
+window.showWeideTagForm=function(){const ov=document.getElementById('weidetag-overlay');if(!ov){navigate('weide');setTimeout(()=>showWeideTagForm(),150);return;}ov.style.display='flex';};
+
+window.saveWeideTag=async function(){
+  const datum=document.getElementById('wt-datum')?.value;const wv=document.getElementById('wt-weide')?.value;
+  await push(ref(db,'weideTage'),{datum,weideId:wv!=='__text__'?wv:'',weideText:wv==='__text__'?(document.getElementById('wt-freitext')?.value.trim()||''):'',kuhIds:[...document.querySelectorAll('.kuh-cb:checked')].map(c=>c.value),notiz:document.getElementById('wt-notiz')?.value.trim(),createdAt:Date.now()});
+  closeForm('weidetag-overlay');
+};
+
+window.deleteWeideTag=async id=>{if(confirm('Eintrag löschen?'))await remove(ref(db,'weideTage/'+id));};
+
+// ══════════════════════════════════════════════════════════════════════════════
+//  BESTANDSBUCH
+// ══════════════════════════════════════════════════════════════════════════════
+
+window.alleKueheWeide=an=>document.querySelectorAll('.kuh-cb').forEach(cb=>cb.checked=an);
+
+window.exportMilchMolkerei=function(){
+  const csv='Datum;Liter;An Molkerei;Notiz\n'+Object.values(milchEintraege).sort((a,b)=>a.datum-b.datum).map(e=>[new Date(e.datum).toLocaleDateString('de-AT'),e.gesamt,e.molkerei?'Ja':'Nein',e.notiz||''].join(';')).join('\n');
+  const a=document.createElement('a');a.href=URL.createObjectURL(new Blob(['\ufeff'+csv],{type:'text/csv;charset=utf-8'}));a.download=`Milch_${isoDate(new Date())}.csv`;a.click();
+};
+
+// ══════════════════════════════════════════════════════════════════════════════
+//  WEIDEGANG
+// ══════════════════════════════════════════════════════════════════════════════
+
+
+window.deleteFoto = async function(type, id) {
+  if(!confirm('Foto löschen?')) return;
+  if(type === 'behandlung') {
+    await update(ref(db, 'behandlungen/' + id), {fotoData: null});
+    showSaveToast && showSaveToast('Foto gelöscht');
+  } else if(type === 'tazettel') {
+    await update(ref(db, 'behandlungen/' + id), {tazettelData: null});
+    showSaveToast && showSaveToast('Tierarztzettel gelöscht');
+  } else if(type === 'besamung') {
+    await update(ref(db, 'besamungen/' + id), {scheinFoto: null});
+    showSaveToast && showSaveToast('Besamungsschein gelöscht');
+  }
+  render();
+};
+
+window.editFromManager = function(si,ai){ kp_editSchritt(si,ai); };
+window.moveStep = function(si,ai,dir){ 
+  const steps=kp_sorten[si]?.schritte; if(!steps) return;
+  const nb=ai+dir; if(nb<0||nb>=steps.length) return;
+  [steps[ai],steps[nb]]=[steps[nb],steps[ai]];
+  kp_render(); kp_debounceSave();
+};
+window.removeStep = function(si,ai){
+  kp_sorten[si]?.schritte?.splice(ai,1);
+  kp_render(); kp_debounceSave();
+};
   initApp();
         }
       } catch(e) {
@@ -9089,6 +8708,94 @@ window.setAlmStatus = async function(id, s) {
   await update(ref(db, 'kuehe/' + id), {almStatus: s});
   render();
 };
+window.druckeBestandsbuch=function(){
+  const alm=saisonInfo?.alm||'Alm';const jahr=saisonInfo?.jahr||new Date().getFullYear();
+  const z=Object.values(behandlungen).filter(b=>b.medikament).sort((a,b)=>a.datum-b.datum).map(b=>{const k=kuehe[b.kuhId];return`<tr><td>${new Date(b.datum).toLocaleDateString('de-AT')}</td><td>#${k?.nr||'?'} ${k?.name||''}</td><td>${b.diagnose||'–'}</td><td>${b.medikament}</td><td>${b.dosis||'–'}</td><td>${b.abgabeDatum?new Date(b.abgabeDatum).toLocaleDateString('de-AT'):'–'}</td><td>${b.wartezeitEnde?new Date(b.wartezeitEnde).toLocaleDateString('de-AT'):'–'}</td><td>${b.tierarzt||'–'}</td></tr>`;}).join('');
+  const w=window.open('','_blank');
+  w.document.write(`<!DOCTYPE html><html lang="de"><head><meta charset="UTF-8"/><title>Bestandsbuch ${alm} ${jahr}</title><style>body{font-family:Arial,sans-serif;font-size:11pt;margin:2cm}h1{font-size:14pt}p{font-size:9pt;color:#555;margin-bottom:12px}table{width:100%;border-collapse:collapse;font-size:9pt}th{background:#1a3a0a;color:#fff;padding:5px 8px;text-align:left}td{padding:4px 8px;border-bottom:1px solid #ddd}tr:nth-child(even){background:#f8f8f0}@media print{@page{margin:1.5cm}}</style></head><body><h1>Bestandsbuch – ${alm} · Saison ${jahr}</h1><p>Erstellt: ${new Date().toLocaleDateString('de-AT')} · § 12 TAKG</p><table><thead><tr><th>Datum</th><th>Tier</th><th>Diagnose</th><th>Medikament</th><th>Dosis</th><th>Wartezeit bis</th><th>Tierarzt</th></tr></thead><tbody>${z}</tbody></table><script>window.onload=()=>window.print()<\/script></body></html>`);
+  w.document.close();
+};
+
+// ══════════════════════════════════════════════════════════════════════════════
+//  EINSTELLUNGEN
+// ══════════════════════════════════════════════════════════════════════════════
+
+window.saveAbtrieb=async function(){const datum=document.getElementById('ab-datum')?.value;await update(ref(db,'saison'),{abtriebtDatum:datum?new Date(datum).getTime():Date.now(),abtriebtNotiz:document.getElementById('ab-notiz')?.value.trim(),aktiv:false});const u={};Object.keys(kuehe).filter(id=>kuehe[id].almStatus==='oben').forEach(id=>{u[`kuehe/${id}/almStatus`]='unten';});if(Object.keys(u).length)await update(ref(db),u);closeForm('abtrieb-overlay');};
+
+// ══════════════════════════════════════════════════════════════════════════════
+//  MILCH
+// ══════════════════════════════════════════════════════════════════════════════
+
+window.showAbtriebbForm=function(){document.getElementById('abtrieb-overlay').style.display='flex';};
+
+window.startSaison=async function(){const alm=document.getElementById('s-alm')?.value.trim();const datum=document.getElementById('s-datum')?.value;await set(ref(db,'saison'),{aktiv:true,alm,auftriebDatum:datum?new Date(datum).getTime():Date.now(),jahr:new Date().getFullYear()});};
+
+window.showBauerForm=function(){document.getElementById('bauer-overlay').style.display='flex';};
+
+window.deleteBauer=async id=>{if(confirm('Bauer löschen?'))await remove(ref(db,'bauern/'+id));};
+
+// ══════════════════════════════════════════════════════════════════════════════
+//  HERDE
+// ══════════════════════════════════════════════════════════════════════════════
+
+window.showWeideForm=function(){document.getElementById('weide-overlay').style.display='flex';};
+
+window.saveWeide=async function(){const name=document.getElementById('w-name')?.value.trim();if(!name)return;await push(ref(db,'weiden'),{name,ha:parseFloat(document.getElementById('w-ha')?.value)||null,notiz:document.getElementById('w-notiz')?.value.trim()});closeForm('weide-overlay');};
+
+window.deleteWeide=async id=>{if(confirm('Weide löschen?'))await remove(ref(db,'weiden/'+id));};
+
+window.showWeideTagForm=function(){const ov=document.getElementById('weidetag-overlay');if(!ov){navigate('weide');setTimeout(()=>showWeideTagForm(),150);return;}ov.style.display='flex';};
+
+window.saveWeideTag=async function(){
+  const datum=document.getElementById('wt-datum')?.value;const wv=document.getElementById('wt-weide')?.value;
+  await push(ref(db,'weideTage'),{datum,weideId:wv!=='__text__'?wv:'',weideText:wv==='__text__'?(document.getElementById('wt-freitext')?.value.trim()||''):'',kuhIds:[...document.querySelectorAll('.kuh-cb:checked')].map(c=>c.value),notiz:document.getElementById('wt-notiz')?.value.trim(),createdAt:Date.now()});
+  closeForm('weidetag-overlay');
+};
+
+window.deleteWeideTag=async id=>{if(confirm('Eintrag löschen?'))await remove(ref(db,'weideTage/'+id));};
+
+// ══════════════════════════════════════════════════════════════════════════════
+//  BESTANDSBUCH
+// ══════════════════════════════════════════════════════════════════════════════
+
+window.alleKueheWeide=an=>document.querySelectorAll('.kuh-cb').forEach(cb=>cb.checked=an);
+
+window.exportMilchMolkerei=function(){
+  const csv='Datum;Liter;An Molkerei;Notiz\n'+Object.values(milchEintraege).sort((a,b)=>a.datum-b.datum).map(e=>[new Date(e.datum).toLocaleDateString('de-AT'),e.gesamt,e.molkerei?'Ja':'Nein',e.notiz||''].join(';')).join('\n');
+  const a=document.createElement('a');a.href=URL.createObjectURL(new Blob(['\ufeff'+csv],{type:'text/csv;charset=utf-8'}));a.download=`Milch_${isoDate(new Date())}.csv`;a.click();
+};
+
+// ══════════════════════════════════════════════════════════════════════════════
+//  WEIDEGANG
+// ══════════════════════════════════════════════════════════════════════════════
+
+
+window.deleteFoto = async function(type, id) {
+  if(!confirm('Foto löschen?')) return;
+  if(type === 'behandlung') {
+    await update(ref(db, 'behandlungen/' + id), {fotoData: null});
+    showSaveToast && showSaveToast('Foto gelöscht');
+  } else if(type === 'tazettel') {
+    await update(ref(db, 'behandlungen/' + id), {tazettelData: null});
+    showSaveToast && showSaveToast('Tierarztzettel gelöscht');
+  } else if(type === 'besamung') {
+    await update(ref(db, 'besamungen/' + id), {scheinFoto: null});
+    showSaveToast && showSaveToast('Besamungsschein gelöscht');
+  }
+  render();
+};
+
+window.editFromManager = function(si,ai){ kp_editSchritt(si,ai); };
+window.moveStep = function(si,ai,dir){ 
+  const steps=kp_sorten[si]?.schritte; if(!steps) return;
+  const nb=ai+dir; if(nb<0||nb>=steps.length) return;
+  [steps[ai],steps[nb]]=[steps[nb],steps[ai]];
+  kp_render(); kp_debounceSave();
+};
+window.removeStep = function(si,ai){
+  kp_sorten[si]?.schritte?.splice(ai,1);
+  kp_render(); kp_debounceSave();
+};
   initApp();
   }
 });
@@ -9122,243 +8829,6 @@ window.setAlmStatus = async function(id, s) {
 
 <!-- KÄSE MODUL TEMPLATE -->
 <div id="kaese-template" style="display:none">
-<header>
-  <h1>🧀 Käseproduktion – Ablaufplanung</h1>
-</header>
-<div class="branding-bar">
-  <span class="brand-recipes">🧑‍🍳 Recipes by: <strong>Lisi Huber</strong></span>
-  <span class="brand-sep">|</span>
-  <span class="brand-eng">⚙️ Engineering by: <strong>LN machinery</strong></span>
-</div>
-
-<!-- ── TOOLBAR (Desktop) ── -->
-<div class="toolbar">
-  <label>Stunden:<input type="number" id="view-hours" value="32" min="4" max="72" step="1"></label>
-  <label>Px/h:<input type="number" id="px-per-hour" value="28" min="8" max="300" step="4"></label>
-  <button class="btn btn-primary" onclick="redraw()">↺ Neu</button>
-  <div class="sep"></div>
-  <button class="btn btn-neutral" onclick="openManageSorte()">⚙ Schritte</button>
-  <button class="btn btn-neutral" onclick="openAddSorte()">+ Sorte</button>
-  <div class="sep"></div>
-  <button class="btn btn-blue" onclick="saveJSON()">💾 Speichern</button>
-  <button class="btn btn-blue" onclick="document.getElementById('fi').click()">📂 Laden</button>
-  <input type="file" id="fi" accept=".json" style="display:none" onchange="loadJSON(event)">
-  <div class="sep"></div>
-  <button class="btn btn-orange" onclick="exportPNG()">🖼 PNG</button>
-  <button class="btn btn-neutral" onclick="window.print()">🖨 Drucken</button>
-  <div class="sep"></div>
-  <button class="btn btn-warn btn-sm" onclick="resetStartzeiten()">Reset Starts</button>
-</div>
-
-<!-- ── VISIBILITY CHIPS ── -->
-<div class="vis-panel" id="vis-panel"></div>
-<div id="mobile-hint" style="display:none;padding:4px 16px;font-size:.7rem;color:var(--muted);background:var(--surface);border-bottom:1px solid var(--border);">
-  💡 Balken lang drücken (ca. 0,4 Sek.) zum Verschieben
-</div>
-
-<div id="drag-tooltip" style="
-  display:none;position:fixed;z-index:999;
-  background:#2c2416;color:#fff;
-  padding:5px 12px;border-radius:20px;
-  font-size:.82rem;font-weight:700;
-  box-shadow:0 3px 12px rgba(0,0,0,.35);
-  pointer-events:none;white-space:nowrap;
-  transform:translate(-50%,-100%);
-"></div>
-
-<div id="overlap-banner">⚠ Überlappungen erkannt! Betroffene Schritte sind rot markiert.</div>
-<div id="overlap-list"></div>
-
-<div class="chart-wrap"><div class="gantt" id="gantt"></div></div>
-
-<!-- ── MOBILE FAB ── -->
-<button class="fab" onclick="openBottomSheet()" aria-label="Menü öffnen">☰</button>
-<div class="bottom-sheet-overlay" id="bs-overlay" onclick="closeBottomSheet()"></div>
-<div class="bottom-sheet" id="bottom-sheet">
-  <!-- Schließen-Button oben rechts, groß und deutlich -->
-  <button onclick="closeBottomSheet()" style="
-    position:absolute;top:10px;right:12px;
-    background:var(--warn);color:#fff;border:none;border-radius:50%;
-    width:36px;height:36px;font-size:1.2rem;cursor:pointer;
-    display:flex;align-items:center;justify-content:center;
-    box-shadow:0 2px 8px rgba(0,0,0,.25);z-index:10;">✕</button>
-  <div class="bs-handle"></div>
-  <h3 style="margin-bottom:10px;">Menü</h3>
-
-  <!-- Zoom-Einstellungen zuerst, prominent -->
-  <div style="background:#f0ede6;border-radius:10px;padding:12px;margin-bottom:12px;">
-    <div style="font-size:.76rem;font-weight:700;color:var(--accent);margin-bottom:8px;">🔍 Ansicht anpassen</div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px;">
-      <div>
-        <label style="font-size:.72rem;color:var(--muted);display:block;margin-bottom:3px;">Detailgrad (Breite)</label>
-        <input type="number" id="px-per-hour-m" value="28" min="8" max="300" step="4"
-          style="width:100%;border:1px solid var(--border);border-radius:5px;padding:6px 8px;font-size:.85rem;text-align:center;">
-      </div>
-      <div>
-        <label style="font-size:.72rem;color:var(--muted);display:block;margin-bottom:3px;">Zeitraum (Stunden)</label>
-        <input type="number" id="view-hours-m" value="32" min="4" max="72" step="1"
-          style="width:100%;border:1px solid var(--border);border-radius:5px;padding:6px 8px;font-size:.85rem;text-align:center;">
-      </div>
-    </div>
-    <button onclick="applyMobileZoom()" style="
-      width:100%;padding:9px;background:var(--accent);color:#fff;
-      border:none;border-radius:7px;font-size:.82rem;font-weight:700;cursor:pointer;">
-      ✓ Ansicht übernehmen
-    </button>
-  </div>
-
-  <!-- Aktionen -->
-  <div class="bs-grid">
-    <button class="bs-btn primary" onclick="closeBottomSheet();openManageSorte()">⚙ Schritte verwalten</button>
-    <button class="bs-btn primary" onclick="closeBottomSheet();openAddSorte()">+ Sorte hinzufügen</button>
-    <button class="bs-btn blue" onclick="closeBottomSheet();saveJSON()">💾 Daten speichern</button>
-    <button class="bs-btn blue" onclick="closeBottomSheet();document.getElementById('fi').click()">📂 Daten laden</button>
-    <button class="bs-btn orange" onclick="closeBottomSheet();exportPNG()">🖼 Als Bild exportieren</button>
-    <button class="bs-btn" onclick="closeBottomSheet();window.print()">🖨 Drucken</button>
-    <button class="bs-btn" onclick="closeBottomSheet();resetStartzeiten()" style="grid-column:span 2;">↺ Alle Startzeiten zurücksetzen</button>
-  </div>
-
-  <!-- Sorten ein/ausblenden -->
-  <div style="margin-top:12px;">
-    <div style="font-size:.78rem;font-weight:700;color:var(--accent);margin-bottom:7px;">👁 Sorten ein/ausblenden</div>
-    <div id="bs-vis-list" style="display:flex;flex-direction:column;gap:6px;"></div>
-  </div>
-</div>
-
-<!-- ══════════════════════════════════════
-     POPUPS
-══════════════════════════════════════ -->
-
-<!-- Schritt-Detail (Doppelklick) -->
-<div class="popup-overlay" id="popup-detail" onclick="closePopup('popup-detail')">
-  <div class="popup" onclick="event.stopPropagation()">
-    <button class="popup-close" onclick="closePopup('popup-detail')">×</button>
-    <h2 id="pd-title">Detail</h2>
-    <div id="pd-badge" class="detail-badge"></div>
-    <table>
-      <tr><td>Dauer</td><td id="pd-dur"></td></tr>
-      <tr><td>Start</td><td id="pd-start"></td></tr>
-      <tr><td>Ende</td><td id="pd-end"></td></tr>
-      <tr><td>Pause danach</td><td id="pd-pause"></td></tr>
-      <tr><td>Notiz</td><td id="pd-note" style="font-style:italic"></td></tr>
-    </table>
-    <div class="popup-actions">
-      <button class="btn btn-neutral" onclick="closePopup('popup-detail')">Schließen</button>
-      <button class="btn btn-primary" onclick="editFromDetail()">✏ Bearbeiten</button>
-    </div>
-  </div>
-</div>
-
-<!-- Schritt Info (Einfachklick - kurz, kompakt) -->
-<div class="popup-overlay" id="popup-step" onclick="closePopup('popup-step')">
-  <div class="popup" onclick="event.stopPropagation()">
-    <button class="popup-close" onclick="closePopup('popup-step')">×</button>
-    <h2 id="ps-title">Schritt</h2>
-    <table>
-      <tr><td>Käsesorte</td><td id="ps-sorte"></td></tr>
-      <tr><td>Schritt</td><td id="ps-name"></td></tr>
-      <tr><td>Start</td><td id="ps-start"></td></tr>
-      <tr><td>Ende</td><td id="ps-end"></td></tr>
-      <tr><td>Dauer</td><td id="ps-dur"></td></tr>
-      <tr><td>Pause danach</td><td id="ps-pause"></td></tr>
-      <tr><td>Notiz</td><td id="ps-note"></td></tr>
-    </table>
-    <div class="popup-actions">
-      <button class="btn btn-neutral" onclick="closePopup('popup-step')">Schließen</button>
-      <button class="btn btn-primary" onclick="editCurrentStep()">✏ Bearbeiten</button>
-    </div>
-  </div>
-</div>
-
-<!-- Schritt bearbeiten (z-index 530, immer vorne) -->
-<div class="popup-overlay" id="popup-edit" onclick="closePopup('popup-edit')">
-  <div class="popup" onclick="event.stopPropagation()">
-    <button class="popup-close" onclick="closePopup('popup-edit')">×</button>
-    <h2 id="edit-title">Schritt bearbeiten</h2>
-    <div class="form-row"><label>Bezeichnung</label><input type="text" id="edit-name"></div>
-    <div class="form-row"><label>Dauer (Minuten)</label><input type="number" id="edit-dur" min="1"></div>
-    <div class="form-row"><label>Pause nach Schritt (Minuten)</label><input type="number" id="edit-pause" min="0"></div>
-    <div class="form-row"><label>Notiz</label><input type="text" id="edit-note"></div>
-    <div class="popup-actions">
-      <button class="btn btn-warn" onclick="deleteStep()">🗑 Löschen</button>
-      <button class="btn btn-neutral" onclick="cancelEdit()">Abbrechen</button>
-      <button class="btn btn-primary" onclick="saveStep()">Speichern</button>
-    </div>
-  </div>
-</div>
-
-<!-- Startzeit -->
-<div class="popup-overlay" id="popup-start" onclick="closePopup('popup-start')">
-  <div class="popup" onclick="event.stopPropagation()">
-    <button class="popup-close" onclick="closePopup('popup-start')">×</button>
-    <h2 id="popup-start-title">Startzeit</h2>
-    <div class="form-row">
-      <label>Uhrzeit eingeben</label>
-      <input type="time" id="start-val" step="900"
-        style="font-size:1.4rem;padding:8px 12px;width:100%;border:2px solid var(--border);
-               border-radius:8px;background:#fff;color:var(--text);text-align:center;">
-    </div>
-    <div class="popup-actions">
-      <button class="btn btn-neutral" onclick="closePopup('popup-start')">Abbrechen</button>
-      <button class="btn btn-primary" onclick="saveStart()">Übernehmen</button>
-    </div>
-  </div>
-</div>
-
-<!-- Neue Sorte -->
-<div class="popup-overlay" id="popup-add-sorte" onclick="closePopup('popup-add-sorte')">
-  <div class="popup" onclick="event.stopPropagation()">
-    <button class="popup-close" onclick="closePopup('popup-add-sorte')">×</button>
-    <h2>Neue Käsesorte</h2>
-    <div class="form-row"><label>Name</label>
-      <input type="text" id="new-sorte-name" placeholder="z.B. Tilsiter"></div>
-    <div class="popup-actions">
-      <button class="btn btn-neutral" onclick="closePopup('popup-add-sorte')">Abbrechen</button>
-      <button class="btn btn-primary" onclick="addSorte()">Hinzufügen</button>
-    </div>
-  </div>
-</div>
-
-<!-- Schritte verwalten (z-index 520) -->
-<div class="popup-overlay" id="popup-manage" onclick="closePopup('popup-manage')">
-  <div class="popup" style="max-width:560px" onclick="event.stopPropagation()">
-    <button class="popup-close" onclick="closePopup('popup-manage')">×</button>
-    <h2>Schritte verwalten</h2>
-    <div class="form-row">
-      <label>Käsesorte</label>
-      <select id="manage-sel" onchange="renderManageList()"></select>
-    </div>
-    <div class="step-list" id="manage-list"></div>
-    <div class="popup-actions" style="justify-content:space-between;margin-top:10px">
-      <div style="display:flex;gap:6px;">
-        <button class="btn btn-primary btn-sm" onclick="openNewStep()">+ Schritt hinzufügen</button>
-        <button class="btn btn-warn btn-sm" onclick="deleteSorteFromManager()">🗑 Sorte löschen</button>
-      </div>
-      <button class="btn btn-neutral" onclick="closePopup('popup-manage')">Schließen</button>
-    </div>
-  </div>
-</div>
-
-<!-- Neuer Schritt -->
-<div class="popup-overlay" id="popup-ns" onclick="closePopup('popup-ns')">
-  <div class="popup" onclick="event.stopPropagation()">
-    <button class="popup-close" onclick="closePopup('popup-ns')">×</button>
-    <h2>Neuer Produktionsschritt</h2>
-    <div class="form-row"><label>Bezeichnung</label>
-      <input type="text" id="ns-name" placeholder="z.B. Milch erhitzen"></div>
-    <div class="form-row"><label>Dauer (Minuten)</label>
-      <input type="number" id="ns-dur" min="1" value="60"></div>
-    <div class="form-row"><label>Pause danach (Minuten)</label>
-      <input type="number" id="ns-pause" min="0" value="0"></div>
-    <div class="form-row"><label>Notiz</label>
-      <input type="text" id="ns-note" placeholder="optional"></div>
-    <div class="popup-actions">
-      <button class="btn btn-neutral" onclick="closePopup('popup-ns')">Abbrechen</button>
-      <button class="btn btn-primary" onclick="saveNewStep()">Hinzufügen</button>
-    </div>
-  </div>
-</div>
-</div>
 
 </body>
 </html>
