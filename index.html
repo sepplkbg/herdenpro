@@ -7450,8 +7450,7 @@ window.selectMilchZeit = function(zeit, btn) {
 // ══════════════════════════════════════════════════════════════
 //  KÄSE PRODUKTION MODULE
 // ══════════════════════════════════════════════════════════════
-(function() {
-// Namespace guard - only run when kaese module is active
+// KÄSE MODULE - global scope
 
 // ══════════════════════════════════════
 //  KONSTANTEN & DATEN
@@ -7546,7 +7545,7 @@ let returnToManager=false;
 // ══════════════════════════════════════
 //  UTILS
 // ══════════════════════════════════════
-function hhmm(m){
+function kaese_hhmm(m){
   const tot=m+DAY_START_H*60;
   const h=Math.floor(tot/60)%24;
   const mm=Math.round(tot%60);
@@ -7557,7 +7556,7 @@ function durLabel(m){
   const h=Math.floor(m/60),r=m%60;
   return r?h+'h '+r+'min':h+'h';
 }
-function getTimings(sorte){
+function kaese_getTimings(sorte){
   let c=sorte.startH*60;
   return sorte.schritte.map(s=>{
     const a=c,b=c+s.dur; c=b+(s.pause||0);
@@ -7572,10 +7571,10 @@ function detectOverlaps(){
   const res=[];
   for(let si=0;si<sorten.length;si++){
     if(!sorten[si].visible) continue;
-    const tA=getTimings(sorten[si]);
+    const tA=kaese_getTimings(sorten[si]);
     for(let sj=si+1;sj<sorten.length;sj++){
       if(!sorten[sj].visible) continue;
-      const tB=getTimings(sorten[sj]);
+      const tB=kaese_getTimings(sorten[sj]);
       for(let ai=0;ai<tA.length;ai++){
         for(let aj=0;aj<tB.length;aj++){
           if(sorten[si].schritte[ai].name===sorten[sj].schritte[aj].name){
@@ -7588,7 +7587,7 @@ function detectOverlaps(){
   }
   return res;
 }
-function buildOverlapSet(){
+function kaese_buildOverlapSet(){
   const s=new Set(),ol=detectOverlaps();
   ol.forEach(o=>{s.add(o.si+'-'+o.ai);s.add(o.sj+'-'+o.aj);});
   return {s,ol};
@@ -7597,7 +7596,7 @@ function buildOverlapSet(){
 // ══════════════════════════════════════
 //  VISIBILITY CHIPS
 // ══════════════════════════════════════
-function renderVisChips(){
+function kaese_renderVisChips(){
   const panel=document.getElementById('vis-panel');
   panel.innerHTML='';
   sorten.forEach((s,si)=>{
@@ -7609,8 +7608,8 @@ function renderVisChips(){
     chip.title=s.visible?'Zeile ausblenden':'Zeile einblenden';
     chip.onclick=()=>{
       s.visible=!s.visible;
-      renderVisChips();
-      redraw();
+      kaese_renderVisChips();
+      kaese_redraw();
     };
     panel.appendChild(chip);
   });
@@ -7619,14 +7618,14 @@ function renderVisChips(){
 // ══════════════════════════════════════
 //  RENDER
 // ══════════════════════════════════════
-function redraw(){
+function kaese_redraw(){
   pxPerHour=parseInt(document.getElementById('px-per-hour').value)||28;
   viewHours=parseInt(document.getElementById('view-hours').value)||32;
   const totalPx=pxPerHour*viewHours;
   // Tick interval: 1h when zoomed in, else 2h or 4h
   const tick=pxPerHour>=80?1:pxPerHour>=30?2:4;
 
-  const {s:olSet,ol:overlaps}=buildOverlapSet();
+  const {s:olSet,ol:overlaps}=kaese_buildOverlapSet();
 
   // Overlap banner
   const banner=document.getElementById('overlap-banner');
@@ -7642,7 +7641,7 @@ function redraw(){
     olList.style.display='none';
   }
 
-  renderVisChips();
+  kaese_renderVisChips();
 
   const gantt=document.getElementById('gantt');
   gantt.innerHTML='';
@@ -7659,10 +7658,10 @@ function redraw(){
     t.style.left=(h*pxPerHour)+'px';
     if(isMidnight){
       const sp=document.createElement('span');
-      sp.textContent=hhmm(h*60);
+      sp.textContent=kaese_hhmm(h*60);
       t.appendChild(sp);
     } else {
-      t.textContent=hhmm(h*60);
+      t.textContent=kaese_hhmm(h*60);
     }
     hdr.appendChild(t);
   }
@@ -7670,7 +7669,7 @@ function redraw(){
 
   // ── Rows ──
   sorten.forEach((sorte,si)=>{
-    const timings=getTimings(sorte);
+    const timings=kaese_getTimings(sorte);
     const row=document.createElement('div');
     row.className='gantt-row'+(sorte.visible?'':' row-hidden');
     row.dataset.si=si;
@@ -7687,7 +7686,7 @@ function redraw(){
     // Start-Zeit Button
     const sb=document.createElement('button');
     sb.className='lbl-btn'; sb.title='Startzeit bearbeiten';
-    sb.textContent='▶'+hhmm(sorte.startH*60);
+    sb.textContent='▶'+kaese_hhmm(sorte.startH*60);
     sb.onclick=e=>{e.stopPropagation();openStartPopup(si);};
 
     // Manage Button
@@ -7735,7 +7734,7 @@ function redraw(){
       const wx=Math.max((t.endMin-t.startMin)/60*pxPerHour, 4);
       const lx=(t.startMin/60)*pxPerHour;
       const isOl=olSet.has(si+'-'+ai);
-      const tip=`${s.name} | ${hhmm(t.startMin)}–${hhmm(t.endMin)} (${durLabel(s.dur)})`;
+      const tip=`${s.name} | ${kaese_hhmm(t.startMin)}–${kaese_hhmm(t.endMin)} (${durLabel(s.dur)})`;
 
       const wrap=document.createElement('div');
       wrap.className='step-wrap';
@@ -7776,7 +7775,7 @@ function redraw(){
           const newH=Math.max(0, Math.round((origH+dx/pxPerHour)*4)/4);
           sorten[si].startH=newH;
           showDragTooltip(ev.clientX, ev.clientY, newH, false);
-          redraw();
+          kaese_redraw();
         }
         function onUp(){
           document.removeEventListener('mousemove',onMove);
@@ -7792,8 +7791,8 @@ function redraw(){
       // Touch auf Balken (Mobile):
       // - Kurz tippen → Popup (touchend ohne Bewegung)
       // - Lang drücken 400ms → Drag-Modus, Scroll wird geblockt
-      // - Kein redraw() während Drag → ganze Zeile per CSS translate verschoben
-      // - redraw() erst beim Loslassen
+      // - Kein kaese_redraw() während Drag → ganze Zeile per CSS translate verschoben
+      // - kaese_redraw() erst beim Loslassen
       bar.addEventListener('touchstart', e=>{
         e.stopPropagation();
         const touch=e.touches[0];
@@ -7884,7 +7883,7 @@ function redraw(){
           if(dragActive&&moved){
             sorten[si].startH=Math.max(0,Math.round((origH+currentDeltaH)*4)/4);
             bar._wasDragged=true;
-            redraw();
+            kaese_redraw();
           }
         }
 
@@ -7915,7 +7914,7 @@ function redraw(){
 // ══════════════════════════════════════
 const _dragTip=document.getElementById('drag-tooltip');
 function showDragTooltip(screenX, screenY, newH, isTouch){
-  const timeStr=hhmm(newH*60);
+  const timeStr=kaese_hhmm(newH*60);
   _dragTip.textContent='▶ '+timeStr;
   _dragTip.style.left=screenX+'px';
   // On touch: place 110px above finger so thumb never covers it
@@ -7947,7 +7946,7 @@ document.addEventListener('mousemove',e=>{
   if(Math.abs(dx)>4){
     drag.moved=true;
     sorten[drag.si].startH=Math.max(0,Math.round((drag.origH+dx/pxPerHour)*4)/4);
-    redraw();
+    kaese_redraw();
   }
 });
 document.addEventListener('mouseup',()=>{
@@ -7969,8 +7968,8 @@ function openStepPopup(si,ai,t){
   document.getElementById('ps-title').textContent=s.name+' – Schritt '+(ai+1);
   document.getElementById('ps-sorte').textContent=s.name;
   document.getElementById('ps-name').textContent=sc.name;
-  document.getElementById('ps-start').textContent=hhmm(t.startMin);
-  document.getElementById('ps-end').textContent=hhmm(t.endMin);
+  document.getElementById('ps-start').textContent=kaese_hhmm(t.startMin);
+  document.getElementById('ps-end').textContent=kaese_hhmm(t.endMin);
   document.getElementById('ps-dur').textContent=durLabel(sc.dur);
   document.getElementById('ps-pause').textContent=sc.pause?durLabel(sc.pause):'–';
   document.getElementById('ps-note').textContent=sc.note||'–';
@@ -7986,8 +7985,8 @@ function openDetailPopup(si,ai,t){
   badge.textContent=s.name;
   badge.style.background=s.color;
   document.getElementById('pd-dur').textContent=durLabel(sc.dur);
-  document.getElementById('pd-start').textContent=hhmm(t.startMin);
-  document.getElementById('pd-end').textContent=hhmm(t.endMin);
+  document.getElementById('pd-start').textContent=kaese_hhmm(t.startMin);
+  document.getElementById('pd-end').textContent=kaese_hhmm(t.endMin);
   document.getElementById('pd-pause').textContent=sc.pause?durLabel(sc.pause):'–';
   document.getElementById('pd-note').textContent=sc.note||'(keine Notiz)';
   openPopup('popup-detail');
@@ -8028,7 +8027,7 @@ function saveStep(){
   sc.pause=parseInt(document.getElementById('edit-pause').value)||0;
   sc.note=document.getElementById('edit-note').value.trim();
   closePopup('popup-edit');
-  redraw();
+  kaese_redraw();
   if(returnToManager){
     returnToManager=false;
     populateManageSel();
@@ -8043,7 +8042,7 @@ function deleteStep(){
   if(!confirm('Schritt „'+name+'" löschen?')) return;
   sorten[curSi].schritte.splice(curAi,1);
   closePopup('popup-edit');
-  redraw();
+  kaese_redraw();
   if(returnToManager){
     returnToManager=false;
     populateManageSel();
@@ -8078,7 +8077,7 @@ function saveStart(){
   let internalMin=realTotalMin-dayStartMin;
   if(internalMin<0) internalMin+=24*60;
   sorten[editStartIdx].startH=Math.round(internalMin/15)*15/60; // snap to 15min
-  closePopup('popup-start'); redraw();
+  closePopup('popup-start'); kaese_redraw();
 }
 
 // Neue Sorte
@@ -8090,14 +8089,14 @@ function addSorte(){
     startH:0,visible:true,
     schritte:[{name:'Schritt 1',dur:60,pause:0,note:''}]});
   document.getElementById('new-sorte-name').value='';
-  closePopup('popup-add-sorte'); redraw();
+  closePopup('popup-add-sorte'); kaese_redraw();
 }
 
 // Sorte löschen (direkt per Index)
 function deleteSorte(si){
   if(!confirm('Käsesorte „'+sorten[si].name+'" und alle ihre Schritte löschen?')) return;
   sorten.splice(si,1);
-  redraw();
+  kaese_redraw();
 }
 
 // Sorte löschen aus Manager
@@ -8105,12 +8104,12 @@ function deleteSorteFromManager(){
   const si=getManageSi();
   if(!confirm('Käsesorte „'+sorten[si].name+'" und alle ihre Schritte löschen?')) return;
   sorten.splice(si,1);
-  closePopup('popup-manage'); redraw();
+  closePopup('popup-manage'); kaese_redraw();
 }
 
 function resetStartzeiten(){
   if(!confirm('Alle Startzeiten auf 0 zurücksetzen?')) return;
-  sorten.forEach(s=>s.startH=0); redraw();
+  sorten.forEach(s=>s.startH=0); kaese_redraw();
 }
 
 // ══════════════════════════════════════
@@ -8137,7 +8136,7 @@ function renderManageList(){
   const si=getManageSi();
   if(si>=sorten.length){return;}
   const sorte=sorten[si];
-  const timings=getTimings(sorte);
+  const timings=kaese_getTimings(sorte);
   const list=document.getElementById('manage-list');
   list.innerHTML='';
   if(!sorte.schritte.length){
@@ -8151,7 +8150,7 @@ function renderManageList(){
     row.innerHTML=
       `<span class="step-num">${ai+1}</span>`+
       `<span class="step-name" title="${s.name}">${s.name}</span>`+
-      `<span class="step-info">${durLabel(s.dur)} ${hhmm(t.startMin)}–${hhmm(t.endMin)}</span>`+
+      `<span class="step-info">${durLabel(s.dur)} ${kaese_hhmm(t.startMin)}–${kaese_hhmm(t.endMin)}</span>`+
       `<span class="step-actions">`+
         `<button class="btn btn-primary btn-sm" onclick="editFromManager(${si},${ai})">✏</button>`+
         `<button class="btn btn-neutral btn-sm" onclick="moveStep(${si},${ai},-1)">↑</button>`+
@@ -8180,12 +8179,12 @@ function moveStep(si,ai,dir){
   const arr=sorten[si].schritte,ni=ai+dir;
   if(ni<0||ni>=arr.length) return;
   [arr[ai],arr[ni]]=[arr[ni],arr[ai]];
-  renderManageList(); redraw();
+  renderManageList(); kaese_redraw();
 }
 function removeStep(si,ai){
   if(!confirm('Schritt „'+sorten[si].schritte[ai].name+'" löschen?')) return;
   sorten[si].schritte.splice(ai,1);
-  renderManageList(); redraw();
+  renderManageList(); kaese_redraw();
 }
 function openNewStep(){
   document.getElementById('ns-name').value='';
@@ -8205,7 +8204,7 @@ function saveNewStep(){
     note:document.getElementById('ns-note').value.trim()
   });
   closePopup('popup-ns');
-  renderManageList(); redraw();
+  renderManageList(); kaese_redraw();
 }
 
 // ══════════════════════════════════════
@@ -8227,7 +8226,7 @@ function loadJSON(evt){
       if(!Array.isArray(obj.sorten)) throw new Error('Kein sorten-Array');
       // Ensure visible field
       obj.sorten.forEach(s=>{ if(s.visible===undefined) s.visible=true; });
-      sorten=obj.sorten; redraw();
+      sorten=obj.sorten; kaese_redraw();
       alert('✓ Daten geladen');
     } catch(err){alert('Fehler: '+err.message);}
   };
@@ -8238,7 +8237,7 @@ function loadJSON(evt){
 // ══════════════════════════════════════
 //  PNG EXPORT
 // ══════════════════════════════════════
-function roundRect(ctx,x,y,w,h,r){
+function kaese_roundRect(ctx,x,y,w,h,r){
   r=Math.min(r,w/2,h/2);
   ctx.beginPath();
   ctx.moveTo(x+r,y);
@@ -8248,7 +8247,7 @@ function roundRect(ctx,x,y,w,h,r){
   ctx.lineTo(x,y+r); ctx.quadraticCurveTo(x,y,x+r,y);
   ctx.closePath();
 }
-function exportPNG(){
+function kaese_exportPNG(){
   const LABEL=210, ROW=58, HEADER=26, PAD=18, TITLE=28;
   const totalPx=pxPerHour*viewHours;
   const visibleSorten=sorten.filter(s=>s.visible);
@@ -8270,18 +8269,18 @@ function exportPNG(){
   ctx.font='9px Segoe UI, sans-serif';
   for(let h=0;h<=viewHours;h+=tick){
     const x=PAD+LABEL+h*pxPerHour;
-    ctx.fillStyle='#7a6f5e'; ctx.fillText(hhmm(h*60),x+2,y+12);
+    ctx.fillStyle='#7a6f5e'; ctx.fillText(kaese_hhmm(h*60),x+2,y+12);
     ctx.fillStyle='rgba(0,0,0,0.08)'; ctx.fillRect(x,y+14,1,H-y-14);
   }
   y+=HEADER;
   ctx.fillStyle='#d6cfc0'; ctx.fillRect(PAD,y-1,W-PAD*2,1); y+=3;
 
-  const {s:olSet}=buildOverlapSet();
+  const {s:olSet}=kaese_buildOverlapSet();
 
   visibleSorten.forEach((sorte,idx)=>{
     // find real si for overlap keys
     const si=sorten.indexOf(sorte);
-    const timings=getTimings(sorte);
+    const timings=kaese_getTimings(sorte);
     const rowY=y;
 
     ctx.fillStyle=sorte.color;
@@ -8295,10 +8294,10 @@ function exportPNG(){
       const lx=PAD+LABEL+(t.startMin/60)*pxPerHour;
       const wx=Math.max(((t.endMin-t.startMin)/60)*pxPerHour,4);
       ctx.fillStyle=sorte.color;
-      roundRect(ctx,lx,rowY+13,wx,28,4); ctx.fill();
+      kaese_roundRect(ctx,lx,rowY+13,wx,28,4); ctx.fill();
       if(olSet.has(si+'-'+ai)){
         ctx.strokeStyle='#c0392b'; ctx.lineWidth=2;
-        roundRect(ctx,lx,rowY+13,wx,28,4); ctx.stroke(); ctx.lineWidth=1;
+        kaese_roundRect(ctx,lx,rowY+13,wx,28,4); ctx.stroke(); ctx.lineWidth=1;
       }
       ctx.fillStyle='rgba(255,255,255,.93)';
       ctx.font='bold 9px Segoe UI, sans-serif';
@@ -8325,11 +8324,11 @@ function applyMobileZoom(){
   const vh=parseInt(document.getElementById('view-hours-m').value)||32;
   document.getElementById('px-per-hour').value=ph;
   document.getElementById('view-hours').value=vh;
-  redraw();
-  closeBottomSheet();
+  kaese_redraw();
+  kaese_closeBottomSheet();
 }
 
-function openBottomSheet(){
+function kaese_openBottomSheet(){
   // Sync mobile inputs with current desktop values
   document.getElementById('px-per-hour-m').value=
     document.getElementById('px-per-hour').value;
@@ -8354,8 +8353,8 @@ function openBottomSheet(){
       s.visible=!s.visible;
       toggle.style.background=s.visible?s.color:'#ccc';
       toggle.textContent=s.visible?'✓ Sichtbar':'✕ Ausgeblendet';
-      renderVisChips();
-      redraw();
+      kaese_renderVisChips();
+      kaese_redraw();
     };
     row.appendChild(nameSpan);
     row.appendChild(toggle);
@@ -8364,7 +8363,7 @@ function openBottomSheet(){
   document.getElementById('bs-overlay').classList.add('active');
   document.getElementById('bottom-sheet').classList.add('open');
 }
-function closeBottomSheet(){
+function kaese_closeBottomSheet(){
   document.getElementById('bs-overlay').classList.remove('active');
   document.getElementById('bottom-sheet').classList.remove('open');
 }
@@ -8411,10 +8410,10 @@ window.kaeseFirebaseLoad = async function(){
   } catch(e){ return false; }
 }
 
-// Patch redraw to auto-save after every render – using a wrapper
+// Patch kaese_redraw to auto-save after every render – using a wrapper
 (function(){
-  const orig=redraw;
-  window.redraw=function(){
+  const orig=kaese_redraw;
+  window.kaese_redraw=function(){
     orig();
     // Debounced Firebase save
     clearTimeout(window._kaeseSaveTimer);
@@ -8431,10 +8430,9 @@ window.kaeseInit = async function() {
   if(loaded) {
     window.showSaveToast && showSaveToast('Käse-Daten geladen');
   }
-  redraw();
+  kaese_redraw();
 };
 
-})();
 
 
 function renderKaese() {
@@ -9318,8 +9316,7 @@ window.selectMilchZeit = function(zeit, btn) {
 // ══════════════════════════════════════════════════════════════
 //  KÄSE PRODUKTION MODULE
 // ══════════════════════════════════════════════════════════════
-(function() {
-// Namespace guard - only run when kaese module is active
+// KÄSE MODULE - global scope
 
 // ══════════════════════════════════════
 //  KONSTANTEN & DATEN
@@ -10302,7 +10299,6 @@ window.kaeseInit = async function() {
   redraw();
 };
 
-})();
 
 
 function renderKaese() {
