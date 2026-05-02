@@ -800,7 +800,28 @@ textarea.inp{resize:vertical;min-height:64px}
 </head>
 <body>
 
-<div id="root">
+<!-- LOGIN SCREEN -->
+<div id="login-screen" style="position:fixed;inset:0;z-index:10000;background:linear-gradient(160deg,#0a1a04,#1a3a0a,#0d2e03);display:flex;flex-direction:column;align-items:center;justify-content:center;padding:1.5rem">
+  <div style="background:#1a2a10;border:1px solid #2e5c14;border-radius:16px;padding:2rem 1.5rem;width:100%;max-width:360px;box-shadow:0 8px 40px rgba(0,0,0,.6)">
+    <div style="font-size:3rem;text-align:center;margin-bottom:.5rem">🐄</div>
+    <div style="text-align:center;font-size:1.4rem;font-weight:bold;color:#D4A84B;margin-bottom:.3rem">HerdenPro</div>
+    <div style="text-align:center;font-size:.8rem;color:#666;margin-bottom:1.5rem">Almwirtschaft · Herdenverwaltung</div>
+    <div id="login-error" style="background:rgba(200,60,60,.15);border:1px solid rgba(200,60,60,.4);border-radius:8px;padding:.5rem .8rem;font-size:.8rem;color:#c83c3c;margin-bottom:.8rem;display:none"></div>
+    <div id="login-form">
+      <input id="login-email" style="display:block;width:100%;padding:.6rem .8rem;background:#0d1f06;border:1px solid #2e5c14;border-radius:8px;color:#e8f0e0;font-size:.9rem;margin-bottom:.5rem;box-sizing:border-box" type="email" placeholder="E-Mail" inputmode="email" autocomplete="email" />
+      <input id="login-pw" style="display:block;width:100%;padding:.6rem .8rem;background:#0d1f06;border:1px solid #2e5c14;border-radius:8px;color:#e8f0e0;font-size:.9rem;margin-bottom:1rem;box-sizing:border-box" type="password" placeholder="Passwort" autocomplete="current-password" onkeydown="if(event.key==='Enter')doLogin()" />
+      <button onclick="doLogin()" style="width:100%;padding:.7rem;background:linear-gradient(135deg,#D4A84B,#b8903a);border:none;border-radius:8px;color:#000;font-weight:bold;font-size:.95rem;cursor:pointer;font-family:inherit">Anmelden</button>
+    </div>
+    <div style="text-align:center;margin-top:1rem">
+      <button onclick="showPwReset()" style="background:none;border:none;color:#555;font-size:.78rem;cursor:pointer;font-family:inherit">Passwort vergessen?</button>
+    </div>
+  </div>
+  <div style="position:absolute;bottom:2rem;font-size:.65rem;color:rgba(255,255,255,.2);text-align:center">
+    <a href="./datenschutz.html" target="_blank" style="color:rgba(255,255,255,.35);text-decoration:underline">Datenschutzerklärung</a> · Daten verschlüsselt · EU-Server
+  </div>
+</div>
+
+<div id="root" style="display:none">
   <!-- Install Banner (iOS Hinweis) -->
   <div id="install-banner" class="hidden">
     <span>📲 Zum Homescreen hinzufügen: Safari → Teilen → „Zum Home-Bildschirm"</span>
@@ -919,6 +940,12 @@ function initApp() {
   try {
     const app = firebase.initializeApp(window.FIREBASE_CONFIG);
     db = firebase.database();
+    // Start auth after Firebase is initialized
+    if(document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', initAuth);
+    } else {
+      setTimeout(initAuth, 100);
+    }
   } catch(e) { 
     document.getElementById('main-content').innerHTML = '<div class="empty-state" style="color:#e06040">Firebase-Fehler: '+e.message+'<br><small>Bitte Internetverbindung prüfen</small></div>';
     return; 
@@ -5869,7 +5896,7 @@ function initAuth() {
   
   // Show login screen immediately
   document.getElementById('login-screen').style.display = 'flex';
-  document.getElementById('app').style.display = 'none';
+  document.getElementById('root').style.display = 'none';
   
   firebase.auth().onAuthStateChanged(async function(user) {
     if(user) {
@@ -5889,7 +5916,7 @@ function initAuth() {
         
         // Show app
         document.getElementById('login-screen').style.display = 'none';
-        document.getElementById('app').style.display = '';
+        document.getElementById('root').style.display = '';
         
         // Update topbar with user info
         updateUserDisplay();
@@ -5917,7 +5944,7 @@ window.alleAuftreiben = async function() {
     } else {
       // Not logged in
       document.getElementById('login-screen').style.display = 'flex';
-      document.getElementById('app').style.display = 'none';
+      document.getElementById('root').style.display = 'none';
       window._appInitialized = false;
     }
   });
