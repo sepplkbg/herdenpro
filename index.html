@@ -52,6 +52,19 @@ window.FIREBASE_CONFIG = {
   window.DEFAULT_MAIN_NAV = ['dashboard','herde','saison','milch'];
   window._mainNav = JSON.parse(localStorage.getItem('mainNav')||'null') || window.DEFAULT_MAIN_NAV.slice();
   window._mehrAnpassen = false;
+  // Clear cached mehr-order if it's missing new modules
+  (function() {
+    var savedOrder = JSON.parse(localStorage.getItem('mehrOrder')||'null');
+    if(savedOrder) {
+      var newIds = ['kraftfutter','bauern_menu'];
+      var missing = newIds.filter(function(id){ return !savedOrder.includes(id); });
+      if(missing.length > 0) {
+        // Add missing items to order
+        missing.forEach(function(id){ savedOrder.push(id); });
+        localStorage.setItem('mehrOrder', JSON.stringify(savedOrder));
+      }
+    }
+  })();
 
   // ── Stubs (werden vom Modul überschrieben) ──
   window._navReady = false;
@@ -1720,8 +1733,8 @@ function behandlungFormHTML(vorId, editId, editData) {
       </div>
       <div class="form-body">
         <input type="hidden" id="b-edit-id" value="${editId||''}" />
-        <label class="inp-label">Kuh *</label>
-        <select id="b-kuh" class="inp"><option value="">Kuh wählen</option>${opts}</select>
+        <label class="inp-label">Kuh * (nach oben scrollen zum Auswählen)</label>
+        <select id="b-kuh" class="inp" size="1" onfocus="this.scrollIntoView({behavior:'smooth',block:'start'})">${opts.replace('<option value="">','<option value="" selected>')}</select>
         <label class="inp-label">Behandelt am</label>
         <div style="display:grid;grid-template-columns:1fr auto;gap:.5rem;align-items:center">
           <input id="b-datum" class="inp" type="date" value="${bDatum}" oninput="berechneWartezeiten()" />
@@ -1781,7 +1794,8 @@ function besamungFormHTML(vorId, editBsId=null, editData=null) {
       </div>
       <div class="form-body">
         <input type="hidden" id="bs-edit-id" value="${editBsId||''}" />
-        <select id="bs-kuh" class="inp"><option value="">Kuh *</option>${opts}</select>
+        <label class="inp-label">Kuh *</label>
+        <select id="bs-kuh" class="inp" onfocus="this.scrollIntoView({behavior:'smooth',block:'start'})">${opts}</select>
         <input id="bs-datum" class="inp" type="date" value="${bsDatum}" onchange="berechneTermine()" />
         <input id="bs-besamungstechniker" class="inp" placeholder="Besamungstechniker / Tierarzt" value="${d.besamungstechniker||''}" />
         <input id="bs-stier" class="inp" placeholder="Stier / Samenspender" value="${d.stier||''}" />
@@ -4010,7 +4024,9 @@ window.editBesamung = function(bsid) {
     if(!grid) return;
     var mainNavIds = window._mainNav || [];
     var allMods = window.ALLE_MODULE || [];
+    if(!allMods.length) { console.warn('ALLE_MODULE empty!'); return; }
     var imMenu = allMods.filter(function(m){ return !mainNavIds.includes(m.id); });
+    console.log('renderMehrGrid: imMenu ids=', imMenu.map(function(m){return m.id;}));
 
     var savedOrder = JSON.parse(localStorage.getItem('mehrOrder')||'null');
     if(savedOrder) {
@@ -4060,73 +4076,72 @@ window.editBesamung = function(bsid) {
         dragSrc=null;
       });
 
-      // ── Touch drag ──
-      var longPressTimer = null;
-      btn.addEventListener('touchstart', function(e) {
-        var self=this;
-        longPressTimer = setTimeout(function() {
+      // ── Pointer drag (works on touch AND mouse) ──
+      var pointerDownTimer = null;
+      var isDragging = false;
+      
+      btn.addEventListener('pointerdown', function(e) {
+        var self = this;
+        isDragging = false;
+        pointerDownTimer = setTimeout(function() {
+          isDragging = true;
           touchDragSrc = self.dataset.mid;
-          // Visual feedback
-          self.style.transform='scale(1.1)';
-          self.style.boxShadow='0 0 16px rgba(212,168,75,.6)';
-          self.style.zIndex='99';
-          self.style.background='var(--bg4)';
+          self.style.transform = 'scale(1.08)';
+          self.style.boxShadow = '0 0 20px rgba(212,168,75,.7)';
+          self.style.zIndex = '99';
+          self.setPointerCapture(e.pointerId);
           if(navigator.vibrate) navigator.vibrate(40);
-          // Show hint
+          // Hint
           var hint = document.getElementById('touch-drag-hint');
           if(!hint) {
-            hint=document.createElement('div');
-            hint.id='touch-drag-hint';
-            hint.style.cssText='position:fixed;bottom:calc(var(--nav-h) + var(--safe-b) + 60px);left:50%;transform:translateX(-50%);background:rgba(212,168,75,.95);color:#0a0800;border-radius:20px;padding:.35rem 1rem;font-size:.75rem;font-weight:bold;z-index:500;white-space:nowrap;pointer-events:none';
-            hint.textContent='Ziehen zum Verschieben';
+            hint = document.createElement('div');
+            hint.id = 'touch-drag-hint';
+            hint.style.cssText = 'position:fixed;bottom:calc(var(--nav-h) + var(--safe-b) + 65px);left:50%;transform:translateX(-50%);background:rgba(212,168,75,.95);color:#0a0800;border-radius:20px;padding:.35rem 1rem;font-size:.75rem;font-weight:bold;z-index:500;white-space:nowrap;pointer-events:none';
+            hint.textContent = '↔ Ziehen zum Verschieben';
             document.body.appendChild(hint);
           }
-          hint.style.display='';
-          setTimeout(function(){if(hint)hint.style.display='none';},2000);
+          hint.style.display = '';
+          setTimeout(function(){if(hint)hint.style.display='none';}, 2000);
         }, 500);
-      }, {passive:true});
-
-      btn.addEventListener('touchmove', function(e) {
-        if(!touchDragSrc) { clearTimeout(longPressTimer); return; }
-        e.preventDefault();
-        var touch=e.touches[0];
-        // Find element under touch
-        this.style.display='none';
-        var el=document.elementFromPoint(touch.clientX, touch.clientY);
-        this.style.display='';
-        var target=el&&el.closest('.mehr-btn[data-mid]');
-        // Highlight target
-        grid.querySelectorAll('.mehr-btn').forEach(function(b){ b.style.outline=''; });
-        if(target&&target.dataset.mid!==touchDragSrc) {
-          target.style.outline='2px solid var(--gold)';
-        }
-      }, {passive:false});
-
-      btn.addEventListener('touchend', function(e) {
-        clearTimeout(longPressTimer);
-        if(!touchDragSrc) return;
-        var self=this;
-        var touch=e.changedTouches[0];
-        self.style.transform='';
-        self.style.boxShadow='';
-        self.style.zIndex='';
-        self.style.background='';
-        grid.querySelectorAll('.mehr-btn').forEach(function(b){ b.style.outline=''; });
-        self.style.display='none';
-        var el=document.elementFromPoint(touch.clientX, touch.clientY);
-        self.style.display='';
-        var target=el&&el.closest('.mehr-btn[data-mid]');
-        if(target&&target.dataset.mid!==touchDragSrc) {
-          swapItems(touchDragSrc, target.dataset.mid);
-        }
-        touchDragSrc=null;
       });
 
-      btn.addEventListener('touchcancel', function() {
-        clearTimeout(longPressTimer);
-        this.style.transform=''; this.style.boxShadow=''; this.style.zIndex=''; this.style.background='';
-        touchDragSrc=null;
-        grid.querySelectorAll('.mehr-btn').forEach(function(b){b.style.outline='';});
+      btn.addEventListener('pointermove', function(e) {
+        if(!isDragging || !touchDragSrc) { return; }
+        e.preventDefault();
+        // Highlight target under pointer
+        this.style.display = 'none';
+        var el = document.elementFromPoint(e.clientX, e.clientY);
+        this.style.display = '';
+        var target = el && el.closest ? el.closest('.mehr-btn[data-mid]') : null;
+        Array.from(grid.querySelectorAll('.mehr-btn')).forEach(function(b){ 
+          b.style.outline = (target && b.dataset.mid===target.dataset.mid && b.dataset.mid!==touchDragSrc) ? '2px solid var(--gold)' : '';
+        });
+      });
+
+      btn.addEventListener('pointerup', function(e) {
+        clearTimeout(pointerDownTimer);
+        if(!isDragging || !touchDragSrc) { isDragging=false; return; }
+        var self = this;
+        self.style.transform = '';
+        self.style.boxShadow = '';
+        self.style.zIndex = '';
+        Array.from(grid.querySelectorAll('.mehr-btn')).forEach(function(b){ b.style.outline=''; });
+        self.style.display = 'none';
+        var el = document.elementFromPoint(e.clientX, e.clientY);
+        self.style.display = '';
+        var target = el && el.closest ? el.closest('.mehr-btn[data-mid]') : null;
+        if(target && target.dataset.mid !== touchDragSrc) {
+          swapItems(touchDragSrc, target.dataset.mid);
+        }
+        touchDragSrc = null;
+        isDragging = false;
+      });
+
+      btn.addEventListener('pointercancel', function() {
+        clearTimeout(pointerDownTimer);
+        this.style.transform=''; this.style.boxShadow=''; this.style.zIndex='';
+        Array.from(grid.querySelectorAll('.mehr-btn')).forEach(function(b){b.style.outline='';});
+        touchDragSrc=null; isDragging=false;
       });
     });
 
