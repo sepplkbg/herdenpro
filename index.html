@@ -5346,88 +5346,68 @@ function renderMilch() {
 }
 
 function renderSaison() {
-  const kuhListe=Object.entries(kuehe).sort((a,b)=>{const nA=parseInt(a[1].nr)||0,nB=parseInt(b[1].nr)||0;return nA-nB;});
-  const oben=kuhListe.filter(([,k])=>k.almStatus==='oben');
-  const unten=kuhListe.filter(([,k])=>k.almStatus!=='oben');
-  const heute=Date.now();
+  const kuhListe = Object.entries(kuehe).sort((a,b)=>(parseInt(a[1].nr)||0)-(parseInt(b[1].nr)||0));
+  const oben      = kuhListe.filter(([,k])=>k.almStatus==='oben');
+  const vorzeitig = kuhListe.filter(([,k])=>k.almStatus==='vorzeitig');
+  const unten     = kuhListe.filter(([,k])=>k.almStatus!=='oben' && k.almStatus!=='vorzeitig');
+  const heute = Date.now();
   const tageOben = saisonInfo?.auftriebDatum ? Math.floor((heute - saisonInfo.auftriebDatum)/86400000) : 0;
 
   return `
     <div class="page-header"><h2>⛰ Saison</h2></div>
 
     ${!saisonInfo?.aktiv ? `
-    <!-- ── KEINE AKTIVE SAISON ── -->
-    <div style="text-align:center;padding:1.5rem 0 1rem">
-      <div style="font-size:3rem;margin-bottom:.5rem">⛰</div>
-      <div style="font-size:1.1rem;color:var(--gold);margin-bottom:.3rem">Saison noch nicht gestartet</div>
-      <div style="font-size:.82rem;color:var(--text3);margin-bottom:1.5rem">Starte die Saison wenn die Kühe auf die Alm getrieben werden.</div>
-    </div>
-    <div class="card-section">
-      <div class="section-label" style="margin-bottom:.6rem">AUFTRIEB ERFASSEN</div>
-      <input id="s-alm" class="inp" placeholder="Almname (z.B. Vordere Alm)" style="margin-bottom:.5rem" value="${saisonInfo?.alm||''}" />
-      <input id="s-datum" class="inp" type="date" value="${isoDate(new Date())}" style="margin-bottom:.8rem" />
-      <button class="btn-primary btn-block" onclick="startSaison()">▶ Saison starten</button>
-    </div>
-    ` : `
-    <!-- ── SAISON AKTIV ── -->
+    <div class="card-section" style="margin-bottom:.8rem;border-color:rgba(77,184,78,.3)">
+      <div class="section-label" style="margin-bottom:.5rem">NEUE SAISON STARTEN</div>
+      <input id="s-almname" class="inp" placeholder="Almname" value="${saisonInfo?.alm||''}" style="margin-bottom:.4rem"/>
+      <input id="s-jahr" class="inp" type="number" placeholder="Jahr" value="${new Date().getFullYear()}" style="margin-bottom:.4rem"/>
+      <input id="s-auftrieb" class="inp" type="date" value="${isoDate(new Date())}" style="margin-bottom:.6rem"/>
+      <button class="btn-primary" style="width:100%" onclick="startSaison()">▲ Saison starten</button>
+    </div>` : `
 
-    <!-- Status-Banner -->
-    <div style="background:rgba(91,168,92,.12);border:1.5px solid var(--green);border-radius:14px;padding:1rem 1.2rem;margin-bottom:1rem">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.5rem">
-        <span style="color:var(--green);font-weight:bold;font-size:.9rem">✓ Saison aktiv</span>
-        <span style="font-size:.75rem;color:var(--text3)">Tag ${tageOben}</span>
-      </div>
-      <div style="font-size:1.1rem;color:var(--gold);margin-bottom:.3rem">${saisonInfo.alm||'Alm'}</div>
-      <div style="font-size:.82rem;color:var(--text2)">
-        Auftrieb: ${new Date(saisonInfo.auftriebDatum).toLocaleDateString('de-AT',{weekday:'long',day:'numeric',month:'long'})}
-      </div>
+    <!-- Saison Info -->
+    <div class="card-section" style="margin-bottom:.8rem">
+      <div class="info-row"><span>Alm</span><b>${saisonInfo.alm||'–'}</b></div>
+      <div class="info-row"><span>Jahr</span><b>${saisonInfo.jahr||'–'}</b></div>
+      <div class="info-row"><span>Auftrieb</span><b>${saisonInfo.auftriebDatum?new Date(saisonInfo.auftriebDatum).toLocaleDateString('de-AT'):'–'}</b></div>
+      <div class="info-row"><span>Tage auf Alm</span><b>${tageOben}</b></div>
+      <div class="info-row"><span>Kühe oben</span><b>${oben.length} / ${kuhListe.length}</b></div>
     </div>
 
-    <!-- Kühe Zähler -->
-    <div class="stats-grid" style="margin-bottom:1rem">
-      <div class="stat-card">
-        <div class="stat-icon">⛰</div>
-        <div class="stat-num">${oben.length}</div>
-        <div class="stat-label">Kühe oben</div>
-      </div>
-      <div class="stat-card ${unten.length?'stat-warn':''}">
-        <div class="stat-icon">🏠</div>
-        <div class="stat-num">${unten.length}</div>
-        <div class="stat-label">noch unten</div>
-      </div>
-    </div>
+    <!-- OBEN -->
+    ${oben.length ? `
+    <div class="section-title" style="color:var(--green)">⛰ Auf der Alm (${oben.length})</div>
+    <div class="card-list" style="margin-bottom:.6rem">
+      ${oben.map(([id,k])=>`
+        <div class="list-card list-card-sm">
+          <span class="nr-badge">#${k.nr}</span>
+          <span class="list-card-title">${k.name||'–'}</span>
+          <span style="font-size:.72rem;color:var(--text3);flex:1">${k.bauer||''}</span>
+          <button class="btn-xs" onclick="showVorzeitigAbtrieb('${id}')">↓ vorzeitig</button>
+          <button class="btn-xs-danger" onclick="setAlmStatus('${id}','unten')">↓ ab</button>
+        </div>`).join('')}
+    </div>` : ''}
 
-    <!-- Schritt-für-Schritt Anleitung -->
-    <div class="section-title">Was kannst du hier tun?</div>
-    <div class="card-section" style="margin-bottom:1rem">
-      <div style="display:flex;flex-direction:column;gap:.7rem">
-        <div style="display:flex;gap:.8rem;align-items:flex-start">
-          <span style="font-size:1.3rem;flex-shrink:0">1️⃣</span>
-          <div>
-            <div style="font-size:.88rem;color:var(--text);font-weight:bold">Kühe aufgetrieben markieren</div>
-            <div style="font-size:.75rem;color:var(--text3)">Jede Kuh einzeln oder alle auf einmal als „oben" markieren → Alpungstage laufen automatisch</div>
+    <!-- VORZEITIG ABGETRIEBEN -->
+    ${vorzeitig.length ? `
+    <div class="section-title" style="color:var(--orange)">⚠ Vorzeitig abgetrieben (${vorzeitig.length})</div>
+    <div class="card-list" style="margin-bottom:.6rem">
+      ${vorzeitig.map(([id,k])=>`
+        <div class="list-card list-card-sm" style="border-left:3px solid var(--orange)">
+          <span class="nr-badge" style="background:var(--orange)">#${k.nr}</span>
+          <span class="list-card-title">${k.name||'–'}</span>
+          <div style="flex:1;min-width:0">
+            <span style="font-size:.72rem;color:var(--text3)">${k.bauer||''}</span>
+            ${k.vorzeitigDatum?`<span style="font-size:.68rem;color:var(--orange);display:block">${new Date(k.vorzeitigDatum).toLocaleDateString('de-AT')}${k.vorzeitigGrund?' · '+k.vorzeitigGrund:''}</span>`:''}
           </div>
-        </div>
-        <div style="display:flex;gap:.8rem;align-items:flex-start">
-          <span style="font-size:1.3rem;flex-shrink:0">2️⃣</span>
-          <div>
-            <div style="font-size:.88rem;color:var(--text);font-weight:bold">Tägliche Kontrolle</div>
-            <div style="font-size:.75rem;color:var(--text3)">Unter „Mehr → Tägliche Kontrolle" prüfen ob alle Kühe da sind</div>
-          </div>
-        </div>
-        <div style="display:flex;gap:.8rem;align-items:flex-start">
-          <span style="font-size:1.3rem;flex-shrink:0">3️⃣</span>
-          <div>
-            <div style="font-size:.88rem;color:var(--text);font-weight:bold">Am Ende der Saison: Abtrieb erfassen</div>
-            <div style="font-size:.75rem;color:var(--text3)">Abtriebsdatum eintragen → Alpungstage werden für AMA/ÖPUL berechnet → Saisonbericht exportieren</div>
-          </div>
-        </div>
-      </div>
-    </div>
+          <button class="btn-xs" onclick="setAlmStatus('${id}','oben')">↑ zurück</button>
+          <button class="btn-xs-danger" onclick="setAlmStatus('${id}','unten')">✓ abgerechnet</button>
+        </div>`).join('')}
+    </div>` : ''}
 
-    <!-- Kühe Verwaltung -->
+    <!-- NOCH NICHT AUFGETRIEBEN -->
     ${unten.length ? `
-    <div class="section-title">Noch nicht aufgetrieben (${unten.length})</div>
+    <div class="section-title" style="color:var(--text3)">🏠 Noch nicht aufgetrieben (${unten.length})</div>
     <div class="card-list" style="margin-bottom:.6rem">
       ${unten.map(([id,k])=>`
         <div class="list-card list-card-sm">
@@ -5437,54 +5417,20 @@ function renderSaison() {
           <button class="btn-xs" onclick="setAlmStatus('${id}','oben')">↑ aufgetrieben</button>
         </div>`).join('')}
     </div>
-    <button class="btn-secondary btn-block" style="margin-bottom:.8rem" onclick="alleAuftreiben()">↑ Alle als aufgetrieben markieren</button>
-    ` : `<div class="empty-state" style="margin-bottom:.8rem">✓ Alle Kühe oben</div>`}
+    <button class="btn-secondary btn-block" onclick="alleAuftreiben()" style="margin-bottom:.8rem">↑ Alle als aufgetrieben markieren</button>
+    ` : ''}
 
-    ${oben.length ? `
-    <div class="section-title">Auf der Alm (${oben.length})</div>
-    <div class="card-list" style="margin-bottom:1rem">
-      ${oben.map(([id,k])=>`
-        <div class="list-card list-card-sm">
-          <span class="nr-badge">#${k.nr}</span>
-          <span class="list-card-title">${k.name||'–'}</span>
-          <span style="font-size:.72rem;color:var(--text3);flex:1">${k.bauer||''}</span>
-          <button class="btn-xs-danger" onclick="setAlmStatus('${id}','unten')">↓ abgetrieben</button>
-        </div>`).join('')}
-    </div>` : ''}
-
-    <!-- Abtrieb Button -->
-    <div class="card-section" style="border-color:var(--orange)">
-      <div style="font-size:.82rem;color:var(--text2);margin-bottom:.7rem">
-        <b style="color:var(--orange)">Saisonende:</b> Wenn alle Kühe abgetrieben wurden, hier den Abtrieb erfassen. 
-        Die Alpungstage werden dann berechnet.
-      </div>
-      <button class="btn-primary" style="background:var(--orange);width:100%" onclick="showAbtriebbForm()">
-        ↓ Abtrieb erfassen & Saison beenden
-      </button>
+    <!-- SAISON BEENDEN -->
+    <div class="section-title">Saisonende</div>
+    <div class="card-section" style="border-color:var(--red)">
+      <p style="font-size:.8rem;color:var(--text2);margin-bottom:.6rem">Wenn alle Kühe abgetrieben wurden, hier den Abtrieb erfassen. Die Alpungstage werden dann berechnet.</p>
+      <button class="btn-primary" style="background:var(--red);border-color:var(--red);width:100%" onclick="showAbtriebbForm()">↓ Abtrieb erfassen &amp; Saison beenden</button>
     </div>
     `}
 
-    <!-- Abtrieb Form -->
-    <div id="abtrieb-overlay" class="form-overlay" style="display:none">
-      <div class="form-sheet">
-        <div class="form-header"><h3>Abtrieb erfassen</h3><button class="close-btn" onclick="closeForm('abtrieb-overlay')">✕</button></div>
-        <div class="form-body">
-          <p style="font-size:.82rem;color:var(--text2);margin-bottom:.8rem">
-            Nach dem Speichern wird die Saison beendet und die Alpungstage werden berechnet.
-          </p>
-          <label class="inp-label">Abtriebsdatum</label>
-          <input id="ab-datum" class="inp" type="date" value="${isoDate(new Date())}" />
-          <textarea id="ab-notiz" class="inp" rows="2" placeholder="Notizen (z.B. alle gesund, Wetter gut…)"></textarea>
-          <div class="form-actions">
-            <button class="btn-secondary" onclick="closeForm('abtrieb-overlay')">Abbrechen</button>
-            <button class="btn-primary" onclick="saveAbtrieb()">Abtrieb speichern</button>
-          </div>
-        </div>
-      </div>
-    </div>
+    ${renderAbtriebOverlay()}
   `;
 }
-
 function renderWeide() {
   const heuteDatum=isoDate(new Date());
   const weidenListe=Object.entries(weiden).sort((a,b)=>a[1].name?.localeCompare(b[1].name));
