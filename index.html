@@ -1324,7 +1324,7 @@ function render() {
     chat:         renderChatPage,
     kraftfutter:  renderKraftfutter,
     wetter:       renderWetter,
-    kaese:        renderKaese,
+    kaese:        (window.renderKaese || function(){return '<div>Käse wird geladen...</div>'}),
     bauern_menu:  renderBauernMenu,
     bauer_detail: renderBauerDetail,
   };
@@ -1343,6 +1343,11 @@ function render() {
 // ══════════════════════════════════════════════════════════════════════════════
 //  DASHBOARD
 // ══════════════════════════════════════════════════════════════════════════════
+// Käse module stub - assigned to window for global access
+window.renderKaese = function() {
+  return '<div id="kaese-modul" style="padding:0;margin:0;overflow-x:hidden;min-height:100%"></div>';
+};
+
 function renderDashboard() {
   const heute = Date.now();
   const morgen = heute + 86400000;
@@ -8435,9 +8440,7 @@ window.kaeseInit = async function() {
 
 
 
-function renderKaese() {
-  return '<div id="kaese-modul" style="padding:0;margin:0;overflow-x:hidden"></div>';
-}
+
 
 
 // Load kaese data when navigating to kaese
