@@ -742,6 +742,17 @@ textarea.inp{resize:vertical;min-height:64px}
   .detail-name{font-size:1.6rem}
 }
 
+/* ── Drag prevention ── */
+.mehr-drag-item, .nav-item {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+  touch-action: pan-y;
+}
+.mehr-drag-active {
+  touch-action: none !important;
+}
+
 /* ── Print ── */
 @media print{
   #topbar,#bottom-nav,#mehr-menu,#offline-banner{display:none!important}
@@ -795,10 +806,10 @@ textarea.inp{resize:vertical;min-height:64px}
   <div id="mehr-menu" style="display:none;position:fixed;bottom:calc(var(--nav-h) + var(--safe-b));left:0;right:0;max-width:540px;margin:0 auto;z-index:50;padding:.5rem;background:linear-gradient(180deg,var(--bg2),var(--bg));border-top:1px solid var(--border2);box-shadow:0 -8px 30px rgba(0,0,0,.4);max-height:80vh;overflow-y:auto">
     <div id="mehr-grid" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:.4rem"></div>
     <div style="text-align:center;margin-top:.5rem;display:flex;justify-content:center;gap:.5rem;flex-wrap:wrap">
-      <span style="font-size:.68rem;color:var(--text3)">↕ Lang drücken zum Verschieben</span>
+
       <button onclick="toggleMehrAnpassen()" style="background:none;border:1px solid var(--border);border-radius:20px;color:var(--text3);font-size:.72rem;cursor:pointer;font-family:inherit;padding:.25rem .8rem">⚙ Anpassen</button>
     </div>
-    <div id="mehr-edit-hint" style="display:none;text-align:center;font-size:.7rem;color:var(--gold);margin-top:.3rem">1. Element antippen → 2. Zielposition antippen</div>
+    
     <div id="mehr-anpassen" style="display:none;margin-top:.4rem;padding-top:.4rem;border-top:1px solid var(--border)">
       <div style="font-size:.7rem;color:var(--text3);margin-bottom:.4rem;text-align:center">◆ = in Hauptnavigation · Antippen zum Wechseln</div>
       <div id="alle-module-grid" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:.3rem"></div>
@@ -3863,6 +3874,126 @@ window.editBesamung = function(bsid) {
   if(!bs) { alert('Eintrag nicht gefunden'); return; }
   showBesamungForm(bs.kuhId, bsid, bs);
 };
+
+// ══════════════════════════════════════════════════════════════
+//  NAV ↔ MEHR DRAG SWAP
+// ══════════════════════════════════════════════════════════════
+function setupNavMehrDrag() {
+  var nav = document.getElementById('bottom-nav');
+  if(!nav) return;
+
+  var longTimer = null;
+  var navGhost = null;
+  var navDragId = null;
+  var navOffsetX = 0, navOffsetY = 0;
+
+  function startNavDrag(btn, clientX, clientY) {
+    navDragId = btn.dataset.view || btn.dataset.navid;
+    if(!navDragId || navDragId==='dashboard' || navDragId==='mehr') return;
+    window._navDragging = true;
+    document.body.style.userSelect='none';
+    document.body.style.webkitUserSelect='none';
+    btn.style.opacity='0.3';
+
+    navGhost = btn.cloneNode(true);
+    var rect = btn.getBoundingClientRect();
+    navOffsetX = clientX - rect.left;
+    navOffsetY = clientY - rect.top;
+    navGhost.style.cssText='position:fixed;z-index:9999;pointer-events:none;opacity:0.9;'+
+      'width:'+rect.width+'px;transform:scale(1.1);'+
+      'background:var(--bg4);border:2px solid var(--gold);border-radius:var(--radius-sm);'+
+      'box-shadow:0 8px 24px rgba(0,0,0,.5);';
+    navGhost.style.left=(clientX-navOffsetX)+'px';
+    navGhost.style.top=(clientY-navOffsetY)+'px';
+    document.body.appendChild(navGhost);
+    if(navigator.vibrate) navigator.vibrate(50);
+    // Open mehr menu so user can drag into it
+    var mehr = document.getElementById('mehr-menu');
+    if(mehr) mehr.style.display='';
+    if(window.getSelection) window.getSelection().removeAllRanges();
+  }
+
+  function moveNavDrag(clientX, clientY) {
+    if(!navGhost) return;
+    navGhost.style.left=(clientX-navOffsetX)+'px';
+    navGhost.style.top=(clientY-navOffsetY)+'px';
+    // Highlight mehr item under cursor
+    navGhost.style.display='none';
+    var el=document.elementFromPoint(clientX,clientY);
+    navGhost.style.display='';
+    var target=el&&el.closest?el.closest('.mehr-drag-item'):null;
+    document.querySelectorAll('.mehr-drag-item').forEach(function(b){
+      b.style.outline=target&&b===target?'2px solid var(--gold)':'';
+    });
+  }
+
+  function endNavDrag(clientX, clientY) {
+    if(!navGhost||!navDragId) return;
+    navGhost.style.display='none';
+    var el=document.elementFromPoint(clientX,clientY);
+    navGhost.style.display='';
+    navGhost.remove(); navGhost=null;
+
+    document.querySelectorAll('.mehr-drag-item').forEach(function(b){b.style.outline='';});
+    document.querySelectorAll('.nav-item').forEach(function(b){b.style.opacity='';});
+
+    var target=el&&el.closest?el.closest('.mehr-drag-item'):null;
+    if(target&&target.dataset.mid) {
+      var mehrId=target.dataset.mid;
+      // Swap: navDragId goes to mehr, mehrId goes to nav
+      var navIdx=(_mainNav||[]).indexOf(navDragId);
+      if(navIdx>-1) {
+        _mainNav[navIdx]=mehrId;
+        window._mainNav=_mainNav;
+        localStorage.setItem('mainNav',JSON.stringify(_mainNav));
+        // Update mehr order: replace mehrId with navDragId
+        var order=JSON.parse(localStorage.getItem('mehrOrder')||'null')||(window.ALLE_MODULE||[]).filter(function(m){return !(_mainNav||[]).includes(m.id);}).map(function(m){return m.id;});
+        var oi=order.indexOf(mehrId);
+        if(oi>-1) order[oi]=navDragId; else order.push(navDragId);
+        localStorage.setItem('mehrOrder',JSON.stringify(order));
+        renderNav();
+        renderMehrGrid();
+        if(navigator.vibrate) navigator.vibrate([30,10,30]);
+      }
+    }
+    document.getElementById('mehr-menu').style.display='none';
+    navDragId=null; window._navDragging=false;
+    document.body.style.userSelect='';
+    document.body.style.webkitUserSelect='';
+  }
+
+  function cancelNavDrag() {
+    clearTimeout(longTimer);
+    if(navGhost){navGhost.remove();navGhost=null;}
+    document.querySelectorAll('.nav-item').forEach(function(b){b.style.opacity='';});
+    document.querySelectorAll('.mehr-drag-item').forEach(function(b){b.style.outline='';});
+    navDragId=null; window._navDragging=false;
+    document.body.style.userSelect='';
+    document.body.style.webkitUserSelect='';
+    document.getElementById('mehr-menu').style.display='none';
+  }
+
+  // Attach to nav items (excluding dashboard and mehr)
+  Array.from(nav.querySelectorAll('.nav-item')).forEach(function(btn){
+    var vid=btn.dataset.view;
+    if(vid==='dashboard'||vid==='mehr') return;
+
+    btn.addEventListener('mousedown',function(e){
+      var self=this;
+      longTimer=setTimeout(function(){startNavDrag(self,e.clientX,e.clientY);},400);
+    });
+    btn.addEventListener('touchstart',function(e){
+      var touch=e.touches[0]; var self=this;
+      longTimer=setTimeout(function(){startNavDrag(self,touch.clientX,touch.clientY);},400);
+    },{passive:true});
+  });
+
+  document.addEventListener('mousemove',function(e){if(navGhost)moveNavDrag(e.clientX,e.clientY);});
+  document.addEventListener('mouseup',function(e){if(navGhost){clearTimeout(longTimer);endNavDrag(e.clientX,e.clientY);}else clearTimeout(longTimer);});
+  document.addEventListener('touchmove',function(e){if(navGhost){e.preventDefault();moveNavDrag(e.touches[0].clientX,e.touches[0].clientY);}},{passive:false});
+  document.addEventListener('touchend',function(e){if(navGhost){clearTimeout(longTimer);endNavDrag(e.changedTouches[0].clientX,e.changedTouches[0].clientY);}else clearTimeout(longTimer);});
+  document.addEventListener('touchcancel',function(){if(navGhost)cancelNavDrag();clearTimeout(longTimer);});
+}
   initApp();
 
   // Alle verfügbaren Module
@@ -3930,6 +4061,8 @@ window.editBesamung = function(bsid) {
     }
     setupNavDrag(nav);
     if(typeof updateChatBadge==='function') updateChatBadge();
+    // Setup nav-mehr drag after nav is rendered
+    setTimeout(setupNavMehrDrag, 50);
   } catch(e) { console.warn('renderNav:',e); }
   }
 
@@ -4098,6 +4231,10 @@ window.editBesamung = function(bsid) {
       window._mehrDragging = true;
       dragSrcIdx = Array.from(grid.querySelectorAll('.mehr-drag-item')).indexOf(btn);
       btn.style.opacity = '0.3';
+      // Prevent text selection during drag
+      document.body.style.userSelect = 'none';
+      document.body.style.webkitUserSelect = 'none';
+      document.body.style.MozUserSelect = 'none';
 
       // Create ghost
       ghost = btn.cloneNode(true);
@@ -4112,6 +4249,8 @@ window.editBesamung = function(bsid) {
       ghost.style.top  = (clientY - offsetY) + 'px';
       document.body.appendChild(ghost);
       if(navigator.vibrate) navigator.vibrate(50);
+      // Clear any text selection
+      if(window.getSelection) window.getSelection().removeAllRanges();
     }
 
     function moveDrag(clientX, clientY) {
@@ -4150,6 +4289,10 @@ window.editBesamung = function(bsid) {
         if(navigator.vibrate) navigator.vibrate([30,10,30]);
       }
       dragSrcIdx = null;
+      // Re-enable text selection
+      document.body.style.userSelect = '';
+      document.body.style.webkitUserSelect = '';
+      document.body.style.MozUserSelect = '';
       setTimeout(function(){ window._mehrDragging = false; }, 100);
     }
 
@@ -4188,6 +4331,8 @@ window.editBesamung = function(bsid) {
       if(ghost){ ghost.remove(); ghost=null; }
       Array.from(grid.querySelectorAll('.mehr-drag-item')).forEach(function(b){b.style.outline='';b.style.opacity='';});
       dragSrcIdx=null; window._mehrDragging=false;
+      document.body.style.userSelect='';
+      document.body.style.webkitUserSelect='';
     }
 
     // Remove old listeners by replacing with fresh ones
