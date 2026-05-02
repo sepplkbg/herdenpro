@@ -1217,29 +1217,85 @@ function renderMilch() {
         </div>`).join('') : `<div class="empty-state">Noch keine Einträge</div>`}
     </div>
     <div id="milch-form-overlay" class="form-overlay" style="display:none">
-      <div class="form-sheet">
-        <div class="form-header"><h3>Milch erfassen</h3><button class="close-btn" onclick="closeForm('milch-form-overlay')">✕</button></div>
+      <div class="form-sheet" style="max-height:90vh;overflow-y:auto">
+        <div class="form-header">
+          <h3 id="m-form-title">🥛 Milch erfassen</h3>
+          <button class="close-btn" onclick="closeForm('milch-form-overlay')">✕</button>
+        </div>
         <div class="form-body">
-          <input id="m-datum" class="inp" type="date" value="${isoDate(new Date())}" />
-          <div style="display:flex;gap:.5rem;margin-bottom:.4rem">
-            <button class="filter-chip active" id="m-zeit-morgen" onclick="selectMilchZeit('morgen',this)">🌅 Morgens</button>
-            <button class="filter-chip" id="m-zeit-abend" onclick="selectMilchZeit('abend',this)">🌇 Abends</button>
+          <!-- Datum + Zeit -->
+          <div style="display:grid;grid-template-columns:1fr auto;gap:.5rem;margin-bottom:.6rem">
+            <input id="m-datum" class="inp" type="date" value="${isoDate(new Date())}" />
+            <div style="display:flex;gap:.4rem">
+              <button class="filter-chip active" id="m-zeit-morgen" onclick="selectMilchZeit('morgen',this)">🌅 Mo.</button>
+              <button class="filter-chip" id="m-zeit-abend" onclick="selectMilchZeit('abend',this)">🌇 Ab.</button>
+            </div>
           </div>
           <input type="hidden" id="m-zeit" value="morgen" />
-          <label class="inp-label">Erfassungsart</label>
-          <select id="m-art" class="inp" onchange="toggleMilchArt(this.value)">
-            <option value="gesamt">Gesamtmenge (Alm)</option>
-            <option value="prokuh" selected>Pro Kuh (empfohlen)</option>
-          </select>
-          <div id="m-gesamt-block"><input id="m-gesamt" class="inp" placeholder="Liter gesamt" inputmode="decimal" /></div>
-          <div id="m-prokuh-block" style="display:none">
-            ${kueheOben.map(([id,k])=>`<div style="display:flex;align-items:center;gap:.5rem;margin-bottom:.4rem"><span class="nr-badge" style="min-width:44px">#${k.nr}</span><span style="flex:1;font-size:.83rem;color:var(--text2)">${k.name||''}</span><input class="inp kuh-liter" data-id="${id}" placeholder="L" inputmode="decimal" style="width:70px;text-align:right" /></div>`).join('')}
+
+          <!-- Modus Tabs -->
+          <div style="display:flex;gap:.4rem;margin-bottom:.8rem">
+            <button id="m-tab-prokuh" onclick="setMilchModus('prokuh')"
+              style="flex:1;padding:.45rem;border-radius:var(--radius-sm);border:2px solid var(--gold);background:var(--gold);color:#000;font-weight:bold;font-family:inherit;font-size:.82rem;cursor:pointer">
+              Pro Kuh
+            </button>
+            <button id="m-tab-gesamt" onclick="setMilchModus('gesamt')"
+              style="flex:1;padding:.45rem;border-radius:var(--radius-sm);border:1px solid var(--border);background:transparent;color:var(--text3);font-family:inherit;font-size:.82rem;cursor:pointer">
+              Gesamt
+            </button>
           </div>
-          <label class="checkbox-row"><input type="checkbox" id="m-molkerei" /> An Molkerei abgegeben</label>
-          <textarea id="m-notiz" class="inp" rows="2" placeholder="Notizen"></textarea>
-          <div class="form-actions">
+
+          <!-- PRO KUH BLOCK -->
+          <div id="m-prokuh-block">
+            <div style="font-size:.72rem;color:var(--text3);margin-bottom:.5rem">
+              Liter pro Kuh eingeben · 0 oder leer = nicht gemolken
+            </div>
+            <!-- Schnellfilter nach Bauer -->
+            <div id="m-bauer-filter" style="display:flex;gap:.3rem;flex-wrap:wrap;margin-bottom:.6rem">
+              <button class="filter-chip active" onclick="filterMilchBauer('',this)">Alle</button>
+              ${[...new Set(kueheOben.map(([,k])=>k.bauer).filter(Boolean))].map(b=>
+                `<button class="filter-chip" onclick="filterMilchBauer('${b}',this)">${b.split(' ').pop()}</button>`
+              ).join('')}
+            </div>
+            <!-- Kuh-Liste -->
+            <div id="m-kuh-liste">
+              ${kueheOben.map(([id,k])=>`
+                <div class="milch-kuh-row" data-bauer="${k.bauer||''}" style="display:flex;align-items:center;gap:.5rem;padding:.35rem 0;border-bottom:1px solid var(--border)">
+                  <span class="nr-badge" style="min-width:38px;text-align:center">#${k.nr}</span>
+                  <div style="flex:1;min-width:0">
+                    <div style="font-size:.85rem;font-weight:bold;color:var(--text)">${k.name||'–'}</div>
+                    <div style="font-size:.7rem;color:var(--text3)">${k.bauer||''}</div>
+                  </div>
+                  <div style="display:flex;align-items:center;gap:.3rem">
+                    <button onclick="milchStep('${id}',-1)" style="width:28px;height:28px;border-radius:50%;border:1px solid var(--border);background:var(--bg3);color:var(--text);font-size:1rem;cursor:pointer;display:flex;align-items:center;justify-content:center;font-family:inherit">−</button>
+                    <input class="inp kuh-liter" data-id="${id}" data-nr="${k.nr}" data-name="${k.name||''}"
+                      placeholder="L" inputmode="decimal"
+                      style="width:62px;text-align:center;font-size:.95rem;font-weight:bold;padding:.35rem .4rem"
+                      oninput="onMilchInput(this)" onfocus="this.select()" />
+                    <button onclick="milchStep('${id}',1)" style="width:28px;height:28px;border-radius:50%;border:1px solid var(--border);background:var(--bg3);color:var(--text);font-size:1rem;cursor:pointer;display:flex;align-items:center;justify-content:center;font-family:inherit">+</button>
+                  </div>
+                </div>`).join('')}
+            </div>
+            <!-- Summe -->
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-top:.6rem;padding-top:.5rem;border-top:1px solid var(--border2)">
+              <span style="font-size:.82rem;color:var(--text3)">Eingetragen: <span id="m-count">0</span> Kühe</span>
+              <span style="font-size:1rem;color:var(--gold);font-weight:bold">∑ <span id="m-summe">0</span> L</span>
+            </div>
+          </div>
+
+          <!-- GESAMT BLOCK -->
+          <div id="m-gesamt-block" style="display:none">
+            <label class="inp-label">Gesamtmenge Alm (Liter)</label>
+            <input id="m-gesamt" class="inp" placeholder="z.B. 850" inputmode="decimal"
+              style="font-size:1.2rem;text-align:center;font-weight:bold" />
+          </div>
+
+          <label class="checkbox-row" style="margin-top:.6rem"><input type="checkbox" id="m-molkerei" /> An Molkerei abgegeben</label>
+          <textarea id="m-notiz" class="inp" rows="2" placeholder="Notizen" style="margin-top:.4rem"></textarea>
+
+          <div class="form-actions" style="margin-top:.8rem">
             <button class="btn-secondary" onclick="closeForm('milch-form-overlay')">Abbrechen</button>
-            <button class="btn-primary" onclick="saveMilch()">Speichern</button>
+            <button class="btn-primary" onclick="saveMilch()">💾 Speichern</button>
           </div>
         </div>
       </div>
@@ -1251,15 +1307,132 @@ window.selectMilchZeit=function(z,btn){
   document.querySelectorAll('#m-zeit-morgen,#m-zeit-abend').forEach(b=>b.classList.remove('active'));
   btn.classList.add('active');
 };
-window.showMilchForm=function(){const ov=document.getElementById('milch-form-overlay');if(!ov){navigate('milch');setTimeout(()=>showMilchForm(),150);return;}ov.style.display='flex';};
+window.showMilchForm = function() {
+  const ov = document.getElementById('milch-form-overlay');
+  if(!ov) return;
+  // Reset form
+  document.getElementById('m-datum').value = isoDate(new Date());
+  document.getElementById('m-zeit').value = 'morgen';
+  document.getElementById('m-molkerei').checked = false;
+  document.getElementById('m-notiz').value = '';
+  document.querySelectorAll('.kuh-liter').forEach(inp => {
+    inp.value = '';
+    const row = inp.closest('.milch-kuh-row');
+    if(row) { row.style.background=''; row.querySelector('.nr-badge').style.background=''; }
+  });
+  const sumEl = document.getElementById('m-summe');
+  const cntEl = document.getElementById('m-count');
+  if(sumEl) sumEl.textContent = '0';
+  if(cntEl) cntEl.textContent = '0';
+  // Set Zeit chips
+  document.getElementById('m-zeit-morgen')?.classList.add('active');
+  document.getElementById('m-zeit-abend')?.classList.remove('active');
+  // Default: Pro Kuh
+  setMilchModus('prokuh');
+  // Reset bauer filter
+  document.querySelectorAll('#m-bauer-filter .filter-chip').forEach((b,i) => {
+    if(i===0) b.classList.add('active'); else b.classList.remove('active');
+  });
+  document.querySelectorAll('.milch-kuh-row').forEach(r => r.style.display='');
+  ov.style.display = 'flex';
+  // Focus first input
+  setTimeout(()=>{ document.querySelector('.kuh-liter')?.focus(); }, 150);
+};
 window.toggleMilchArt=function(v){document.getElementById('m-gesamt-block').style.display=v==='gesamt'?'':'none';document.getElementById('m-prokuh-block').style.display=v==='prokuh'?'':'none';};
+
+window.setMilchModus = function(modus) {
+  document.getElementById('m-prokuh-block').style.display = modus==='prokuh' ? '' : 'none';
+  document.getElementById('m-gesamt-block').style.display = modus==='gesamt' ? '' : 'none';
+  const tb1 = document.getElementById('m-tab-prokuh');
+  const tb2 = document.getElementById('m-tab-gesamt');
+  if(tb1) {
+    tb1.style.background = modus==='prokuh' ? 'var(--gold)' : 'transparent';
+    tb1.style.color = modus==='prokuh' ? '#000' : 'var(--text3)';
+    tb1.style.border = modus==='prokuh' ? '2px solid var(--gold)' : '1px solid var(--border)';
+    tb1.style.fontWeight = modus==='prokuh' ? 'bold' : 'normal';
+  }
+  if(tb2) {
+    tb2.style.background = modus==='gesamt' ? 'var(--gold)' : 'transparent';
+    tb2.style.color = modus==='gesamt' ? '#000' : 'var(--text3)';
+    tb2.style.border = modus==='gesamt' ? '2px solid var(--gold)' : '1px solid var(--border)';
+    tb2.style.fontWeight = modus==='gesamt' ? 'bold' : 'normal';
+  }
+};
+
+window.filterMilchBauer = function(bauer, btn) {
+  document.querySelectorAll('#m-bauer-filter .filter-chip').forEach(b => b.classList.remove('active'));
+  if(btn) btn.classList.add('active');
+  document.querySelectorAll('.milch-kuh-row').forEach(row => {
+    row.style.display = (!bauer || row.dataset.bauer === bauer) ? '' : 'none';
+  });
+};
+
+window.milchStep = function(kuhId, delta) {
+  const inp = document.querySelector(`.kuh-liter[data-id="${kuhId}"]`);
+  if(!inp) return;
+  const cur = parseFloat(inp.value)||0;
+  const neu = Math.max(0, Math.round((cur + delta) * 10) / 10);
+  inp.value = neu || '';
+  onMilchInput(inp);
+};
+
+window.onMilchInput = function(inp) {
+  // Highlight filled rows
+  const row = inp.closest('.milch-kuh-row');
+  const val = parseFloat(inp.value)||0;
+  if(row) {
+    row.style.background = val > 0 ? 'rgba(77,184,78,.08)' : '';
+    row.querySelector('.nr-badge').style.background = val > 0 ? 'var(--green)' : '';
+  }
+  // Update sum
+  let sum = 0, count = 0;
+  document.querySelectorAll('.kuh-liter').forEach(i => {
+    const v = parseFloat(i.value)||0;
+    if(v > 0) { sum += v; count++; }
+  });
+  const sumEl = document.getElementById('m-summe');
+  const cntEl = document.getElementById('m-count');
+  if(sumEl) sumEl.textContent = Math.round(sum*10)/10;
+  if(cntEl) cntEl.textContent = count;
+};
+
+window.selectMilchZeit = function(zeit, btn) {
+  document.getElementById('m-zeit').value = zeit;
+  document.querySelectorAll('#m-zeit-morgen,#m-zeit-abend').forEach(b => b.classList.remove('active'));
+  if(btn) btn.classList.add('active');
+};
+
 window.saveMilch=async function(){
-  const datum=document.getElementById('m-datum')?.value;const art=document.getElementById('m-art')?.value;
-  let gesamt=0,prokuh={};
-  if(art==='gesamt'){gesamt=parseFloat(document.getElementById('m-gesamt')?.value)||0;}
-  else{document.querySelectorAll('.kuh-liter').forEach(inp=>{const l=parseFloat(inp.value)||0;if(l>0){prokuh[inp.dataset.id]=l;gesamt+=l;}});}
-  if(!gesamt){alert('Bitte Menge eingeben');return;}
-  await push(ref(db,'milch'),{datum:new Date(datum).getTime(),art,zeit:document.getElementById('m-zeit')?.value||'morgen',gesamt:Math.round(gesamt*10)/10,prokuh,molkerei:document.getElementById('m-molkerei')?.checked,notiz:document.getElementById('m-notiz')?.value.trim(),createdAt:Date.now()});
+  const datum=document.getElementById('m-datum')?.value;
+  if(!datum){alert('Datum fehlt');return;}
+  const prokuhBlock = document.getElementById('m-prokuh-block');
+  const modus = prokuhBlock && prokuhBlock.style.display !== 'none' ? 'prokuh' : 'gesamt';
+  const zeit=document.getElementById('m-zeit')?.value||'morgen';
+  const molkerei=document.getElementById('m-molkerei')?.checked||false;
+  const notiz=document.getElementById('m-notiz')?.value.trim()||'';
+  let gesamt=0, prokuh={};
+
+  if(modus==='prokuh'){
+    document.querySelectorAll('.kuh-liter').forEach(inp=>{
+      const l=parseFloat(inp.value)||0;
+      if(l>0){ prokuh[inp.dataset.id]=l; gesamt+=l; }
+    });
+    if(Object.keys(prokuh).length===0){alert('Bitte mindestens eine Kuh eintragen');return;}
+  } else {
+    gesamt=parseFloat(document.getElementById('m-gesamt')?.value)||0;
+    if(!gesamt){alert('Bitte Menge eingeben');return;}
+  }
+
+  await push(ref(db,'milch'),{
+    datum:new Date(datum).getTime(),
+    art:modus,
+    zeit,
+    gesamt:Math.round(gesamt*10)/10,
+    prokuh:modus==='prokuh'?prokuh:null,
+    molkerei,
+    notiz,
+    createdAt:Date.now()
+  });
   closeForm('milch-form-overlay');
 };
 window.deleteMilch=async id=>{if(confirm('Löschen?'))await remove(ref(db,'milch/'+id));};
@@ -4589,86 +4762,219 @@ window._showZaehlungAnim = function(cb) {
   if(_zaehlAnimShown) { if(cb) cb(); return; }
   _zaehlAnimShown = true;
 
+  const DURATION = 2500;
+  const almName = (saisonInfo?.alm || 'Almzählung').toUpperCase();
+  const tierCount = Object.keys(kuehe).length;
+
   const ov = document.createElement('div');
-  ov.style.cssText = [
-    'position:fixed;inset:0;z-index:9999',
-    'background:#0a1a04',
-    'display:flex;flex-direction:column',
-    'align-items:center;justify-content:center',
-    'overflow:hidden',
-  ].join(';');
+  ov.style.cssText = 'position:fixed;inset:0;z-index:9999;overflow:hidden;background:#1a4a0a;cursor:pointer';
 
-  ov.innerHTML = `
-    <style>
-      @keyframes zCount { 0%{opacity:0;transform:scale(2)} 30%{opacity:1;transform:scale(1)} 85%{opacity:1;transform:scale(1)} 100%{opacity:0;transform:scale(.8)} }
-      @keyframes zLine  { 0%{width:0} 100%{width:100%} }
-      @keyframes zFade  { 0%{opacity:0;transform:translateY(12px)} 100%{opacity:1;transform:translateY(0)} }
-      @keyframes zStar  { 0%,100%{opacity:.3;transform:scale(1)} 50%{opacity:1;transform:scale(1.4)} }
-      @keyframes zOut   { 0%{opacity:1;transform:scale(1)} 100%{opacity:0;transform:scale(1.08)} }
-      .za-out { animation: zOut .4s ease forwards !important; }
-    </style>
+  ov.innerHTML = `<style>
+    @keyframes za-sky    { 0%{opacity:0} 8%{opacity:1} 88%{opacity:1} 100%{opacity:0} }
+    @keyframes za-title  { 0%{opacity:0;letter-spacing:.4em} 20%{opacity:1;letter-spacing:.08em} 85%{opacity:1} 100%{opacity:0} }
+    @keyframes za-sub    { 0%,25%{opacity:0;transform:translateY(6px)} 40%{opacity:1;transform:translateY(0)} 85%{opacity:1} 100%{opacity:0} }
+    @keyframes za-bar    { 0%{width:0} 85%{width:100%} 100%{width:100%} }
+    @keyframes za-count  { 0%,60%{opacity:0} 75%{opacity:1} 90%{opacity:1} 100%{opacity:0} }
+    @keyframes za-kuh    { 0%{transform:translateX(110vw) scaleX(-1)} 100%{transform:translateX(-30vw) scaleX(-1)} }
+    @keyframes za-hirte  { 0%{transform:translateX(120vw)} 100%{transform:translateX(-10vw)} }
+    @keyframes za-cloud  { 0%{transform:translateX(0)} 100%{transform:translateX(-15px)} }
+    @keyframes za-grass  { 0%,100%{transform:rotate(-2deg)} 50%{transform:rotate(2deg)} }
+    @keyframes za-leg-f  { 0%,100%{transform:rotate(30deg)} 50%{transform:rotate(-30deg)} }
+    @keyframes za-leg-b  { 0%,100%{transform:rotate(-30deg)} 50%{transform:rotate(30deg)} }
+    @keyframes za-arm-f  { 0%,100%{transform:rotate(-25deg)} 50%{transform:rotate(25deg)} }
+    @keyframes za-arm-b  { 0%,100%{transform:rotate(25deg)} 50%{transform:rotate(-25deg)} }
+    @keyframes za-tail   { 0%,100%{transform:rotate(-15deg)} 50%{transform:rotate(15deg)} }
+    @keyframes za-dust   { 0%{opacity:.7;transform:scale(0) translateX(0)} 100%{opacity:0;transform:scale(1.5) translateX(-20px)} }
+    @keyframes za-fadeout{ 0%{opacity:1} 100%{opacity:0} }
+    .za-dismissing { animation: za-fadeout .35s ease forwards !important; }
+  </style>
 
-    <!-- Bergsilhouette SVG -->
-    <svg viewBox="0 0 400 160" xmlns="http://www.w3.org/2000/svg"
-      style="position:absolute;bottom:0;left:0;right:0;width:100%;opacity:.18">
-      <polygon points="0,160 80,40 140,90 200,20 270,80 330,50 400,110 400,160" fill="#4db84e"/>
-      <polygon points="0,160 60,70 120,110 180,45 240,95 300,30 400,80 400,160" fill="#2e7a2f" opacity=".6"/>
-    </svg>
+  <!-- SKY GRADIENT -->
+  <div style="position:absolute;inset:0;animation:za-sky ${DURATION}ms ease both;
+    background:linear-gradient(180deg,#0d2e03 0%,#1a5208 35%,#2d7a10 65%,#3d9416 80%,#4aad1a 100%)">
+  </div>
 
-    <!-- Sterne -->
-    <div style="position:absolute;inset:0;pointer-events:none">
-      ${Array.from({length:18},(_,i)=>{
-        const x=Math.random()*100, y=Math.random()*55;
-        const s=.4+Math.random()*.7, d=Math.random()*2;
-        return `<div style="position:absolute;left:${x}%;top:${y}%;width:${s*3}px;height:${s*3}px;border-radius:50%;background:#fff;animation:zStar ${1.5+d}s ease-in-out infinite;animation-delay:${d}s"></div>`;
+  <!-- CLOUDS -->
+  <svg style="position:absolute;top:8%;left:0;width:100%;opacity:.18;animation:za-cloud 4s ease-in-out infinite alternate"
+    viewBox="0 0 400 60" xmlns="http://www.w3.org/2000/svg">
+    <ellipse cx="80"  cy="30" rx="55" ry="18" fill="#c8f0a0"/>
+    <ellipse cx="95"  cy="22" rx="35" ry="16" fill="#d8f8b0"/>
+    <ellipse cx="65"  cy="22" rx="28" ry="14" fill="#d8f8b0"/>
+    <ellipse cx="270" cy="28" rx="45" ry="14" fill="#c8f0a0"/>
+    <ellipse cx="285" cy="20" rx="28" ry="13" fill="#d8f8b0"/>
+    <ellipse cx="255" cy="20" rx="22" ry="11" fill="#d8f8b0"/>
+  </svg>
+
+  <!-- BERGKETTE Hintergrund -->
+  <svg style="position:absolute;bottom:28%;left:0;width:100%;opacity:.22"
+    viewBox="0 0 400 120" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="none">
+    <polygon points="0,120 0,80 40,30 80,60 120,15 160,50 200,5 240,45 280,20 320,55 360,25 400,55 400,120" fill="#1a6e08"/>
+    <polygon points="0,120 0,90 50,55 90,75 130,40 170,68 210,30 250,62 290,42 330,70 370,45 400,65 400,120" fill="#0f4a05" opacity=".6"/>
+  </svg>
+
+  <!-- ALMWIESE Vordergrund -->
+  <svg style="position:absolute;bottom:0;left:0;width:100%;height:35%"
+    viewBox="0 0 400 100" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="none">
+    <rect width="400" height="100" fill="#3d9416"/>
+    <ellipse cx="0"  cy="5" rx="80" ry="12" fill="#4aad1a" opacity=".7"/>
+    <ellipse cx="200" cy="3" rx="100" ry="10" fill="#4aad1a" opacity=".5"/>
+    <ellipse cx="400" cy="6" rx="80"  ry="11" fill="#4aad1a" opacity=".6"/>
+    <!-- Grashalme -->
+    <g fill="#5dc922" opacity=".6">
+      ${Array.from({length:30},(_,i)=>{
+        const x=i*14+Math.random()*8; const h=6+Math.random()*8;
+        return `<path d="M${x},100 Q${x-3},${100-h} ${x+2},${100-h*1.4}" stroke="#5dc922" stroke-width="1.5" fill="none"/>`;
       }).join('')}
-    </div>
+    </g>
+  </svg>
 
-    <!-- Hauptinhalt -->
-    <div id="za-main" style="position:relative;text-align:center;animation:zCount .9s cubic-bezier(.16,1,.3,1) forwards">
-      <div style="font-size:3.5rem;font-weight:900;letter-spacing:-.03em;color:#fff;line-height:1;text-shadow:0 0 40px rgba(77,184,78,.8)">
-        ZÄHLUNG
-      </div>
-      <div style="display:flex;align-items:center;gap:.6rem;justify-content:center;margin-top:.5rem">
-        <div style="height:1px;flex:1;max-width:60px;background:linear-gradient(90deg,transparent,#4db84e)"></div>
-        <div id="za-sub" style="font-size:.75rem;letter-spacing:.25em;color:#4db84e;animation:zFade .5s ease .3s both">NASSEREINALM</div>
-        <div style="height:1px;flex:1;max-width:60px;background:linear-gradient(90deg,#4db84e,transparent)"></div>
-      </div>
-    </div>
+  <!-- STAUBWOLKEN (hinter Kuh) -->
+  <div id="za-dust1" style="position:absolute;bottom:32%;right:45%;
+    width:40px;height:20px;border-radius:50%;background:rgba(255,255,220,.25);
+    animation:za-dust 0.4s ease-out infinite;animation-delay:.1s"></div>
+  <div id="za-dust2" style="position:absolute;bottom:34%;right:43%;
+    width:25px;height:14px;border-radius:50%;background:rgba(255,255,220,.18);
+    animation:za-dust 0.4s ease-out infinite;animation-delay:.25s"></div>
 
-    <!-- Ladebalken -->
-    <div style="position:absolute;bottom:0;left:0;right:0;height:3px;background:rgba(77,184,78,.15)">
-      <div id="za-bar" style="height:100%;width:0;background:linear-gradient(90deg,#2e7a2f,#4db84e,#a3e4a4);animation:zLine .85s cubic-bezier(.4,0,.2,1) .1s both;box-shadow:0 0 8px #4db84e"></div>
-    </div>
+  <!-- KUH SVG - läuft von rechts nach links -->
+  <div id="za-kuh" style="position:absolute;bottom:28%;right:0;
+    animation:za-kuh ${DURATION * 0.95}ms cubic-bezier(.25,.1,.25,1) both">
+    <svg width="90" height="60" viewBox="0 0 90 60" xmlns="http://www.w3.org/2000/svg">
+      <!-- Beine (animiert) -->
+      <g transform="translate(22,42)">
+        <rect id="kl1" x="-3" y="0" width="6" height="16" rx="3" fill="#2a1a0a"
+          style="transform-origin:3px 0;animation:za-leg-f .35s ease-in-out infinite"/>
+        <rect id="kl2" x="5"  y="0" width="6" height="16" rx="3" fill="#2a1a0a"
+          style="transform-origin:3px 0;animation:za-leg-b .35s ease-in-out infinite"/>
+      </g>
+      <g transform="translate(58,42)">
+        <rect x="-3" y="0" width="6" height="16" rx="3" fill="#2a1a0a"
+          style="transform-origin:3px 0;animation:za-leg-b .35s ease-in-out infinite"/>
+        <rect x="5"  y="0" width="6" height="16" rx="3" fill="#2a1a0a"
+          style="transform-origin:3px 0;animation:za-leg-f .35s ease-in-out infinite"/>
+      </g>
+      <!-- Körper -->
+      <ellipse cx="44" cy="34" rx="30" ry="16" fill="#f5f0e8"/>
+      <!-- Flecken -->
+      <ellipse cx="35" cy="30" rx="9"  ry="7"  fill="#2a1a0a" opacity=".85"/>
+      <ellipse cx="55" cy="36" rx="7"  ry="5"  fill="#2a1a0a" opacity=".7"/>
+      <!-- Hals -->
+      <ellipse cx="18" cy="26" rx="8" ry="10" fill="#f0ebe0"/>
+      <!-- Kopf -->
+      <ellipse cx="10" cy="18" rx="10" ry="8" fill="#f0ebe0"/>
+      <!-- Schnauze -->
+      <ellipse cx="4" cy="22" rx="5" ry="4" fill="#e8d8c8"/>
+      <circle  cx="3" cy="21" r="1.2" fill="#3a2010"/>
+      <circle  cx="6" cy="22" r="1.2" fill="#3a2010"/>
+      <!-- Auge -->
+      <circle cx="7" cy="15" r="2.5" fill="#1a0a00"/>
+      <circle cx="6.5" cy="14.5" r=".8" fill="#fff" opacity=".9"/>
+      <!-- Hörner -->
+      <path d="M10,11 Q8,6 12,8" stroke="#c8a060" stroke-width="2" fill="none" stroke-linecap="round"/>
+      <path d="M16,10 Q18,5 14,7" stroke="#c8a060" stroke-width="2" fill="none" stroke-linecap="round"/>
+      <!-- Ohr -->
+      <ellipse cx="18" cy="12" rx="4" ry="3" fill="#e8c8a0" transform="rotate(-20,18,12)"/>
+      <!-- Euter -->
+      <ellipse cx="38" cy="48" rx="8" ry="5" fill="#f0c0b0"/>
+      <!-- Schwanz -->
+      <path d="M72,30 Q82,20 78,12" stroke="#c8b890" stroke-width="3" fill="none"
+        stroke-linecap="round" style="transform-origin:72px 30px;animation:za-tail .4s ease-in-out infinite"/>
+      <ellipse cx="78" cy="11" rx="5" ry="4" fill="#8a7850"/>
+      <!-- Glocke -->
+      <rect x="15" y="28" width="6" height="7" rx="1" fill="#c8a030"/>
+      <ellipse cx="18" cy="35" rx="3" ry="2" fill="#a08020"/>
+    </svg>
+  </div>
 
-    <!-- Kuhanzahl Counter -->
-    <div id="za-count" style="position:absolute;bottom:24px;font-size:.72rem;letter-spacing:.15em;color:rgba(77,184,78,.6);animation:zFade .4s ease .5s both">
-      ${Object.keys(kuehe).length} TIERE AUF DER ALM
-    </div>
-  `;
+  <!-- HIRTE SVG - läuft von rechts nach links, etwas langsamer = jagt -->
+  <div id="za-hirte" style="position:absolute;bottom:27%;right:0;
+    animation:za-hirte ${DURATION * 0.98}ms cubic-bezier(.25,.1,.2,1) both">
+    <svg width="50" height="80" viewBox="0 0 50 80" xmlns="http://www.w3.org/2000/svg">
+      <!-- Beine -->
+      <rect x="17" y="55" width="7" height="22" rx="3.5" fill="#2a3a6a"
+        style="transform-origin:20px 55px;animation:za-leg-f .3s ease-in-out infinite"/>
+      <rect x="26" y="55" width="7" height="22" rx="3.5" fill="#1a2a5a"
+        style="transform-origin:29px 55px;animation:za-leg-b .3s ease-in-out infinite"/>
+      <!-- Körper -->
+      <rect x="14" y="32" width="22" height="26" rx="5" fill="#4a6a2a"/>
+      <!-- Hemd/Weste Detail -->
+      <rect x="19" y="32" width="12" height="26" rx="2" fill="#5a7a3a" opacity=".5"/>
+      <!-- Arme -->
+      <rect x="6"  y="33" width="7" height="18" rx="3.5" fill="#4a6a2a"
+        style="transform-origin:9px 33px;animation:za-arm-f .3s ease-in-out infinite"/>
+      <!-- Arm mit Stock ausgestreckt -->
+      <rect x="37" y="28" width="7" height="20" rx="3.5" fill="#4a6a2a"
+        style="transform-origin:40px 33px;transform:rotate(-35deg)"/>
+      <!-- Stock/Hirtenstab -->
+      <path d="M46,18 L38,45" stroke="#8a6030" stroke-width="2.5" stroke-linecap="round"/>
+      <path d="M46,18 Q50,14 47,11" stroke="#8a6030" stroke-width="2" fill="none" stroke-linecap="round"/>
+      <!-- Hände -->
+      <circle cx="9"  cy="50" r="4" fill="#c8a080"/>
+      <circle cx="40" cy="45" r="4" fill="#c8a080"/>
+      <!-- Hals -->
+      <rect x="20" y="24" width="10" height="10" rx="3" fill="#c8a080"/>
+      <!-- Kopf -->
+      <ellipse cx="25" cy="18" rx="10" ry="11" fill="#c8a080"/>
+      <!-- Haare -->
+      <ellipse cx="25" cy="9"  rx="10" ry="5"  fill="#3a2010"/>
+      <!-- Augen -->
+      <circle cx="20" cy="17" r="2" fill="#1a0a00"/>
+      <circle cx="19.5" cy="16.5" r=".6" fill="#fff"/>
+      <!-- Mund (lächelnd - er hat Spaß beim Nachjagen) -->
+      <path d="M21,23 Q25,27 29,23" stroke="#8a5030" stroke-width="1.5" fill="none" stroke-linecap="round"/>
+      <!-- Hut (Tirolerhut) -->
+      <ellipse cx="25" cy="9"  rx="14" ry="4"  fill="#2a3a10"/>
+      <ellipse cx="25" cy="7"  rx="9"  ry="6"  fill="#2a3a10"/>
+      <!-- Hutband -->
+      <path d="M16,8 Q25,5 34,8" stroke="#c8a030" stroke-width="1.5" fill="none"/>
+      <!-- Feder am Hut -->
+      <path d="M33,5 Q38,-2 35,8" stroke="#e8c060" stroke-width="1.5" fill="none" stroke-linecap="round"/>
+    </svg>
+  </div>
 
-  // Almname setzen
-  const subEl = ov.querySelector('#za-sub');
-  if(subEl && saisonInfo?.alm) subEl.textContent = saisonInfo.alm.toUpperCase();
+  <!-- TITEL -->
+  <div style="position:absolute;top:12%;left:0;right:0;text-align:center;
+    animation:za-sky ${DURATION}ms ease both">
+    <div style="font-size:min(11vw,3.2rem);font-weight:900;letter-spacing:.06em;
+      color:#e8f8d0;text-shadow:0 2px 20px rgba(0,80,0,.8),0 0 60px rgba(100,220,50,.3);
+      animation:za-title ${DURATION}ms cubic-bezier(.16,1,.3,1) both">
+      ZÄHLUNG
+    </div>
+    <div style="font-size:min(3vw,.78rem);letter-spacing:.3em;color:#a0d870;
+      margin-top:.3rem;animation:za-sub ${DURATION}ms ease both">
+      ${almName}
+    </div>
+  </div>
+
+  <!-- TIERANZAHL -->
+  <div style="position:absolute;bottom:8%;left:0;right:0;text-align:center;
+    font-size:.7rem;letter-spacing:.2em;color:#a0d870;
+    animation:za-count ${DURATION}ms ease both">
+    ${tierCount} TIERE · HEUTE
+  </div>
+
+  <!-- FORTSCHRITTSBALKEN -->
+  <div style="position:absolute;bottom:0;left:0;right:0;height:3px;background:rgba(100,200,50,.15)">
+    <div style="height:100%;background:linear-gradient(90deg,#2a7a10,#5dc922,#a0e860);
+      box-shadow:0 0 10px #5dc922;animation:za-bar ${DURATION}ms linear both"></div>
+  </div>`;
 
   document.body.appendChild(ov);
 
-  // Dismiss on tap
-  ov.addEventListener('pointerdown', () => dismiss());
-
-  const t = setTimeout(dismiss, 1100);
-
+  let dismissed = false;
   function dismiss() {
-    clearTimeout(t);
-    if(ov._dismissed) return;
-    ov._dismissed = true;
-    ov.classList.add('za-out');
+    if(dismissed) return;
+    dismissed = true;
+    ov.classList.add('za-dismissing');
     setTimeout(() => {
       ov.remove();
       _zaehlAnimShown = false;
       if(cb) cb();
-    }, 380);
+    }, 340);
   }
+
+  ov.addEventListener('pointerdown', dismiss);
+  setTimeout(dismiss, DURATION);
 };
 
 const _origNav2 = window.navigate;
@@ -4680,6 +4986,198 @@ window.navigate = function(view) {
   }
   _origNav2(view);
 };
+
+window.globalSearch = function(q) {
+  const el = document.getElementById('suche-results');
+  if(!el) return;
+  q = (q||'').trim().toLowerCase();
+  if(q.length < 1) {
+    el.innerHTML = '<div style="text-align:center;color:var(--text3);font-size:.85rem;margin-top:2rem">Suchbegriff eingeben…</div>';
+    return;
+  }
+
+  const results = [];
+
+  // ── Kühe ──
+  Object.entries(kuehe).forEach(([id, k]) => {
+    const score = matchScore(q, [k.nr, k.name, k.bauer, k.rasse, k.gruppe, k.ohrmarke, k.notiz]);
+    if(score > 0) results.push({
+      type:'kuh', score, id,
+      title: `#${k.nr} ${k.name||'–'}`,
+      sub: [k.bauer, k.rasse, k.gruppe, k.ohrmarke].filter(Boolean).join(' · '),
+      icon:'🐄',
+      action: `showKuhDetail('${id}')`,
+      tag: k.almStatus==='oben' ? {label:'auf Alm', color:'green'} : null
+    });
+  });
+
+  // ── Bauern ──
+  Object.entries(bauern).forEach(([id, b]) => {
+    const score = matchScore(q, [b.name, b.betrieb, b.tel, b.email, b.adresse, b.plzOrt]);
+    if(score > 0) {
+      // Auch Kühe dieses Bauern anzeigen
+      const kueheDesBauern = Object.values(kuehe).filter(k => k.bauer === b.name);
+      results.push({
+        type:'bauer', score, id,
+        title: b.name,
+        sub: [
+          b.betrieb ? 'LFBIS: '+b.betrieb : null,
+          b.tel,
+          kueheDesBauern.length + ' Kühe'
+        ].filter(Boolean).join(' · '),
+        icon:'👤',
+        action: `showBauerDetailPage('${id}')`,
+        tag: null
+      });
+    }
+  });
+
+  // ── Behandlungen ──
+  Object.entries(behandlungen).forEach(([id, b]) => {
+    const k = kuehe[b.kuhId];
+    const score = matchScore(q, [b.diagnose, b.medikament, b.tierarzt, b.dosis, b.notiz, k?.name, k?.nr]);
+    if(score > 0) results.push({
+      type:'behandlung', score, id,
+      title: b.diagnose || b.medikament || 'Behandlung',
+      sub: [
+        k ? `#${k.nr} ${k.name}` : '–',
+        b.medikament,
+        b.datum ? new Date(b.datum).toLocaleDateString('de-AT') : null
+      ].filter(Boolean).join(' · '),
+      icon:'⚕',
+      action: `navigate('behandlung')`,
+      tag: b.aktiv ? {label:'aktiv', color:'red'} : null
+    });
+  });
+
+  // ── Besamungen ──
+  Object.entries(besamungen).forEach(([id, bs]) => {
+    const k = kuehe[bs.kuhId];
+    const score = matchScore(q, [bs.stier, bs.samen, bs.status, bs.notiz, k?.name, k?.nr, bs.besamungstechniker]);
+    if(score > 0) results.push({
+      type:'besamung', score, id,
+      title: bs.stier || bs.samen || 'Besamung',
+      sub: [
+        k ? `#${k.nr} ${k.name}` : '–',
+        bs.status,
+        bs.datum ? new Date(bs.datum).toLocaleDateString('de-AT') : null
+      ].filter(Boolean).join(' · '),
+      icon:'🐮',
+      action: `navigate('besamung')`,
+      tag: bs.status==='tragend' ? {label:'tragend', color:'green'} : null
+    });
+  });
+
+  // ── Milch ──
+  const milchMatches = [];
+  Object.entries(milchEintraege).forEach(([id, m]) => {
+    if(!m.datum) return;
+    const datStr = new Date(m.datum).toLocaleDateString('de-AT');
+    const score = matchScore(q, [datStr, m.gesamt?.toString()]);
+    if(score > 0 && milchMatches.length < 3) milchMatches.push({
+      type:'milch', score, id,
+      title: `${m.gesamt} L Milch`,
+      sub: datStr + (m.zeit==='abend' ? ' · Abends' : ' · Morgens'),
+      icon:'🥛',
+      action: `navigate('milch')`,
+      tag: null
+    });
+  });
+  results.push(...milchMatches);
+
+  // ── Kontakte ──
+  Object.entries(kontakte).forEach(([id, k]) => {
+    const score = matchScore(q, [k.name, k.tel, k.kategorie, k.notiz]);
+    if(score > 0) results.push({
+      type:'kontakt', score, id,
+      title: k.name,
+      sub: [k.kategorie, k.tel].filter(Boolean).join(' · '),
+      icon:'📞',
+      action: `navigate('kontakte')`,
+      tag: null
+    });
+  });
+
+  // ── Journal ──
+  Object.entries(journal||{}).forEach(([id, j]) => {
+    const score = matchScore(q, [j.text, j.wetter, j.datum ? new Date(j.datum).toLocaleDateString('de-AT') : null]);
+    if(score > 0) results.push({
+      type:'journal', score, id,
+      title: j.datum ? new Date(j.datum).toLocaleDateString('de-AT', {day:'numeric',month:'short'}) : 'Journal',
+      sub: (j.text||'').slice(0,60) + ((j.text||'').length>60?'…':''),
+      icon:'📓',
+      action: `navigate('journal')`,
+      tag: null
+    });
+  });
+
+  // Sortieren: score absteigend, dann Typ-Priorität
+  const typePrio = {kuh:1,bauer:2,behandlung:3,besamung:4,kontakt:5,milch:6,journal:7};
+  results.sort((a,b) => b.score - a.score || (typePrio[a.type]||9) - (typePrio[b.type]||9));
+
+  if(results.length === 0) {
+    el.innerHTML = `<div style="text-align:center;color:var(--text3);font-size:.85rem;margin-top:2rem">
+      Keine Ergebnisse für „${q}"
+    </div>`;
+    return;
+  }
+
+  // Gruppieren nach Typ
+  const groups = {};
+  results.forEach(r => {
+    if(!groups[r.type]) groups[r.type] = [];
+    groups[r.type].push(r);
+  });
+
+  const typeLabels = {kuh:'Kühe',bauer:'Bauern',behandlung:'Behandlungen',besamung:'Besamungen',milch:'Milch',kontakt:'Kontakte',journal:'Journal'};
+
+  el.innerHTML = Object.entries(groups).map(([type, items]) => `
+    <div class="section-title">${typeLabels[type]||type} (${items.length})</div>
+    ${items.slice(0,8).map(r => `
+      <div class="list-card" onclick="${r.action}" style="cursor:pointer">
+        <div class="list-card-left">
+          <div style="width:34px;height:34px;border-radius:50%;background:var(--bg3);display:flex;align-items:center;justify-content:center;font-size:1.1rem;flex-shrink:0">${r.icon}</div>
+          <div>
+            <div class="list-card-title">${highlightMatch(r.title, q)}</div>
+            <div class="list-card-sub">${r.sub}</div>
+          </div>
+        </div>
+        <div style="display:flex;align-items:center;gap:.4rem">
+          ${r.tag ? `<span class="tag tag-${r.tag.color}">${r.tag.label}</span>` : ''}
+          <span class="chevron">›</span>
+        </div>
+      </div>
+    `).join('')}
+  `).join('');
+};
+
+function matchScore(q, fields) {
+  const terms = q.split(/\s+/).filter(Boolean);
+  let score = 0;
+  fields.forEach(f => {
+    if(!f) return;
+    const fLow = String(f).toLowerCase();
+    terms.forEach(term => {
+      if(fLow === term) score += 10;           // Exakter Match
+      else if(fLow.startsWith(term)) score += 6; // Beginnt damit
+      else if(fLow.includes(term)) score += 3;   // Enthält
+    });
+  });
+  return score;
+}
+
+function highlightMatch(text, q) {
+  if(!text || !q) return text;
+  try {
+    const terms = q.split(/\s+/).filter(t => t.length > 1);
+    let result = String(text);
+    terms.forEach(term => {
+      const re = new RegExp('(' + term.replace(/[.*+?^${}()|[\]\\]/g,'\\$&') + ')', 'gi');
+      result = result.replace(re, '<mark style="background:rgba(212,168,75,.35);color:var(--gold);border-radius:2px;padding:0 2px">$1</mark>');
+    });
+    return result;
+  } catch(e) { return text; }
+}
 
   initApp();
 
