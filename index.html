@@ -1329,6 +1329,8 @@ window.showQRCode = function(kuhId, nr, name) {
     </div>
   `);
 };
+
+function renderZaehlung() {
   const _zaehG=window._zaehGruppe||'';
   const kuhListe=Object.entries(kuehe)
     .filter(([,k])=>!_zaehG||k.gruppe===_zaehG)
