@@ -19,11 +19,11 @@
 ═══════════════════════════════════════════════════════════════════════════ -->
 <script>
 // Force clear cache if version changed
-if(localStorage.getItem('hp_version') !== 'v25.3') {
+if(localStorage.getItem('hp_version') !== 'v25.4') {
   // Keep Firebase auth but clear nav/order caches
   localStorage.removeItem('mainNav');
   localStorage.removeItem('mehrOrder');
-  localStorage.setItem('hp_version','v25.3');
+  localStorage.setItem('hp_version','v25.4');
 }
 window.FIREBASE_CONFIG = {
   apiKey:            "AIzaSyB2YSWcf1Kk2QG_JcCjkgJikx-f73yj-kc",
@@ -7161,6 +7161,8 @@ window.deleteBenutzer = async function(uid, email) {
     if(!nav) return;
     var dragSrc = null;
     nav.querySelectorAll('[draggable=true]').forEach(function(btn) {
+      if(btn._dragRegistered) return;
+      btn._dragRegistered = true;
       btn.addEventListener('dragstart', function(e) {
         dragSrc = this.dataset.navid;
         e.dataTransfer.effectAllowed = 'move';
@@ -7180,9 +7182,10 @@ window.deleteBenutzer = async function(uid, email) {
         }
       });
     });
-    // Drop auf Mehr → in Mehr-Menü
+    // Drop auf Mehr → in Mehr-Menü (only register once)
     var mehrBtn = nav.querySelector('[data-view="mehr"]');
-    if(mehrBtn){
+    if(mehrBtn && !mehrBtn._dropRegistered){
+      mehrBtn._dropRegistered = true;
       mehrBtn.addEventListener('dragover',function(e){e.preventDefault();});
       mehrBtn.addEventListener('drop',function(e){
         e.preventDefault();
