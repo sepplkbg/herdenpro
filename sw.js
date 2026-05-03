@@ -20,11 +20,28 @@ self.addEventListener('activate', e => {
 });
 
 self.addEventListener('fetch', e => {
-  // Network first for Firebase, cache first for shell
-  if(e.request.url.includes('firebase') || e.request.url.includes('googleapis')) {
-    return; // Let Firebase handle its own requests
+  // Firebase & externe APIs: nie cachen
+  if(
+    e.request.url.includes('firebase') ||
+    e.request.url.includes('googleapis') ||
+    e.request.url.includes('openmeteo') ||
+    e.request.url.includes('open-meteo') ||
+    e.request.url.includes('qrserver')
+  ) {
+    return;
   }
+
+  // Shell-Dateien: Network-first, bei Fehler Cache
   e.respondWith(
-    fetch(e.request).catch(() => caches.match(e.request).then(r => r || caches.match('/herdenpro/index.html')))
+    fetch(e.request)
+      .then(response => {
+        // Erfolgreiche Antwort im Cache speichern
+        if(response && response.status === 200 && response.type === 'basic') {
+          const clone = response.clone();
+          caches.open(CACHE).then(c => c.put(e.request, clone));
+        }
+        return response;
+      })
+      .catch(() => caches.match(e.request).then(r => r || caches.match('/herdenpro/index.html')))
   );
 });
