@@ -2,8 +2,10 @@
   "name": "HerdenPro",
   "short_name": "HerdenPro",
   "description": "Herdenverwaltung für Almwirtschaft",
-  "start_url": "/index.html",
+  "start_url": "/herdenpro/index.html",
+  "scope": "/herdenpro/",
   "display": "standalone",
+  "orientation": "portrait",
   "background_color": "#0c1a09",
   "theme_color": "#0c1a09",
   "icons": [
