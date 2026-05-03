@@ -19,11 +19,11 @@
 ═══════════════════════════════════════════════════════════════════════════ -->
 <script>
 // Force clear cache if version changed
-if(localStorage.getItem('hp_version') !== 'v25.5') {
+if(localStorage.getItem('hp_version') !== 'v25.6') {
   // Keep Firebase auth but clear nav/order caches
   localStorage.removeItem('mainNav');
   localStorage.removeItem('mehrOrder');
-  localStorage.setItem('hp_version','v25.5');
+  localStorage.setItem('hp_version','v25.6');
 }
 window.FIREBASE_CONFIG = {
   apiKey:            "AIzaSyB2YSWcf1Kk2QG_JcCjkgJikx-f73yj-kc",
@@ -6765,7 +6765,7 @@ window.removeStep = function(si,ai){
 
 // ── Single persistent nav drop handler ──
 (function() {
-  var PROTECTED = ['dashboard','herde','saison','milch'];
+  var PROTECTED = ['dashboard'];
   document.addEventListener('drop', function(e) {
     var target = e.target;
     // Check if dropped on Mehr button or its children
@@ -7207,6 +7207,97 @@ window.deleteBenutzer = async function(uid, email) {
           if(a>-1&&b2>-1){_mainNav.splice(a,1);_mainNav.splice(b2,0,dragSrc);localStorage.setItem('mainNav',JSON.stringify(_mainNav));renderNav();}
         }
       });
+
+      // ── Touch drag: nav-item → Mehr-Button ──
+      if(!btn._touchNavRegistered) {
+        btn._touchNavRegistered = true;
+        var touchNavId = btn.dataset.navid;
+        var touchNavGhost = null;
+        var touchNavTimer = null;
+        var touchNavActive = false;
+
+        btn.addEventListener('touchstart', function(e) {
+          var self = this;
+          touchNavId = this.dataset.navid;
+          touchNavTimer = setTimeout(function() {
+            touchNavActive = true;
+            if(navigator.vibrate) navigator.vibrate([30,20,30]);
+            // Create ghost
+            touchNavGhost = document.createElement('div');
+            touchNavGhost.style.cssText = 'position:fixed;z-index:9999;pointer-events:none;background:var(--card);border:2px solid var(--gold);border-radius:12px;padding:.5rem .8rem;font-size:.75rem;color:var(--gold);opacity:.85;white-space:nowrap;box-shadow:0 4px 16px rgba(0,0,0,.5)';
+            touchNavGhost.textContent = self.textContent;
+            document.body.appendChild(touchNavGhost);
+            self.style.opacity = '.4';
+            // Show hint
+            var hint = document.getElementById('nav-drag-hint');
+            if(!hint) {
+              hint = document.createElement('div');
+              hint.id = 'nav-drag-hint';
+              hint.style.cssText = 'position:fixed;bottom:calc(var(--nav-h) + var(--safe-b) + 10px);left:50%;transform:translateX(-50%);background:rgba(212,168,75,.95);color:#0a0800;border-radius:20px;padding:.4rem 1.2rem;font-size:.78rem;font-weight:bold;z-index:150;white-space:nowrap;box-shadow:0 4px 16px rgba(0,0,0,.4)';
+              document.body.appendChild(hint);
+            }
+            hint.textContent = '⋯ Auf "Mehr" ziehen zum Verschieben';
+            hint.style.display = '';
+            setTimeout(function(){ if(hint) hint.style.display='none'; }, 2500);
+          }, 600);
+        }, {passive:true});
+
+        btn.addEventListener('touchmove', function(e) {
+          clearTimeout(touchNavTimer);
+          if(!touchNavActive || !touchNavGhost) return;
+          e.preventDefault();
+          var t = e.touches[0];
+          touchNavGhost.style.left = (t.clientX - 40) + 'px';
+          touchNavGhost.style.top  = (t.clientY - 30) + 'px';
+          // Highlight Mehr button if hovering over it
+          var mehrBtn = document.getElementById('nav-mehr');
+          if(mehrBtn) {
+            var r = mehrBtn.getBoundingClientRect();
+            if(t.clientX>=r.left&&t.clientX<=r.right&&t.clientY>=r.top&&t.clientY<=r.bottom) {
+              mehrBtn.style.outline = '2px solid var(--gold)';
+            } else {
+              mehrBtn.style.outline = '';
+            }
+          }
+        }, {passive:false});
+
+        btn.addEventListener('touchend', function(e) {
+          clearTimeout(touchNavTimer);
+          var self = this;
+          if(!touchNavActive || !touchNavGhost) { touchNavActive=false; return; }
+          var t = e.changedTouches[0];
+          touchNavGhost.remove(); touchNavGhost = null;
+          self.style.opacity = '';
+          var mehrBtn = document.getElementById('nav-mehr');
+          if(mehrBtn) mehrBtn.style.outline = '';
+          touchNavActive = false;
+
+          // Check if released over Mehr button
+          var mBtn = document.getElementById('nav-mehr');
+          if(mBtn) {
+            var r = mBtn.getBoundingClientRect();
+            if(t.clientX>=r.left&&t.clientX<=r.right&&t.clientY>=r.top&&t.clientY<=r.bottom) {
+              var id = touchNavId;
+              if(id && id!=='dashboard' && (_mainNav||[]).includes(id) && _mainNav.length>2) {
+                _mainNav = _mainNav.filter(function(m){ return m!==id; });
+                window._mainNav = _mainNav;
+                localStorage.setItem('mainNav', JSON.stringify(_mainNav));
+                if(navigator.vibrate) navigator.vibrate([30,10,30]);
+                renderNav(); renderMehrGrid();
+              }
+            }
+          }
+        }, {passive:true});
+
+        btn.addEventListener('touchcancel', function() {
+          clearTimeout(touchNavTimer);
+          if(touchNavGhost){ touchNavGhost.remove(); touchNavGhost=null; }
+          this.style.opacity='';
+          touchNavActive=false;
+          var mehrBtn=document.getElementById('nav-mehr');
+          if(mehrBtn) mehrBtn.style.outline='';
+        }, {passive:true});
+      }
     });
     // Drop auf Mehr → handled by document-level handler below
     var mehrBtn = nav.querySelector('[data-view="mehr"]');
@@ -7363,6 +7454,33 @@ window.deleteBenutzer = async function(uid, email) {
         b.style.outline=''; b.style.opacity='';
       });
 
+      // Check if dropped onto the bottom nav bar → move to mainNav
+      var bottomNav = document.getElementById('bottom-nav');
+      if(bottomNav && srcBtn) {
+        var navRect = bottomNav.getBoundingClientRect();
+        if(clientX >= navRect.left && clientX <= navRect.right &&
+           clientY >= navRect.top && clientY <= navRect.bottom) {
+          var dragId = srcBtn.dataset.mid;
+          if(dragId && !(_mainNav||[]).includes(dragId)) {
+            var nav = window._mainNav || _mainNav || [];
+            if(nav.length >= 4) nav = nav.slice(0, 3);
+            nav.push(dragId);
+            window._mainNav = nav;
+            localStorage.setItem('mainNav', JSON.stringify(nav));
+            if(navigator.vibrate) navigator.vibrate([30,10,30]);
+            renderNav();
+            renderMehrGrid();
+            closeMehr();
+          }
+          dragSrcIdx = null;
+          document.body.style.userSelect = '';
+          document.body.style.webkitUserSelect = '';
+          document.body.style.MozUserSelect = '';
+          setTimeout(function(){ window._mehrDragging = false; }, 100);
+          return;
+        }
+      }
+
       if(target && srcBtn && target !== srcBtn) {
         // DOM swap
         var btns = Array.from(grid.querySelectorAll('.mehr-drag-item'));
@@ -7505,7 +7623,7 @@ window.deleteBenutzer = async function(uid, email) {
   window.toggleMainNav = function(id) {
     if(_mainNav.includes(id)) {
       if(_mainNav.length<=2){alert('Mindestens 2 Einträge in der Hauptnavigation');return;}
-      if(['dashboard','herde','saison','milch'].includes(id)){showSaveToast&&showSaveToast(id.charAt(0).toUpperCase()+id.slice(1)+' kann nicht verschoben werden');return;}
+      if(['dashboard'].includes(id)){showSaveToast&&showSaveToast('Start ist fixiert');return;}
       _mainNav = _mainNav.filter(m=>m!==id);
     } else {
       if(_mainNav.length>=4){_mainNav=_mainNav.slice(0,-1);}  // max 4
