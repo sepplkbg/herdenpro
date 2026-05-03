@@ -19,11 +19,11 @@
 ═══════════════════════════════════════════════════════════════════════════ -->
 <script>
 // Force clear cache if version changed
-if(localStorage.getItem('hp_version') !== 'v25.4') {
+if(localStorage.getItem('hp_version') !== 'v25.5') {
   // Keep Firebase auth but clear nav/order caches
   localStorage.removeItem('mainNav');
   localStorage.removeItem('mehrOrder');
-  localStorage.setItem('hp_version','v25.4');
+  localStorage.setItem('hp_version','v25.5');
 }
 window.FIREBASE_CONFIG = {
   apiKey:            "AIzaSyB2YSWcf1Kk2QG_JcCjkgJikx-f73yj-kc",
@@ -6762,6 +6762,32 @@ window.removeStep = function(si,ai){
   kp_sorten[si]?.schritte?.splice(ai,1);
   kp_render(); kp_debounceSave();
 };
+
+// ── Single persistent nav drop handler ──
+(function() {
+  var PROTECTED = ['dashboard','herde','saison','milch'];
+  document.addEventListener('drop', function(e) {
+    var target = e.target;
+    // Check if dropped on Mehr button or its children
+    var mehrBtn = target.closest ? target.closest('[data-view="mehr"]') : null;
+    if(!mehrBtn) mehrBtn = (target.dataset && target.dataset.view==='mehr') ? target : null;
+    if(!mehrBtn) return;
+    
+    e.preventDefault();
+    var id = e.dataTransfer.getData('text/plain');
+    if(!id || id.startsWith('mehr:')) return;
+    if(!(_mainNav||[]).includes(id)) return;
+    if(_mainNav.length <= 2) return;
+    
+    if(PROTECTED.includes(id)) {
+      window.showSaveToast && showSaveToast(id.charAt(0).toUpperCase()+id.slice(1)+' ist fixiert');
+      return;
+    }
+    _mainNav = _mainNav.filter(function(m){ return m!==id; });
+    localStorage.setItem('mainNav', JSON.stringify(_mainNav));
+    renderNav(); renderMehrGrid();
+  }, true); // capture phase - fires before any element handler
+})();
   initApp();
         }
       } catch(e) {
@@ -7182,23 +7208,10 @@ window.deleteBenutzer = async function(uid, email) {
         }
       });
     });
-    // Drop auf Mehr → in Mehr-Menü (only register once)
+    // Drop auf Mehr → handled by document-level handler below
     var mehrBtn = nav.querySelector('[data-view="mehr"]');
-    if(mehrBtn && !mehrBtn._dropRegistered){
-      mehrBtn._dropRegistered = true;
+    if(mehrBtn) {
       mehrBtn.addEventListener('dragover',function(e){e.preventDefault();});
-      mehrBtn.addEventListener('drop',function(e){
-        e.preventDefault();
-        var id=e.dataTransfer.getData('text/plain');
-        var protected_ids = ['dashboard','herde','saison','milch'];
-        if(id&&!id.startsWith('mehr:')&&(_mainNav||[]).includes(id)&&_mainNav.length>2&&!protected_ids.includes(id)){
-          _mainNav=_mainNav.filter(function(m){return m!==id;});
-          localStorage.setItem('mainNav',JSON.stringify(_mainNav));
-          renderNav();renderMehrGrid();
-        } else if(protected_ids.includes(id)) {
-          window.showSaveToast && showSaveToast(id.charAt(0).toUpperCase()+id.slice(1)+' kann nicht verschoben werden');
-        }
-      });
     }
     // Nav als Drop-Zone für Mehr-Buttons
     nav.addEventListener('dragover',function(e){e.preventDefault();});
