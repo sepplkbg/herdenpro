@@ -978,7 +978,6 @@ function initApp() {
   // Sofort rendern ohne Firebase
   render();
   try {
-    const app = // Firebase init deferred to after all SDKs load
     window._fbConfig = window.FIREBASE_CONFIG;
   } catch(e) { 
     document.getElementById('main-content').innerHTML = '<div class="empty-state" style="color:#e06040">Firebase-Fehler: '+e.message+'<br><small>Bitte Internetverbindung prüfen</small></div>';
