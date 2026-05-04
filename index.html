@@ -19,11 +19,11 @@
 ═══════════════════════════════════════════════════════════════════════════ -->
 <script>
 // Force clear cache if version changed
-if(localStorage.getItem('hp_version') !== 'v25.7') {
+if(localStorage.getItem('hp_version') !== 'v25.8') {
   // Keep Firebase auth but clear nav/order caches
   localStorage.removeItem('mainNav');
   localStorage.removeItem('mehrOrder');
-  localStorage.setItem('hp_version','v25.7');
+  localStorage.setItem('hp_version','v25.8');
 }
 window.FIREBASE_CONFIG = {
   apiKey:            "AIzaSyB2YSWcf1Kk2QG_JcCjkgJikx-f73yj-kc",
@@ -36,6 +36,8 @@ window.FIREBASE_CONFIG = {
 };
   // ── ALLE_MODULE (muss vor renderNav verfügbar sein) ──
   window.ALLE_MODULE = [
+    {id:'herde',    icon:'🐄',  label:'Herde'},
+    {id:'milch',    icon:'🥛',  label:'Milch'},
     {id:'saison',    icon:'▲',   label:'Saison'},
     {id:'zaehlung',  icon:'✓',   label:'Zählung'},
     {id:'weide',     icon:'🌿',  label:'Weide'},
@@ -1286,31 +1288,187 @@ function renderHerde() {
 }
 
 function renderKuhDetail() {
-  const id=editId;const k=kuehe[id];if(!k)return'<div class="empty-state">Nicht gefunden</div>';
-  const bList=Object.entries(behandlungen).filter(([,b])=>b.kuhId===id).sort((a,b)=>b[1].datum-a[1].datum);
-  const bsList=Object.entries(besamungen).filter(([,b])=>b.kuhId===id).sort((a,b)=>b[1].datum-a[1].datum);
-  const mList=Object.entries(milchEintraege).filter(([,m])=>m.prokuh?.[id]).sort((a,b)=>b[1].datum-a[1].datum).slice(0,10);
+  const id=editId; const k=kuehe[id];
+  if(!k) return '<div class="empty-state">Nicht gefunden</div>';
+
+  const bList   = Object.entries(behandlungen).filter(([,b])=>b.kuhId===id).sort((a,b)=>b[1].datum-a[1].datum);
+  const bsList  = Object.entries(besamungen).filter(([,b])=>b.kuhId===id).sort((a,b)=>b[1].datum-a[1].datum);
+  const mList   = Object.entries(milchEintraege).filter(([,m])=>m.prokuh?.[id]).sort((a,b)=>b[1].datum-a[1].datum).slice(0,14);
+  const aktBeh  = bList.filter(([,b])=>b.aktiv);
+  const archBeh = bList.filter(([,b])=>!b.aktiv);
+  const aktiveBs= bsList.find(([,bs])=>bs.status==='tragend'||bs.status==='besamt');
+  const heute   = Date.now();
+
+  // Milch-Sparkline (letzte 10 Einträge)
+  const mWerte = mList.slice(0,10).reverse().map(([,m])=>parseFloat(m.prokuh[id])||0);
+  const mMax   = Math.max(...mWerte, 1);
+  const sparkW = 140, sparkH = 32;
+  const sparkPts = mWerte.map((v,i)=>{
+    const x = Math.round(i*(sparkW-4)/(Math.max(mWerte.length-1,1)))+2;
+    const y = Math.round(sparkH-4-(v/mMax)*(sparkH-8))+2;
+    return `${x},${y}`;
+  }).join(' ');
+  const sparkSvg = mWerte.length >= 2 ? `
+    <svg viewBox="0 0 ${sparkW} ${sparkH}" style="width:${sparkW}px;height:${sparkH}px;display:block" xmlns="http://www.w3.org/2000/svg">
+      <polyline points="${sparkPts}" fill="none" stroke="var(--gold)" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+      <circle cx="${sparkPts.split(' ').pop().split(',')[0]}" cy="${sparkPts.split(' ').pop().split(',')[1]}" r="3" fill="var(--gold)"/>
+    </svg>` : '';
+
+  // WZ-Alerts
+  const wzAlerts = aktBeh.filter(([,b])=>b.wzMilchEnde&&b.wzMilchEnde>heute).map(([,b])=>Math.ceil((b.wzMilchEnde-heute)/86400000));
+  const wzMin = wzAlerts.length ? Math.min(...wzAlerts) : null;
+
+  // Alpungstage dieser Kuh
+  const alpTage = Object.values(weideTage).filter(w=>(w.kuhIds||[]).includes(id)).length;
+
+  // Status-Farbe
+  const statusColor = k.almStatus==='oben'?'var(--green)':k.almStatus==='vorzeitig'?'var(--orange)':'var(--text3)';
+  const statusText  = k.almStatus==='oben'?'⛰ Auf der Alm':k.almStatus==='vorzeitig'?'⚠ Vorzeitig abgetrieben':'🏠 Nicht aufgetrieben';
+
   return `
-    <div class="page-header"><button class="back-btn" onclick="navigate('herde')">‹ Herde</button><div style="display:flex;gap:.5rem"><button class="btn-ghost" onclick="showKuhForm('${id}')">✎</button><button class="btn-xs-danger" onclick="deleteKuh('${id}')">Löschen</button></div></div>
-    <div class="detail-hero">
-      ${fotos[id]?`<img src="${fotos[id].data}" style="width:80px;height:80px;border-radius:50%;object-fit:cover;border:2px solid var(--gold2);margin-bottom:.5rem" />`:`<div style="width:80px;height:80px;border-radius:50%;background:var(--bg3);border:2px dashed var(--border2);display:flex;align-items:center;justify-content:center;font-size:2rem;margin:0 auto .5rem">🐄</div>`}
-      <div class="detail-nr">#${k.nr} ${k.ohrmarke?'· <span style="font-size:.75rem;color:var(--text3)">'+k.ohrmarke+'</span>':''} ${k.almStatus==='oben'?'· ⛰ auf Alm':''}</div>
-      <div class="detail-name">${k.name||'–'}</div>
-      <div class="detail-meta">${[k.bauer,k.rasse,k.gruppe].filter(Boolean).join(' · ')}</div>
-      ${k.laktation?`<div style="margin-top:4px"><span class="tag tag-blue">${{melkend:'🥛 Melkend',trocken:'💧 Trocken',tragend:'🐄 Tragend',jung:'🌱 Jungtier',trockengestellt:'⏸ Trockengestellt'}[k.laktation]||k.laktation}</span></div>`:''}
-      ${k.notiz?`<div style="font-size:.78rem;color:var(--text3);margin-top:.4rem;font-style:italic;padding:0 .5rem">${k.notiz}</div>`:''}
-      <label style="cursor:pointer;margin-top:.4rem;display:inline-block">
-        <span class="btn-xs">📷 Foto ${fotos[id]?'ändern':'hochladen'}</span>
-        <input type="file" accept="image/*" style="display:none" onchange="uploadFoto('${id}',this)" />
-      </label>
-      ${fotos[id]?`<button class="btn-xs-danger" style="margin-left:.4rem" onclick="deleteFoto('${id}')">Foto löschen</button>`:''}
-      ${(k.almStatus==='oben'||!k.almStatus)?`<button class="btn-xs-danger" style="margin-left:.4rem;margin-top:.3rem" onclick="showVorzeitigAbtrieb('${id}')">↓ Vorzeitig abtreiben</button>`:''}
-      <button class="btn-xs" style="margin-left:.4rem;margin-top:.3rem" onclick="showQRCode('${id}','${k.nr}','${(k.name||'').replace(/'/g,'')}')">QR-Code</button>    </div>
-    <div class="detail-tabs"><button class="tab-btn active" onclick="switchTab('tab-b','tab-r,tab-m',this)">Behandlung</button><button class="tab-btn" onclick="switchTab('tab-r','tab-b,tab-m',this)">Besamung</button><button class="tab-btn" onclick="switchTab('tab-m','tab-b,tab-r',this)">Milch</button></div>
-    <div id="tab-b"><button class="btn-primary btn-block" onclick="showBehandlungForm('${id}')">+ Behandlung</button>${bList.map(([bid,b])=>behandlungCard(bid,b)).join('')||'<div class="empty-state">Keine Behandlungen</div>'}</div>
-    <div id="tab-r" style="display:none"><button class="btn-primary btn-block" onclick="showBesamungForm('${id}')">+ Besamung</button>${bsList.map(([bsid,bs])=>besamungCard(bsid,bs)).join('')||'<div class="empty-state">Keine Besamungen</div>'}</div>
-    <div id="tab-m" style="display:none">${mList.length?`<div class="card-list">${mList.map(([,m])=>`<div class="list-card list-card-sm"><span style="font-size:.8rem;color:var(--text3)">${new Date(m.datum).toLocaleDateString('de-AT')}</span><span style="color:var(--gold);font-weight:bold">${m.prokuh[id]} L</span></div>`).join('')}</div>`:`<div class="empty-state">Keine Einzelmilchdaten</div>`}</div>
-    ${behandlungFormHTML(id)}${besamungFormHTML(id)}${kalbungFormHTML()}
+  <style>
+    @keyframes kuhSlideIn { from{opacity:0;transform:translateY(20px)} to{opacity:1;transform:none} }
+    @keyframes kuhPulse { 0%,100%{transform:scale(1)} 50%{transform:scale(1.08)} }
+    @keyframes kuhBarFill { from{width:0} to{width:var(--target-w)} }
+    .kuh-section { animation: kuhSlideIn .35s ease both; }
+    .kuh-section:nth-child(2){animation-delay:.05s}
+    .kuh-section:nth-child(3){animation-delay:.1s}
+    .kuh-section:nth-child(4){animation-delay:.15s}
+    .kuh-section:nth-child(5){animation-delay:.2s}
+    .kuh-section:nth-child(6){animation-delay:.25s}
+    .kuh-anim-bar { animation: kuhBarFill .8s cubic-bezier(.16,1,.3,1) both; animation-delay:.3s; }
+  </style>
+
+  <div class="page-header kuh-section">
+    <button class="back-btn" onclick="navigate('herde')">‹ Herde</button>
+    <div style="display:flex;gap:.4rem">
+      <button class="btn-ghost" onclick="showKuhForm('${id}')">✎</button>
+      <button class="btn-xs" onclick="showQRCode('${id}','${k.nr}','${(k.name||'').replace(/'/g,'')}')">QR</button>
+      <button class="btn-xs-danger" onclick="deleteKuh('${id}')">Löschen</button>
+    </div>
+  </div>
+
+  <!-- Hero Card -->
+  <div class="kuh-section" style="background:linear-gradient(135deg,var(--bg3) 0%,var(--bg4) 100%);border:1px solid var(--border2);border-radius:var(--radius);padding:1rem;margin-bottom:.8rem;position:relative;overflow:hidden">
+    <div style="position:absolute;top:0;right:0;width:80px;height:80px;background:radial-gradient(circle,rgba(212,168,75,.12),transparent 70%);pointer-events:none"></div>
+    <div style="display:flex;gap:.8rem;align-items:flex-start">
+      <!-- Foto -->
+      <div style="position:relative;flex-shrink:0">
+        ${fotos[id]
+          ? `<img src="${fotos[id].data}" style="width:72px;height:72px;border-radius:50%;object-fit:cover;border:2px solid var(--gold2);box-shadow:0 4px 12px rgba(0,0,0,.4)" />`
+          : `<div style="width:72px;height:72px;border-radius:50%;background:var(--bg);border:2px dashed var(--border2);display:flex;align-items:center;justify-content:center;font-size:2rem;animation:kuhPulse 3s ease-in-out infinite">🐄</div>`}
+        <label style="position:absolute;bottom:-4px;right:-4px;cursor:pointer;background:var(--gold);border-radius:50%;width:22px;height:22px;display:flex;align-items:center;justify-content:center;font-size:.65rem">
+          📷<input type="file" accept="image/*" style="display:none" onchange="uploadFoto('${id}',this)" />
+        </label>
+      </div>
+      <!-- Info -->
+      <div style="flex:1;min-width:0">
+        <div style="font-size:1.3rem;font-weight:bold;color:var(--gold);line-height:1.1">${k.name||'–'}</div>
+        <div style="font-size:.82rem;color:var(--text2);margin-top:2px">#${k.nr}${k.ohrmarke?' · <span style="color:var(--text3)">'+k.ohrmarke+'</span>':''}</div>
+        <div style="font-size:.78rem;color:var(--text3);margin-top:2px">${[k.bauer,k.rasse,k.gruppe].filter(Boolean).join(' · ')||'–'}</div>
+        <div style="margin-top:.4rem;display:flex;flex-wrap:wrap;gap:.3rem">
+          <span style="font-size:.72rem;padding:2px 8px;border-radius:12px;background:rgba(0,0,0,.3);color:${statusColor};border:1px solid ${statusColor}33">${statusText}</span>
+          ${k.laktation?`<span class="tag tag-blue" style="font-size:.7rem">${{melkend:'🥛 Melkend',trocken:'💧 Trocken',tragend:'🐄 Tragend',jung:'🌱 Jungtier',trockengestellt:'⏸ Trockengestellt'}[k.laktation]||k.laktation}</span>`:''}
+          ${k.bio?'<span class="tag tag-green" style="font-size:.7rem">🌿 Bio</span>':''}
+        </div>
+        ${wzMin!==null?`<div style="font-size:.72rem;color:var(--orange);margin-top:.3rem">⚕ WZ Milch noch ${wzMin} Tage</div>`:''}
+        ${k.notiz?`<div style="font-size:.75rem;color:var(--text3);margin-top:.3rem;font-style:italic">${k.notiz}</div>`:''}
+      </div>
+    </div>
+    <!-- Schnellaktionen -->
+    <div style="display:flex;gap:.4rem;margin-top:.7rem;flex-wrap:wrap">
+      <button class="btn-xs" onclick="showBehandlungForm('${id}')">+ Behandlung</button>
+      <button class="btn-xs" onclick="showBesamungForm('${id}')">+ Besamung</button>
+      ${(k.almStatus==='oben'||!k.almStatus)?`<button class="btn-xs-danger" onclick="showVorzeitigAbtrieb('${id}')">↓ Abtreiben</button>`:''}
+      ${fotos[id]?`<button class="btn-xs-danger" onclick="deleteFoto('${id}')">Foto ✕</button>`:''}
+    </div>
+  </div>
+
+  <!-- Stats-Grid -->
+  <div class="kuh-section" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:.4rem;margin-bottom:.8rem">
+    <div style="background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);padding:.5rem;text-align:center">
+      <div style="font-size:1.2rem;font-weight:bold;color:var(--gold)">${alpTage}</div>
+      <div style="font-size:.65rem;color:var(--text3)">Weidetage</div>
+    </div>
+    <div style="background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);padding:.5rem;text-align:center">
+      <div style="font-size:1.2rem;font-weight:bold;color:${aktBeh.length?'var(--red)':'var(--text3)'}">${aktBeh.length}</div>
+      <div style="font-size:.65rem;color:var(--text3)">Aktiv Beh.</div>
+    </div>
+    <div style="background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);padding:.5rem;text-align:center">
+      <div style="font-size:1.2rem;font-weight:bold;color:${aktiveBs?'var(--green)':'var(--text3)'}">${bsList.length}</div>
+      <div style="font-size:.65rem;color:var(--text3)">Besamungen</div>
+    </div>
+  </div>
+
+  <!-- Milch Sparkline -->
+  ${mList.length ? `
+  <div class="kuh-section card-section" style="margin-bottom:.8rem">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.4rem">
+      <div class="section-label">Milch letzte Einträge</div>
+      <div style="font-size:.78rem;color:var(--gold)">${mList[0]?mList[0][1].prokuh[id]+' L zuletzt':''}</div>
+    </div>
+    <div style="display:flex;align-items:center;gap:.8rem">
+      ${sparkSvg}
+      <div style="font-size:.72rem;color:var(--text3)">Ø ${mWerte.length?Math.round(mWerte.reduce((a,b)=>a+b,0)/mWerte.length*10)/10:0} L</div>
+    </div>
+  </div>` : ''}
+
+  <!-- Aktive Besamung Banner -->
+  ${aktiveBs ? `
+  <div class="kuh-section" style="background:rgba(77,184,78,.08);border:1px solid rgba(77,184,78,.3);border-radius:var(--radius-sm);padding:.6rem .8rem;margin-bottom:.8rem">
+    <div style="font-size:.72rem;color:var(--green);font-weight:bold;margin-bottom:.2rem">🐮 ${aktiveBs[1].status==='tragend'?'TRÄCHTIG':'BESAMT'}</div>
+    ${aktiveBs[1].erwartetGeburt?`<div style="font-size:.82rem;color:var(--text2)">Geburt erw.: <b>${new Date(aktiveBs[1].erwartetGeburt).toLocaleDateString('de-AT')}</b> · noch ${Math.ceil((aktiveBs[1].erwartetGeburt-heute)/86400000)} Tage</div>`:''}
+    ${aktiveBs[1].stier?`<div style="font-size:.75rem;color:var(--text3)">🐂 ${aktiveBs[1].stier}</div>`:''}
+  </div>` : ''}
+
+  <!-- Tabs -->
+  <div class="detail-tabs kuh-section">
+    <button class="tab-btn active" onclick="switchTab('kd-tab-b','kd-tab-r,kd-tab-m',this)">⚕ Behandlung${aktBeh.length?` <span style="background:var(--red);color:#fff;border-radius:50%;width:16px;height:16px;display:inline-flex;align-items:center;justify-content:center;font-size:.62rem;margin-left:2px">${aktBeh.length}</span>`:''}</button>
+    <button class="tab-btn" onclick="switchTab('kd-tab-r','kd-tab-b,kd-tab-m',this)">🐮 Besamung${bsList.length?` (${bsList.length})`:''}</button>
+    <button class="tab-btn" onclick="switchTab('kd-tab-m','kd-tab-b,kd-tab-r',this)">🥛 Milch</button>
+  </div>
+
+  <!-- Tab: Behandlung -->
+  <div id="kd-tab-b" class="kuh-section">
+    <button class="btn-primary btn-block" onclick="showBehandlungForm('${id}')">+ Behandlung erfassen</button>
+    ${aktBeh.length ? `
+      <div class="section-title" style="color:var(--red);margin-top:.6rem">🔴 Aktiv (${aktBeh.length})</div>
+      <div style="border-left:3px solid var(--red);padding-left:.5rem;margin-bottom:.4rem">
+        ${aktBeh.map(([bid,b])=>behandlungCard(bid,b)).join('')}
+      </div>` : ''}
+    ${archBeh.length ? `
+      <div class="section-title" style="margin-top:.6rem;color:var(--text3)">📁 Archiv (${archBeh.length})</div>
+      <div style="opacity:.75">
+        ${archBeh.slice(0,8).map(([bid,b])=>behandlungCard(bid,b)).join('')}
+      </div>` : ''}
+    ${!bList.length ? '<div class="empty-state">Keine Behandlungen</div>' : ''}
+  </div>
+
+  <!-- Tab: Besamung -->
+  <div id="kd-tab-r" style="display:none" class="kuh-section">
+    <div style="display:flex;gap:.4rem;margin-bottom:.4rem">
+      <button class="btn-primary" style="flex:1" onclick="showBesamungForm('${id}')">+ Besamung</button>
+      ${bsList.length?`<button class="btn-secondary" onclick="showBesamungForm('${id}', true)">↻ 2. Versuch</button>`:''}
+    </div>
+    ${bsList.map(([bsid,bs])=>besamungCard(bsid,bs)).join('')||'<div class="empty-state">Keine Besamungen</div>'}
+  </div>
+
+  <!-- Tab: Milch -->
+  <div id="kd-tab-m" style="display:none" class="kuh-section">
+    ${mList.length ? `
+    <div class="card-list">
+      ${mList.map(([,m])=>`
+        <div class="list-card list-card-sm">
+          <div>
+            <div style="font-size:.8rem;color:var(--text2)">${new Date(m.datum).toLocaleDateString('de-AT',{weekday:'short',day:'numeric',month:'short'})}</div>
+            <div style="font-size:.68rem;color:var(--text3)">${m.zeit==='morgen'?'🌅 Morgens':'🌇 Abends'}</div>
+          </div>
+          <span style="color:var(--gold);font-weight:bold;font-size:.95rem">${m.prokuh[id]} L</span>
+        </div>`).join('')}
+    </div>` : '<div class="empty-state">Keine Einzelmilchdaten</div>'}
+  </div>
+
+  ${behandlungFormHTML(id)}${besamungFormHTML(id)}${kalbungFormHTML()}
   `;
 }
 
@@ -1408,11 +1566,39 @@ window.filterZaehlung=function(q){
 
 function renderBehandlung() {
   const aktive=Object.entries(behandlungen).filter(([,b])=>b.aktiv).sort((a,b)=>b[1].datum-a[1].datum);
-  const archiv=Object.entries(behandlungen).filter(([,b])=>!b.aktiv).sort((a,b)=>b[1].datum-a[1].datum).slice(0,20);
+  const archiv=Object.entries(behandlungen).filter(([,b])=>!b.aktiv).sort((a,b)=>b[1].datum-a[1].datum).slice(0,30);
   return `
     <div class="page-header"><h2>⚕ Behandlungen</h2><button class="btn-primary" onclick="showBehandlungForm(null)">+ Neu</button></div>
-    ${aktive.length?`<div class="section-title">Aktiv (${aktive.length})</div>${aktive.map(([bid,b])=>behandlungCard(bid,b)).join('')}`:''}
-    ${archiv.length?`<div class="section-title">Archiv</div>${archiv.map(([bid,b])=>behandlungCard(bid,b)).join('')}`:''}
+    
+    <!-- Filter Tabs -->
+    <div style="display:flex;gap:.4rem;margin-bottom:.8rem">
+      <button class="filter-chip active" id="beh-filter-alle" onclick="filterBehandlung('alle',this)">Alle (${aktive.length+archiv.length})</button>
+      <button class="filter-chip" id="beh-filter-personal" onclick="filterBehandlung('personal',this)">🌿 Personal</button>
+      <button class="filter-chip" id="beh-filter-tierarzt" onclick="filterBehandlung('tierarzt',this)">🩺 Tierarzt</button>
+    </div>
+
+    ${aktive.length ? `
+    <div style="background:rgba(200,60,60,.06);border:2px solid rgba(200,60,60,.25);border-radius:var(--radius);padding:.6rem;margin-bottom:.8rem">
+      <div style="display:flex;align-items:center;gap:.5rem;margin-bottom:.5rem">
+        <span style="width:10px;height:10px;border-radius:50%;background:var(--red);display:inline-block;box-shadow:0 0 6px var(--red)"></span>
+        <span style="font-size:.78rem;font-weight:bold;color:var(--red);letter-spacing:.05em">AKTIVE BEHANDLUNGEN (${aktive.length})</span>
+      </div>
+      ${aktive.map(([bid,b])=>behandlungCard(bid,b)).join('')}
+    </div>` : `
+    <div style="background:rgba(77,184,78,.06);border:1px solid rgba(77,184,78,.2);border-radius:var(--radius-sm);padding:.5rem .8rem;margin-bottom:.8rem;font-size:.8rem;color:var(--green)">
+      ✓ Keine aktiven Behandlungen
+    </div>`}
+
+    ${archiv.length ? `
+    <div>
+      <div style="display:flex;align-items:center;gap:.5rem;margin-bottom:.4rem">
+        <span style="font-size:.72rem;font-weight:bold;color:var(--text3);letter-spacing:.05em">📁 ARCHIV (${archiv.length})</span>
+      </div>
+      <div style="opacity:.8">
+        ${archiv.map(([bid,b])=>behandlungCard(bid,b)).join('')}
+      </div>
+    </div>` : ''}
+
     ${!aktive.length&&!archiv.length?'<div class="empty-state">Keine Behandlungen</div>':''}
     ${behandlungFormHTML(null)}
   `;
@@ -1775,18 +1961,29 @@ window.saveBehandlung=async function(){
 window.deleteBehandlung=async id=>{if(confirm('Löschen?'))await remove(ref(db,'behandlungen/'+id));};
 window.wartezeitAbschliessen=async id=>update(ref(db,'behandlungen/'+id),{warteAbgeschlossen:true,aktiv:false});
 window.showBesamungForm=function(kuhId, editBsId, editData){
+  // editBsId=true means "2. Versuch" (new entry, same cow, keep techniker)
+  const zweitversuch = editBsId === true;
+  if(zweitversuch) editBsId = null;
+
   const ovId='besamung-form-overlay';
   let ov=document.getElementById(ovId);
-  if(!ov){navigate('besamung');setTimeout(()=>showBesamungForm(kuhId,editBsId,editData),200);return;}
-  // Clear and fill form
+  if(!ov){navigate('besamung');setTimeout(()=>showBesamungForm(kuhId,zweitversuch?true:editBsId,editData),200);return;}
+  
+  // Set title
+  const h3 = ov.querySelector('h3');
+  if(h3) h3.textContent = zweitversuch ? '↻ 2. Versuch Besamung' : (editBsId ? 'Besamung bearbeiten' : 'Besamung erfassen');
+
+  // Clear form
   ['bs-stier','bs-samen','bs-notiz'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
   ['bs-datum','bs-geburt','bs-trock'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
   document.getElementById('bs-datum').value=isoDate(new Date());
   document.getElementById('bs-status').value='besamt';
+
   // Store edit ID
   let eid=document.getElementById('bs-edit-id');
   if(!eid){eid=document.createElement('input');eid.type='hidden';eid.id='bs-edit-id';ov.querySelector('.form-body').appendChild(eid);}
   eid.value=editBsId||'';
+
   // Fill if editing
   if(editData){
     const d=typeof editData==='string'?JSON.parse(editData):editData;
@@ -1800,8 +1997,19 @@ window.showBesamungForm=function(kuhId, editBsId, editData){
     if(d.notiz)document.getElementById('bs-notiz').value=d.notiz;
     if(d.besamungstechniker)document.getElementById('bs-besamungstechniker').value=d.besamungstechniker;
     if(d.erinnerung3w)document.getElementById('bs-erinnerung').checked=true;
-  } else if(kuhId){
+  } else if(kuhId) {
     document.getElementById('bs-kuh').value=kuhId;
+    // 2. Versuch: Techniker aus letzter Besamung übernehmen
+    if(zweitversuch) {
+      const letztebs = Object.values(besamungen).filter(b=>b.kuhId===kuhId).sort((a,b)=>b.datum-a.datum)[0];
+      if(letztebs) {
+        if(letztebs.besamungstechniker) document.getElementById('bs-besamungstechniker').value=letztebs.besamungstechniker;
+        if(letztebs.stier) document.getElementById('bs-stier').value=letztebs.stier;
+        // Vorherige als "leer" markieren
+        const prevId = Object.entries(besamungen).find(([,b])=>b.kuhId===kuhId&&(b.status==='besamt'||b.status==='tragend'))?.[0];
+        if(prevId) setTimeout(async()=>{ await update(ref(db,'besamungen/'+prevId),{status:'leer'}); }, 100);
+      }
+    }
   }
   ov.style.display='flex';
   setTimeout(function(){var s=ov.querySelector('.form-sheet');if(s)s.scrollTop=0;},50);
@@ -7039,19 +7247,6 @@ window.kaeseInit = async function() {
 
 
 // Load kaese data when navigating to kaese
-const _origNavKaese = window.navigate;
-window.navigate = function(view) {
-  _origNavKaese(view);
-  if(view === 'kaese') {
-    setTimeout(() => {
-      const container = document.getElementById('kp-container');
-      if(container) {
-        window.kaeseInit ? window.kaeseInit() : window.kp_render && window.kp_render();
-      }
-    }, 150);
-  }
-};
-
 window.setBehBehandler = function(typ, btn) {
   document.getElementById('b-behandler').value = typ;
   const btnP = document.getElementById('b-btn-personal');
@@ -7715,7 +7910,7 @@ window.deleteBenutzer = async function(uid, email) {
             hint.textContent = '⋯ Auf "Mehr" ziehen zum Verschieben';
             hint.style.display = '';
             setTimeout(function(){ if(hint) hint.style.display='none'; }, 2500);
-          }, 600);
+          }, 700);
         }, {passive:true});
 
         btn.addEventListener('touchmove', function(e) {
@@ -7754,12 +7949,15 @@ window.deleteBenutzer = async function(uid, email) {
             var r = mBtn.getBoundingClientRect();
             if(t.clientX>=r.left&&t.clientX<=r.right&&t.clientY>=r.top&&t.clientY<=r.bottom) {
               var id = touchNavId;
-              if(id && id!=='dashboard' && (_mainNav||[]).includes(id) && _mainNav.length>2) {
-                _mainNav = _mainNav.filter(function(m){ return m!==id; });
-                window._mainNav = _mainNav;
-                localStorage.setItem('mainNav', JSON.stringify(_mainNav));
-                if(navigator.vibrate) navigator.vibrate([30,10,30]);
-                renderNav(); renderMehrGrid();
+              if(id && id!=='dashboard') {
+                var nav = window._mainNav || [];
+                if(nav.includes(id) && nav.length > 2) {
+                  nav = nav.filter(function(m){ return m!==id; });
+                  window._mainNav = nav;
+                  localStorage.setItem('mainNav', JSON.stringify(nav));
+                  if(navigator.vibrate) navigator.vibrate([30,10,30]);
+                  setTimeout(function(){ renderNav(); renderMehrGrid(); }, 50);
+                }
               }
             }
           }
@@ -7985,7 +8183,7 @@ window.deleteBenutzer = async function(uid, email) {
         var self = this;
         longPressTimer = setTimeout(function(){
           startDrag(self, e.clientX, e.clientY);
-        }, 400);
+        }, 700);
       });
 
       // ── TOUCH ──
@@ -7994,7 +8192,7 @@ window.deleteBenutzer = async function(uid, email) {
         var self = this;
         longPressTimer = setTimeout(function(){
           startDrag(self, touch.clientX, touch.clientY);
-        }, 400);
+        }, 700);
       }, {passive:true});
     });
 
