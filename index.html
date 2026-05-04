@@ -19,11 +19,11 @@
 ═══════════════════════════════════════════════════════════════════════════ -->
 <script>
 // Force clear cache if version changed
-if(localStorage.getItem('hp_version') !== 'v25.8') {
+if(localStorage.getItem('hp_version') !== 'v25.9') {
   // Keep Firebase auth but clear nav/order caches
   localStorage.removeItem('mainNav');
   localStorage.removeItem('mehrOrder');
-  localStorage.setItem('hp_version','v25.8');
+  localStorage.setItem('hp_version','v25.9');
 }
 window.FIREBASE_CONFIG = {
   apiKey:            "AIzaSyB2YSWcf1Kk2QG_JcCjkgJikx-f73yj-kc",
@@ -5689,42 +5689,46 @@ window.editMilchEintrag = function(id) {
   ov.style.display = 'flex';
 };
 
-// Update saveMilch to handle edit
-const _origSaveMilch = window.saveMilch;
+// saveMilch – handles both new entry and edit
 window.saveMilch = async function() {
-  const editId = document.getElementById('m-edit-id')?.value;
-  if(editId) {
-    // Edit mode: delete old + save new
-    const datum = document.getElementById('m-datum')?.value;
-    if(!datum) { alert('Datum fehlt'); return; }
-    const prokuhBlock = document.getElementById('m-prokuh-block');
-    const modus = prokuhBlock && prokuhBlock.style.display !== 'none' ? 'prokuh' : 'gesamt';
-    const zeit = document.getElementById('m-zeit')?.value || 'morgen';
-    const molkerei = document.getElementById('m-molkerei')?.checked || false;
-    const notiz = document.getElementById('m-notiz')?.value.trim() || '';
-    let gesamt = 0, prokuh = {};
-    if(modus === 'prokuh') {
-      document.querySelectorAll('.kuh-liter').forEach(inp => {
-        const l = parseFloat(inp.value)||0;
-        if(l > 0) { prokuh[inp.dataset.id] = l; gesamt += l; }
-      });
-      if(Object.keys(prokuh).length === 0) { alert('Bitte mindestens eine Kuh eintragen'); return; }
-    } else {
-      gesamt = parseFloat(document.getElementById('m-gesamt')?.value) || 0;
-      if(!gesamt) { alert('Bitte Menge eingeben'); return; }
-    }
-    await update(ref(db, 'milch/' + editId), {
-      datum: new Date(datum).getTime(), art: modus, zeit, gesamt: Math.round(gesamt*10)/10,
+  const datum = document.getElementById('m-datum')?.value;
+  if(!datum) { alert('Datum fehlt'); return; }
+  const prokuhBlock = document.getElementById('m-prokuh-block');
+  const modus = prokuhBlock && prokuhBlock.style.display !== 'none' ? 'prokuh' : 'gesamt';
+  const zeit = document.getElementById('m-zeit')?.value || 'morgen';
+  const molkerei = document.getElementById('m-molkerei')?.checked || false;
+  const notiz = document.getElementById('m-notiz')?.value.trim() || '';
+  let gesamt = 0, prokuh = {};
+  if(modus === 'prokuh') {
+    document.querySelectorAll('.kuh-liter').forEach(inp => {
+      const l = parseFloat((inp.value||'').replace(',','.')) || 0;
+      if(l > 0) { prokuh[inp.dataset.id] = l; gesamt += l; }
+    });
+    if(Object.keys(prokuh).length === 0) { alert('Bitte mindestens eine Kuh eintragen'); return; }
+  } else {
+    gesamt = parseFloat((document.getElementById('m-gesamt')?.value||'').replace(',','.')) || 0;
+    if(!gesamt) { alert('Bitte Menge eingeben'); return; }
+  }
+  gesamt = Math.round(gesamt * 10) / 10;
+  const datumTs = new Date(datum + 'T12:00').getTime();
+
+  const editMilchId = document.getElementById('m-edit-id')?.value;
+  if(editMilchId) {
+    await update(ref(db, 'milch/' + editMilchId), {
+      datum: datumTs, art: modus, zeit, gesamt,
       prokuh: modus==='prokuh' ? prokuh : null, molkerei, notiz, updatedAt: Date.now()
     });
-    document.getElementById('m-edit-id').value = '';
-    const titleEl = document.getElementById('m-form-title');
-    if(titleEl) titleEl.textContent = '🥛 Milch erfassen';
-    window.showSaveToast&&showSaveToast('Milch gespeichert');
-  closeForm('milch-form-overlay');
-    return;
+    const eid = document.getElementById('m-edit-id'); if(eid) eid.value='';
+    const titleEl = document.getElementById('m-form-title'); if(titleEl) titleEl.textContent='🥛 Milch erfassen';
+  } else {
+    await push(ref(db,'milch'), {
+      datum: datumTs, art: modus, zeit, gesamt,
+      prokuh: modus==='prokuh' ? prokuh : null, molkerei, notiz, createdAt: Date.now()
+    });
   }
-  _origSaveMilch();
+  window.showSaveToast && showSaveToast('Milch gespeichert');
+  if(navigator.vibrate) navigator.vibrate([30,10,30]);
+  closeForm('milch-form-overlay');
 };
 
 window.loescheAlleDaten = async function() {
@@ -6001,6 +6005,24 @@ function renderMilch() {
         </div>
       </div>
     </div>`;
+}
+
+function renderAbtriebOverlay() {
+  return `<div id="abtrieb-overlay" class="form-overlay" style="display:none">
+    <div class="form-sheet">
+      <div class="form-header"><h3>↓ Abtrieb & Saisonende</h3><button class="close-btn" onclick="closeForm('abtrieb-overlay')">✕</button></div>
+      <div class="form-body">
+        <label class="inp-label">Abtriebsdatum</label>
+        <input id="ab-datum" class="inp" type="date" value="${isoDate(new Date())}" />
+        <textarea id="ab-notiz" class="inp" rows="2" placeholder="Notiz (optional)"></textarea>
+        <p style="font-size:.78rem;color:var(--text2);margin:.4rem 0">Alle Kühe die noch oben sind werden auf „unten" gesetzt. Die Saison wird beendet und automatisch archiviert.</p>
+        <div class="form-actions">
+          <button class="btn-secondary" onclick="closeForm('abtrieb-overlay')">Abbrechen</button>
+          <button class="btn-primary" style="background:var(--red);border-color:var(--red)" onclick="saveAbtrieb()">↓ Abtrieb speichern</button>
+        </div>
+      </div>
+    </div>
+  </div>`;
 }
 
 function renderSaison() {
