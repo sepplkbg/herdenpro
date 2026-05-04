@@ -19,11 +19,11 @@
 ═══════════════════════════════════════════════════════════════════════════ -->
 <script>
 // Force clear cache if version changed
-if(localStorage.getItem('hp_version') !== 'v25.9') {
+if(localStorage.getItem('hp_version') !== 'v26.0') {
   // Keep Firebase auth but clear nav/order caches
   localStorage.removeItem('mainNav');
   localStorage.removeItem('mehrOrder');
-  localStorage.setItem('hp_version','v25.9');
+  localStorage.setItem('hp_version','v26.0');
 }
 window.FIREBASE_CONFIG = {
   apiKey:            "AIzaSyB2YSWcf1Kk2QG_JcCjkgJikx-f73yj-kc",
@@ -1293,184 +1293,441 @@ function renderKuhDetail() {
 
   const bList   = Object.entries(behandlungen).filter(([,b])=>b.kuhId===id).sort((a,b)=>b[1].datum-a[1].datum);
   const bsList  = Object.entries(besamungen).filter(([,b])=>b.kuhId===id).sort((a,b)=>b[1].datum-a[1].datum);
-  const mList   = Object.entries(milchEintraege).filter(([,m])=>m.prokuh?.[id]).sort((a,b)=>b[1].datum-a[1].datum).slice(0,14);
+  const mListAll= Object.entries(milchEintraege).filter(([,m])=>m.prokuh?.[id]).sort((a,b)=>a[1].datum-b[1].datum);
+  const mList   = [...mListAll].reverse().slice(0,30);
   const aktBeh  = bList.filter(([,b])=>b.aktiv);
   const archBeh = bList.filter(([,b])=>!b.aktiv);
   const aktiveBs= bsList.find(([,bs])=>bs.status==='tragend'||bs.status==='besamt');
   const heute   = Date.now();
 
-  // Milch-Sparkline (letzte 10 Einträge)
-  const mWerte = mList.slice(0,10).reverse().map(([,m])=>parseFloat(m.prokuh[id])||0);
-  const mMax   = Math.max(...mWerte, 1);
-  const sparkW = 140, sparkH = 32;
-  const sparkPts = mWerte.map((v,i)=>{
-    const x = Math.round(i*(sparkW-4)/(Math.max(mWerte.length-1,1)))+2;
-    const y = Math.round(sparkH-4-(v/mMax)*(sparkH-8))+2;
-    return `${x},${y}`;
-  }).join(' ');
-  const sparkSvg = mWerte.length >= 2 ? `
-    <svg viewBox="0 0 ${sparkW} ${sparkH}" style="width:${sparkW}px;height:${sparkH}px;display:block" xmlns="http://www.w3.org/2000/svg">
-      <polyline points="${sparkPts}" fill="none" stroke="var(--gold)" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
-      <circle cx="${sparkPts.split(' ').pop().split(',')[0]}" cy="${sparkPts.split(' ').pop().split(',')[1]}" r="3" fill="var(--gold)"/>
-    </svg>` : '';
+  // Milch-Daten für Chart (alle, chronologisch)
+  const chartDaten = mListAll.map(([,m])=>({ l: parseFloat(m.prokuh[id])||0, d: m.datum, z: m.zeit }));
+  const chartMax = Math.max(...chartDaten.map(d=>d.l), 1);
+  const mGesamt = chartDaten.reduce((s,d)=>s+d.l, 0);
+  const mSchnitt = chartDaten.length ? Math.round(mGesamt/chartDaten.length*10)/10 : 0;
+  const mZuletzt = chartDaten.length ? chartDaten[chartDaten.length-1].l : null;
+  const mTrend = chartDaten.length>=3
+    ? chartDaten[chartDaten.length-1].l - chartDaten[chartDaten.length-3].l
+    : 0;
 
-  // WZ-Alerts
+  // WZ
   const wzAlerts = aktBeh.filter(([,b])=>b.wzMilchEnde&&b.wzMilchEnde>heute).map(([,b])=>Math.ceil((b.wzMilchEnde-heute)/86400000));
   const wzMin = wzAlerts.length ? Math.min(...wzAlerts) : null;
-
-  // Alpungstage dieser Kuh
   const alpTage = Object.values(weideTage).filter(w=>(w.kuhIds||[]).includes(id)).length;
+  const statusColor = k.almStatus==='oben'?'#4db84e':k.almStatus==='vorzeitig'?'#d4844b':'#4e6840';
+  const statusText  = k.almStatus==='oben'?'⛰ Auf der Alm':k.almStatus==='vorzeitig'?'⚠ Vorzeitig':'🏠 Unten';
 
-  // Status-Farbe
-  const statusColor = k.almStatus==='oben'?'var(--green)':k.almStatus==='vorzeitig'?'var(--orange)':'var(--text3)';
-  const statusText  = k.almStatus==='oben'?'⛰ Auf der Alm':k.almStatus==='vorzeitig'?'⚠ Vorzeitig abgetrieben':'🏠 Nicht aufgetrieben';
+  // Canvas chart data encoded as JSON for JS
+  const chartJson = JSON.stringify(chartDaten.slice(-30));
 
   return `
   <style>
-    @keyframes kuhSlideIn { from{opacity:0;transform:translateY(20px)} to{opacity:1;transform:none} }
-    @keyframes kuhPulse { 0%,100%{transform:scale(1)} 50%{transform:scale(1.08)} }
-    @keyframes kuhBarFill { from{width:0} to{width:var(--target-w)} }
-    .kuh-section { animation: kuhSlideIn .35s ease both; }
-    .kuh-section:nth-child(2){animation-delay:.05s}
-    .kuh-section:nth-child(3){animation-delay:.1s}
-    .kuh-section:nth-child(4){animation-delay:.15s}
-    .kuh-section:nth-child(5){animation-delay:.2s}
-    .kuh-section:nth-child(6){animation-delay:.25s}
-    .kuh-anim-bar { animation: kuhBarFill .8s cubic-bezier(.16,1,.3,1) both; animation-delay:.3s; }
+    @keyframes kd-in    { from{opacity:0;transform:translateY(18px)} to{opacity:1;transform:none} }
+    @keyframes kd-left  { from{opacity:0;transform:translateX(-16px)} to{opacity:1;transform:none} }
+    @keyframes kd-right { from{opacity:0;transform:translateX(16px)} to{opacity:1;transform:none} }
+    @keyframes kd-pop   { 0%{transform:scale(.85);opacity:0} 60%{transform:scale(1.06)} 100%{transform:scale(1);opacity:1} }
+    @keyframes kd-glow  { 0%,100%{box-shadow:0 0 8px rgba(212,168,75,.2)} 50%{box-shadow:0 0 22px rgba(212,168,75,.55)} }
+    @keyframes kd-pulse { 0%,100%{transform:scale(1)} 50%{transform:scale(1.07)} }
+    @keyframes kd-bar   { from{width:0!important} }
+    @keyframes kd-dot   { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:.4;transform:scale(.6)} }
+    @keyframes kd-shimmer { 0%{background-position:-200% center} 100%{background-position:200% center} }
+    @keyframes kd-num   { from{opacity:0;transform:translateY(6px)} to{opacity:1;transform:none} }
+
+    .kd-s1{animation:kd-in .32s .00s both}
+    .kd-s2{animation:kd-in .32s .06s both}
+    .kd-s3{animation:kd-in .32s .12s both}
+    .kd-s4{animation:kd-in .32s .18s both}
+    .kd-s5{animation:kd-in .32s .24s both}
+    .kd-s6{animation:kd-in .32s .30s both}
+    .kd-sl{animation:kd-left .32s .08s both}
+    .kd-sr{animation:kd-right .32s .08s both}
+
+    .kd-stat-num { animation: kd-num .5s ease both; }
+    .kd-stat-num.d1{animation-delay:.15s} .kd-stat-num.d2{animation-delay:.22s} .kd-stat-num.d3{animation-delay:.29s}
+
+    .kd-hero {
+      background: linear-gradient(135deg,#0f2010 0%,#152b12 60%,#1a2e0f 100%);
+      border: 1px solid rgba(212,168,75,.18);
+      border-radius: 18px;
+      padding: 1rem;
+      margin-bottom: .75rem;
+      position: relative;
+      overflow: hidden;
+      animation: kd-glow 4s ease-in-out infinite;
+    }
+    .kd-hero::before {
+      content:'';position:absolute;top:-30px;right:-30px;
+      width:120px;height:120px;
+      background:radial-gradient(circle,rgba(212,168,75,.15),transparent 70%);
+      pointer-events:none;
+    }
+    .kd-foto-ring {
+      width:76px;height:76px;border-radius:50%;
+      border:2.5px solid var(--gold2);
+      box-shadow:0 0 0 4px rgba(212,168,75,.12),0 6px 16px rgba(0,0,0,.5);
+      object-fit:cover;flex-shrink:0;
+    }
+    .kd-foto-placeholder {
+      width:76px;height:76px;border-radius:50%;
+      background:var(--bg);
+      border:2.5px dashed rgba(212,168,75,.4);
+      display:flex;align-items:center;justify-content:center;
+      font-size:2.2rem;flex-shrink:0;
+      animation:kd-pulse 3.5s ease-in-out infinite;
+    }
+    .kd-name {
+      font-size:1.45rem;font-weight:800;color:var(--gold);
+      line-height:1;
+      background:linear-gradient(90deg,#f0c060,#d4a84b,#f0c060);
+      background-size:200% auto;
+      -webkit-background-clip:text;-webkit-text-fill-color:transparent;
+      animation:kd-shimmer 3s linear infinite;
+    }
+    .kd-status-dot {
+      width:8px;height:8px;border-radius:50%;
+      background:${statusColor};
+      box-shadow:0 0 8px ${statusColor};
+      display:inline-block;
+      animation:kd-dot 2s ease-in-out infinite;
+    }
+    .kd-stat-card {
+      background:var(--bg3);
+      border:1px solid var(--border);
+      border-radius:12px;
+      padding:.55rem .4rem;
+      text-align:center;
+      transition:transform .15s,border-color .15s;
+    }
+    .kd-stat-card:active{transform:scale(.94)}
+
+    .kd-tab-btn {
+      flex:1;padding:.55rem .3rem;
+      background:transparent;border:none;
+      color:var(--text3);font-size:.78rem;font-weight:600;
+      border-bottom:2px solid transparent;
+      cursor:pointer;transition:color .2s,border-color .2s;
+    }
+    .kd-tab-btn.active{color:var(--gold);border-bottom-color:var(--gold)}
+
+    .kd-beh-aktiv {
+      background:rgba(212,75,75,.06);
+      border-left:3px solid var(--red);
+      border-radius:0 10px 10px 0;
+      padding:.4rem .6rem .4rem .7rem;
+      margin-bottom:.35rem;
+    }
+    .kd-beh-archiv {
+      border-left:2px solid var(--border2);
+      padding:.3rem .6rem .3rem .7rem;
+      margin-bottom:.3rem;opacity:.7;
+    }
+
+    #kd-chart-canvas {
+      width:100%;height:130px;display:block;border-radius:8px;
+      background:linear-gradient(180deg,rgba(74,184,232,.04) 0%,transparent 100%);
+    }
+    .kd-chart-label {
+      font-size:.62rem;color:var(--text3);
+      display:flex;justify-content:space-between;
+      margin-top:.3rem;padding:0 2px;
+    }
+    .kd-milch-row {
+      display:flex;align-items:center;gap:.6rem;
+      padding:.45rem 0;border-bottom:1px solid rgba(255,255,255,.04);
+    }
+    .kd-milch-row:last-child{border-bottom:none}
+    .kd-milch-bar-wrap {
+      flex:1;height:5px;background:var(--bg);border-radius:3px;overflow:hidden;
+    }
+    .kd-milch-bar {
+      height:100%;border-radius:3px;
+      background:linear-gradient(90deg,#4ab8e8,var(--gold));
+      animation:kd-bar .7s cubic-bezier(.16,1,.3,1) both;
+    }
   </style>
 
-  <div class="page-header kuh-section">
+  <!-- Header -->
+  <div class="page-header kd-s1" style="padding-bottom:.4rem">
     <button class="back-btn" onclick="navigate('herde')">‹ Herde</button>
-    <div style="display:flex;gap:.4rem">
+    <div style="display:flex;gap:.35rem">
       <button class="btn-ghost" onclick="showKuhForm('${id}')">✎</button>
       <button class="btn-xs" onclick="showQRCode('${id}','${k.nr}','${(k.name||'').replace(/'/g,'')}')">QR</button>
       <button class="btn-xs-danger" onclick="deleteKuh('${id}')">Löschen</button>
     </div>
   </div>
 
-  <!-- Hero Card -->
-  <div class="kuh-section" style="background:linear-gradient(135deg,var(--bg3) 0%,var(--bg4) 100%);border:1px solid var(--border2);border-radius:var(--radius);padding:1rem;margin-bottom:.8rem;position:relative;overflow:hidden">
-    <div style="position:absolute;top:0;right:0;width:80px;height:80px;background:radial-gradient(circle,rgba(212,168,75,.12),transparent 70%);pointer-events:none"></div>
-    <div style="display:flex;gap:.8rem;align-items:flex-start">
-      <!-- Foto -->
-      <div style="position:relative;flex-shrink:0">
+  <!-- Hero -->
+  <div class="kd-hero kd-s2">
+    <div style="display:flex;gap:.85rem;align-items:flex-start">
+      <div style="position:relative;flex-shrink:0" class="kd-sl">
         ${fotos[id]
-          ? `<img src="${fotos[id].data}" style="width:72px;height:72px;border-radius:50%;object-fit:cover;border:2px solid var(--gold2);box-shadow:0 4px 12px rgba(0,0,0,.4)" />`
-          : `<div style="width:72px;height:72px;border-radius:50%;background:var(--bg);border:2px dashed var(--border2);display:flex;align-items:center;justify-content:center;font-size:2rem;animation:kuhPulse 3s ease-in-out infinite">🐄</div>`}
-        <label style="position:absolute;bottom:-4px;right:-4px;cursor:pointer;background:var(--gold);border-radius:50%;width:22px;height:22px;display:flex;align-items:center;justify-content:center;font-size:.65rem">
+          ? `<img src="${fotos[id].data}" class="kd-foto-ring" />`
+          : `<div class="kd-foto-placeholder">🐄</div>`}
+        <label style="position:absolute;bottom:-3px;right:-3px;cursor:pointer;background:var(--gold);border-radius:50%;width:24px;height:24px;display:flex;align-items:center;justify-content:center;font-size:.7rem;box-shadow:0 2px 8px rgba(0,0,0,.4)">
           📷<input type="file" accept="image/*" style="display:none" onchange="uploadFoto('${id}',this)" />
         </label>
       </div>
-      <!-- Info -->
-      <div style="flex:1;min-width:0">
-        <div style="font-size:1.3rem;font-weight:bold;color:var(--gold);line-height:1.1">${k.name||'–'}</div>
-        <div style="font-size:.82rem;color:var(--text2);margin-top:2px">#${k.nr}${k.ohrmarke?' · <span style="color:var(--text3)">'+k.ohrmarke+'</span>':''}</div>
-        <div style="font-size:.78rem;color:var(--text3);margin-top:2px">${[k.bauer,k.rasse,k.gruppe].filter(Boolean).join(' · ')||'–'}</div>
-        <div style="margin-top:.4rem;display:flex;flex-wrap:wrap;gap:.3rem">
-          <span style="font-size:.72rem;padding:2px 8px;border-radius:12px;background:rgba(0,0,0,.3);color:${statusColor};border:1px solid ${statusColor}33">${statusText}</span>
-          ${k.laktation?`<span class="tag tag-blue" style="font-size:.7rem">${{melkend:'🥛 Melkend',trocken:'💧 Trocken',tragend:'🐄 Tragend',jung:'🌱 Jungtier',trockengestellt:'⏸ Trockengestellt'}[k.laktation]||k.laktation}</span>`:''}
-          ${k.bio?'<span class="tag tag-green" style="font-size:.7rem">🌿 Bio</span>':''}
+
+      <div style="flex:1;min-width:0" class="kd-sr">
+        <div class="kd-name">${k.name||'–'}</div>
+        <div style="font-size:.8rem;color:var(--text2);margin-top:3px">
+          #${k.nr}${k.ohrmarke?` <span style="color:var(--text3);font-size:.72rem">· ${k.ohrmarke}</span>`:''}
         </div>
-        ${wzMin!==null?`<div style="font-size:.72rem;color:var(--orange);margin-top:.3rem">⚕ WZ Milch noch ${wzMin} Tage</div>`:''}
-        ${k.notiz?`<div style="font-size:.75rem;color:var(--text3);margin-top:.3rem;font-style:italic">${k.notiz}</div>`:''}
+        <div style="font-size:.74rem;color:var(--text3);margin-top:2px">${[k.bauer,k.rasse,k.gruppe].filter(Boolean).join(' · ')||'–'}</div>
+
+        <div style="display:flex;flex-wrap:wrap;gap:.3rem;margin-top:.45rem;align-items:center">
+          <span style="display:inline-flex;align-items:center;gap:4px;font-size:.72rem;padding:3px 9px;border-radius:12px;background:rgba(0,0,0,.25);color:${statusColor};border:1px solid ${statusColor}44">
+            <span class="kd-status-dot"></span>${statusText}
+          </span>
+          ${k.laktation?`<span class="tag tag-blue" style="font-size:.68rem">${{melkend:'🥛 Melkend',trocken:'💧 Trocken',tragend:'🐄 Tragend',jung:'🌱 Jungtier',trockengestellt:'⏸ Trockengestellt'}[k.laktation]||k.laktation}</span>`:''}
+          ${k.bio?'<span class="tag tag-green" style="font-size:.68rem">🌿 Bio</span>':''}
+        </div>
+
+        ${wzMin!==null?`<div style="font-size:.72rem;color:var(--orange);margin-top:.35rem;display:flex;align-items:center;gap:4px"><span style="animation:kd-dot 1.2s ease-in-out infinite;display:inline-block;width:7px;height:7px;background:var(--orange);border-radius:50%"></span>⚕ WZ Milch noch ${wzMin} Tage</div>`:''}
+        ${k.notiz?`<div style="font-size:.72rem;color:var(--text3);margin-top:.3rem;font-style:italic">${k.notiz}</div>`:''}
       </div>
     </div>
+
     <!-- Schnellaktionen -->
-    <div style="display:flex;gap:.4rem;margin-top:.7rem;flex-wrap:wrap">
+    <div style="display:flex;gap:.35rem;margin-top:.75rem;flex-wrap:wrap">
       <button class="btn-xs" onclick="showBehandlungForm('${id}')">+ Behandlung</button>
       <button class="btn-xs" onclick="showBesamungForm('${id}')">+ Besamung</button>
       ${(k.almStatus==='oben'||!k.almStatus)?`<button class="btn-xs-danger" onclick="showVorzeitigAbtrieb('${id}')">↓ Abtreiben</button>`:''}
-      ${fotos[id]?`<button class="btn-xs-danger" onclick="deleteFoto('${id}')">Foto ✕</button>`:''}
+      ${fotos[id]?`<button class="btn-xs-danger" onclick="deleteFoto('${id}')">📷✕</button>`:''}
     </div>
   </div>
 
-  <!-- Stats-Grid -->
-  <div class="kuh-section" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:.4rem;margin-bottom:.8rem">
-    <div style="background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);padding:.5rem;text-align:center">
-      <div style="font-size:1.2rem;font-weight:bold;color:var(--gold)">${alpTage}</div>
-      <div style="font-size:.65rem;color:var(--text3)">Weidetage</div>
+  <!-- Stats -->
+  <div class="kd-s3" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:.4rem;margin-bottom:.75rem">
+    <div class="kd-stat-card">
+      <div class="kd-stat-num d1" style="font-size:1.35rem;font-weight:800;color:var(--gold)">${alpTage}</div>
+      <div style="font-size:.6rem;color:var(--text3);margin-top:2px">Weidetage</div>
     </div>
-    <div style="background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);padding:.5rem;text-align:center">
-      <div style="font-size:1.2rem;font-weight:bold;color:${aktBeh.length?'var(--red)':'var(--text3)'}">${aktBeh.length}</div>
-      <div style="font-size:.65rem;color:var(--text3)">Aktiv Beh.</div>
+    <div class="kd-stat-card" onclick="document.querySelector('.kd-tab-btn:nth-child(1)')?.click()">
+      <div class="kd-stat-num d2" style="font-size:1.35rem;font-weight:800;color:${aktBeh.length?'var(--red)':'var(--text3)'}">${aktBeh.length}</div>
+      <div style="font-size:.6rem;color:var(--text3);margin-top:2px">Aktiv Beh.</div>
+      ${aktBeh.length?`<div style="width:6px;height:6px;background:var(--red);border-radius:50%;margin:.2rem auto 0;box-shadow:0 0 6px var(--red);animation:kd-dot 1.5s ease-in-out infinite"></div>`:``}
     </div>
-    <div style="background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);padding:.5rem;text-align:center">
-      <div style="font-size:1.2rem;font-weight:bold;color:${aktiveBs?'var(--green)':'var(--text3)'}">${bsList.length}</div>
-      <div style="font-size:.65rem;color:var(--text3)">Besamungen</div>
+    <div class="kd-stat-card" onclick="document.querySelector('.kd-tab-btn:nth-child(2)')?.click()">
+      <div class="kd-stat-num d3" style="font-size:1.35rem;font-weight:800;color:${aktiveBs?'var(--green)':'var(--text3)'}">${bsList.length}</div>
+      <div style="font-size:.6rem;color:var(--text3);margin-top:2px">Besamungen</div>
     </div>
   </div>
-
-  <!-- Milch Sparkline -->
-  ${mList.length ? `
-  <div class="kuh-section card-section" style="margin-bottom:.8rem">
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.4rem">
-      <div class="section-label">Milch letzte Einträge</div>
-      <div style="font-size:.78rem;color:var(--gold)">${mList[0]?mList[0][1].prokuh[id]+' L zuletzt':''}</div>
-    </div>
-    <div style="display:flex;align-items:center;gap:.8rem">
-      ${sparkSvg}
-      <div style="font-size:.72rem;color:var(--text3)">Ø ${mWerte.length?Math.round(mWerte.reduce((a,b)=>a+b,0)/mWerte.length*10)/10:0} L</div>
-    </div>
-  </div>` : ''}
 
   <!-- Aktive Besamung Banner -->
   ${aktiveBs ? `
-  <div class="kuh-section" style="background:rgba(77,184,78,.08);border:1px solid rgba(77,184,78,.3);border-radius:var(--radius-sm);padding:.6rem .8rem;margin-bottom:.8rem">
-    <div style="font-size:.72rem;color:var(--green);font-weight:bold;margin-bottom:.2rem">🐮 ${aktiveBs[1].status==='tragend'?'TRÄCHTIG':'BESAMT'}</div>
-    ${aktiveBs[1].erwartetGeburt?`<div style="font-size:.82rem;color:var(--text2)">Geburt erw.: <b>${new Date(aktiveBs[1].erwartetGeburt).toLocaleDateString('de-AT')}</b> · noch ${Math.ceil((aktiveBs[1].erwartetGeburt-heute)/86400000)} Tage</div>`:''}
-    ${aktiveBs[1].stier?`<div style="font-size:.75rem;color:var(--text3)">🐂 ${aktiveBs[1].stier}</div>`:''}
+  <div class="kd-s4" style="background:linear-gradient(135deg,rgba(77,184,78,.1),rgba(77,184,78,.05));border:1px solid rgba(77,184,78,.35);border-radius:12px;padding:.65rem .85rem;margin-bottom:.75rem;position:relative;overflow:hidden">
+    <div style="position:absolute;right:-10px;top:-10px;font-size:2.5rem;opacity:.08;transform:rotate(-15deg)">🐮</div>
+    <div style="font-size:.7rem;color:var(--green);font-weight:800;letter-spacing:.06em;margin-bottom:.25rem">${aktiveBs[1].status==='tragend'?'🐮 TRÄCHTIG':'🐮 BESAMT'}</div>
+    ${aktiveBs[1].erwartetGeburt?`
+    <div style="font-size:.85rem;color:var(--text2)">Geburt erw.: <b style="color:var(--text)">${new Date(aktiveBs[1].erwartetGeburt).toLocaleDateString('de-AT',{day:'numeric',month:'long',year:'numeric'})}</b></div>
+    <div style="margin-top:.35rem">
+      <div style="font-size:.68rem;color:var(--text3);margin-bottom:3px">noch ${Math.max(0,Math.ceil((aktiveBs[1].erwartetGeburt-heute)/86400000))} Tage</div>
+      <div style="height:4px;background:var(--bg);border-radius:2px;overflow:hidden">
+        <div style="height:100%;border-radius:2px;background:linear-gradient(90deg,var(--green),#4db84e);animation:kd-bar .9s ease both;width:${Math.min(100,Math.max(2,Math.round((1-(aktiveBs[1].erwartetGeburt-heute)/(280*86400000))*100)))}%"></div>
+      </div>
+    </div>`:''}
+    ${aktiveBs[1].stier?`<div style="font-size:.72rem;color:var(--text3);margin-top:.25rem">🐂 ${aktiveBs[1].stier}</div>`:''}
   </div>` : ''}
 
   <!-- Tabs -->
-  <div class="detail-tabs kuh-section">
-    <button class="tab-btn active" onclick="switchTab('kd-tab-b','kd-tab-r,kd-tab-m',this)">⚕ Behandlung${aktBeh.length?` <span style="background:var(--red);color:#fff;border-radius:50%;width:16px;height:16px;display:inline-flex;align-items:center;justify-content:center;font-size:.62rem;margin-left:2px">${aktBeh.length}</span>`:''}</button>
-    <button class="tab-btn" onclick="switchTab('kd-tab-r','kd-tab-b,kd-tab-m',this)">🐮 Besamung${bsList.length?` (${bsList.length})`:''}</button>
-    <button class="tab-btn" onclick="switchTab('kd-tab-m','kd-tab-b,kd-tab-r',this)">🥛 Milch</button>
+  <div class="kd-s5" style="display:flex;border-bottom:1px solid var(--border);margin-bottom:.6rem">
+    <button class="kd-tab-btn active" onclick="kdSwitchTab('kd-tab-b',this)">⚕ Behandlung${aktBeh.length?` <span style="background:var(--red);color:#fff;border-radius:50%;width:15px;height:15px;display:inline-flex;align-items:center;justify-content:center;font-size:.58rem;margin-left:2px;vertical-align:middle">${aktBeh.length}</span>`:''}</button>
+    <button class="kd-tab-btn" onclick="kdSwitchTab('kd-tab-r',this)">🐮 Besamung${bsList.length?` (${bsList.length})`:''}</button>
+    <button class="kd-tab-btn" onclick="kdSwitchTab('kd-tab-m',this)">🥛 Milch${chartDaten.length?` (${chartDaten.length})`:''}</button>
   </div>
 
-  <!-- Tab: Behandlung -->
-  <div id="kd-tab-b" class="kuh-section">
-    <button class="btn-primary btn-block" onclick="showBehandlungForm('${id}')">+ Behandlung erfassen</button>
-    ${aktBeh.length ? `
-      <div class="section-title" style="color:var(--red);margin-top:.6rem">🔴 Aktiv (${aktBeh.length})</div>
-      <div style="border-left:3px solid var(--red);padding-left:.5rem;margin-bottom:.4rem">
-        ${aktBeh.map(([bid,b])=>behandlungCard(bid,b)).join('')}
-      </div>` : ''}
-    ${archBeh.length ? `
-      <div class="section-title" style="margin-top:.6rem;color:var(--text3)">📁 Archiv (${archBeh.length})</div>
-      <div style="opacity:.75">
-        ${archBeh.slice(0,8).map(([bid,b])=>behandlungCard(bid,b)).join('')}
-      </div>` : ''}
-    ${!bList.length ? '<div class="empty-state">Keine Behandlungen</div>' : ''}
+  <!-- Tab Behandlung -->
+  <div id="kd-tab-b" class="kd-s6">
+    <button class="btn-primary btn-block" style="margin-bottom:.5rem" onclick="showBehandlungForm('${id}')">+ Behandlung erfassen</button>
+    ${aktBeh.length?`
+      <div style="font-size:.7rem;font-weight:700;color:var(--red);letter-spacing:.06em;margin-bottom:.3rem;display:flex;align-items:center;gap:.4rem">
+        <span style="width:7px;height:7px;background:var(--red);border-radius:50%;box-shadow:0 0 7px var(--red);animation:kd-dot 1.5s infinite"></span>
+        AKTIV (${aktBeh.length})
+      </div>
+      ${aktBeh.map(([bid,b])=>`<div class="kd-beh-aktiv">${behandlungCard(bid,b)}</div>`).join('')}`:''}
+    ${archBeh.length?`
+      <div style="font-size:.68rem;font-weight:600;color:var(--text3);letter-spacing:.05em;margin:.5rem 0 .25rem">📁 ARCHIV (${archBeh.length})</div>
+      ${archBeh.slice(0,8).map(([bid,b])=>`<div class="kd-beh-archiv">${behandlungCard(bid,b)}</div>`).join('')}`:''}
+    ${!bList.length?'<div class="empty-state">Keine Behandlungen</div>':''}
   </div>
 
-  <!-- Tab: Besamung -->
-  <div id="kd-tab-r" style="display:none" class="kuh-section">
-    <div style="display:flex;gap:.4rem;margin-bottom:.4rem">
+  <!-- Tab Besamung -->
+  <div id="kd-tab-r" style="display:none">
+    <div style="display:flex;gap:.35rem;margin-bottom:.5rem">
       <button class="btn-primary" style="flex:1" onclick="showBesamungForm('${id}')">+ Besamung</button>
-      ${bsList.length?`<button class="btn-secondary" onclick="showBesamungForm('${id}', true)">↻ 2. Versuch</button>`:''}
+      ${bsList.length?`<button class="btn-secondary" onclick="showBesamungForm('${id}',true)">↻ 2. Versuch</button>`:''}
     </div>
     ${bsList.map(([bsid,bs])=>besamungCard(bsid,bs)).join('')||'<div class="empty-state">Keine Besamungen</div>'}
   </div>
 
-  <!-- Tab: Milch -->
-  <div id="kd-tab-m" style="display:none" class="kuh-section">
-    ${mList.length ? `
-    <div class="card-list">
-      ${mList.map(([,m])=>`
-        <div class="list-card list-card-sm">
-          <div>
-            <div style="font-size:.8rem;color:var(--text2)">${new Date(m.datum).toLocaleDateString('de-AT',{weekday:'short',day:'numeric',month:'short'})}</div>
-            <div style="font-size:.68rem;color:var(--text3)">${m.zeit==='morgen'?'🌅 Morgens':'🌇 Abends'}</div>
+  <!-- Tab Milch -->
+  <div id="kd-tab-m" style="display:none">
+    ${chartDaten.length>=2 ? `
+    <!-- Milch Stats -->
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:.4rem;margin-bottom:.7rem">
+      <div style="background:var(--bg3);border:1px solid var(--border);border-radius:10px;padding:.5rem;text-align:center">
+        <div style="font-size:1.1rem;font-weight:800;color:var(--gold);animation:kd-num .5s .1s both">${mZuletzt}L</div>
+        <div style="font-size:.6rem;color:var(--text3)">Zuletzt</div>
+      </div>
+      <div style="background:var(--bg3);border:1px solid var(--border);border-radius:10px;padding:.5rem;text-align:center">
+        <div style="font-size:1.1rem;font-weight:800;color:#4ab8e8;animation:kd-num .5s .18s both">${mSchnitt}L</div>
+        <div style="font-size:.6rem;color:var(--text3)">Ø Leistung</div>
+      </div>
+      <div style="background:var(--bg3);border:1px solid var(--border);border-radius:10px;padding:.5rem;text-align:center">
+        <div style="font-size:1.1rem;font-weight:800;color:${mTrend>=0?'var(--green)':'var(--red)'};animation:kd-num .5s .26s both">${mTrend>=0?'+':''}${Math.round(mTrend*10)/10}L</div>
+        <div style="font-size:.6rem;color:var(--text3)">Trend</div>
+      </div>
+    </div>
+
+    <!-- Canvas Chart -->
+    <div style="background:var(--bg3);border:1px solid var(--border);border-radius:12px;padding:.7rem .7rem .4rem;margin-bottom:.7rem">
+      <div style="font-size:.68rem;color:var(--text3);font-weight:600;letter-spacing:.05em;margin-bottom:.4rem">📈 MILCHLEISTUNGSVERLAUF</div>
+      <canvas id="kd-chart-canvas" height="130"></canvas>
+      <div class="kd-chart-label">
+        <span>${chartDaten.length?new Date(chartDaten[0].d).toLocaleDateString('de-AT',{day:'numeric',month:'short'}):''}</span>
+        <span style="color:var(--gold)">max ${chartMax}L</span>
+        <span>${chartDaten.length?new Date(chartDaten[chartDaten.length-1].d).toLocaleDateString('de-AT',{day:'numeric',month:'short'}):''}</span>
+      </div>
+    </div>
+
+    <!-- Einträge Liste -->
+    <div style="font-size:.68rem;color:var(--text3);font-weight:600;letter-spacing:.05em;margin-bottom:.3rem">ALLE EINTRÄGE (${chartDaten.length})</div>
+    <div style="max-height:240px;overflow-y:auto">
+      ${[...chartDaten].reverse().slice(0,30).map((d,i)=>{
+        const pct = Math.round(d.l/chartMax*100);
+        return `<div class="kd-milch-row" style="animation:kd-in .25s ${i*.03}s both">
+          <div style="min-width:70px">
+            <div style="font-size:.78rem;color:var(--text2);font-weight:500">${new Date(d.d).toLocaleDateString('de-AT',{day:'numeric',month:'short'})}</div>
+            <div style="font-size:.62rem;color:var(--text3)">${d.z==='morgen'?'🌅':'🌇'} ${d.z==='morgen'?'Morgens':'Abends'}</div>
           </div>
-          <span style="color:var(--gold);font-weight:bold;font-size:.95rem">${m.prokuh[id]} L</span>
-        </div>`).join('')}
-    </div>` : '<div class="empty-state">Keine Einzelmilchdaten</div>'}
+          <div class="kd-milch-bar-wrap">
+            <div class="kd-milch-bar" style="width:${pct}%;animation-delay:${i*.04}s"></div>
+          </div>
+          <div style="min-width:38px;text-align:right;font-size:.85rem;font-weight:700;color:var(--gold)">${d.l}L</div>
+        </div>`;
+      }).join('')}
+    </div>` : '<div class="empty-state">Keine Einzelmilchdaten vorhanden</div>'}
   </div>
 
   ${behandlungFormHTML(id)}${besamungFormHTML(id)}${kalbungFormHTML()}
+
+  <script>
+  // Tab switch
+  window.kdSwitchTab = function(tabId, btn) {
+    ['kd-tab-b','kd-tab-r','kd-tab-m'].forEach(id=>{
+      const el=document.getElementById(id);
+      if(el) el.style.display=id===tabId?'':'none';
+    });
+    document.querySelectorAll('.kd-tab-btn').forEach(b=>b.classList.remove('active'));
+    if(btn) btn.classList.add('active');
+    if(tabId==='kd-tab-m') setTimeout(drawKdChart, 60);
+  };
+
+  // Canvas Milch Chart
+  function drawKdChart() {
+    const canvas = document.getElementById('kd-chart-canvas');
+    if(!canvas) return;
+    const ctx = canvas.getContext('2d');
+    const data = ${chartJson};
+    if(!data||data.length<2) return;
+
+    const dpr = window.devicePixelRatio||1;
+    const W = canvas.offsetWidth, H = 130;
+    canvas.width = W*dpr; canvas.height = H*dpr;
+    ctx.scale(dpr,dpr);
+
+    const pad = {t:10,r:8,b:8,l:8};
+    const gW = W-pad.l-pad.r, gH = H-pad.t-pad.b;
+    const maxV = Math.max(...data.map(d=>d.l), 1);
+    const minV = Math.min(...data.map(d=>d.l), 0);
+    const range = maxV-minV||1;
+
+    const pts = data.map((d,i)=>({
+      x: pad.l + i*(gW/(data.length-1)),
+      y: pad.t + gH - ((d.l-minV)/range)*gH,
+      l: d.l, z: d.z
+    }));
+
+    // Grid lines
+    ctx.strokeStyle = 'rgba(255,255,255,.04)';
+    ctx.lineWidth = 1;
+    [.25,.5,.75,1].forEach(f=>{
+      const y = pad.t + gH*(1-f);
+      ctx.beginPath(); ctx.moveTo(pad.l,y); ctx.lineTo(pad.l+gW,y); ctx.stroke();
+      ctx.fillStyle='rgba(255,255,255,.18)';
+      ctx.font='9px sans-serif';
+      ctx.fillText(Math.round(minV+range*f)+'L', pad.l+2, y-2);
+    });
+
+    // Area gradient
+    const grad = ctx.createLinearGradient(0,pad.t,0,pad.t+gH);
+    grad.addColorStop(0,'rgba(74,184,232,.35)');
+    grad.addColorStop(1,'rgba(74,184,232,.02)');
+    ctx.beginPath();
+    ctx.moveTo(pts[0].x, pad.t+gH);
+    pts.forEach(p=>ctx.lineTo(p.x,p.y));
+    ctx.lineTo(pts[pts.length-1].x, pad.t+gH);
+    ctx.closePath();
+    ctx.fillStyle=grad;
+    ctx.fill();
+
+    // Line
+    ctx.beginPath();
+    pts.forEach((p,i)=>i===0?ctx.moveTo(p.x,p.y):ctx.lineTo(p.x,p.y));
+    ctx.strokeStyle='#4ab8e8';
+    ctx.lineWidth=2;
+    ctx.lineJoin='round';
+    ctx.lineCap='round';
+    ctx.stroke();
+
+    // Gold highlight for morgen
+    pts.forEach(p=>{
+      if(p.z==='morgen'){
+        ctx.beginPath();
+        ctx.arc(p.x,p.y,3,0,Math.PI*2);
+        ctx.fillStyle='#d4a84b';
+        ctx.fill();
+      }
+    });
+
+    // Last point glow
+    const lp = pts[pts.length-1];
+    ctx.beginPath();
+    ctx.arc(lp.x,lp.y,5,0,Math.PI*2);
+    ctx.fillStyle='rgba(74,184,232,.25)';
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(lp.x,lp.y,3,0,Math.PI*2);
+    ctx.fillStyle='#4ab8e8';
+    ctx.fill();
+
+    // Tooltip on touch
+    canvas.ontouchstart = function(e) {
+      e.preventDefault();
+      const rect=canvas.getBoundingClientRect();
+      const tx=(e.touches[0].clientX-rect.left)*(W/rect.width);
+      let closest=pts[0],minD=Infinity;
+      pts.forEach(p=>{ const d=Math.abs(p.x-tx); if(d<minD){minD=d;closest=p;} });
+      // Draw tooltip
+      ctx.clearRect(0,0,W,H);
+      drawKdChart();
+      ctx.fillStyle='rgba(212,168,75,.95)';
+      const tw=50,th=22,tx2=Math.min(W-tw-4,Math.max(4,closest.x-tw/2));
+      ctx.beginPath();
+      ctx.roundRect(tx2,closest.y-th-6,tw,th,5);
+      ctx.fill();
+      ctx.fillStyle='#0a0800';
+      ctx.font='bold 11px sans-serif';
+      ctx.textAlign='center';
+      ctx.fillText(closest.l+'L',tx2+tw/2,closest.y-th/2-2);
+    };
+  }
+  setTimeout(()=>{ if(document.getElementById('kd-chart-canvas')) drawKdChart(); },80);
+  <\/script>
   `;
 }
+
 
 window.showQRCode = function(kuhId, nr, name) {
   const url = encodeURIComponent(location.origin + location.pathname + '?kuh=' + kuhId);
