@@ -19,11 +19,11 @@
 ═══════════════════════════════════════════════════════════════════════════ -->
 <script>
 // Force clear cache if version changed
-if(localStorage.getItem('hp_version') !== 'v27.9') {
+if(localStorage.getItem('hp_version') !== 'v28.0') {
   // Keep Firebase auth but clear nav/order caches
   localStorage.removeItem('mainNav');
   localStorage.removeItem('mehrOrder');
-  localStorage.setItem('hp_version','v27.9');
+  localStorage.setItem('hp_version','v28.0');
 }
 window.FIREBASE_CONFIG = {
   apiKey:            "AIzaSyB2YSWcf1Kk2QG_JcCjkgJikx-f73yj-kc",
@@ -3400,120 +3400,6 @@ function renderKalender() {
       }).join('')+
     '</div>';
 
-  return '<div class="page-header"><h2>📅 Kalender</h2><button class="btn-primary" onclick="showKalenderForm()">+ Termin</button></div>'+
-    '<div style="background:rgba(212,168,75,.07);border:1px solid rgba(212,168,75,.2);border-radius:var(--radius-sm);padding:.5rem .8rem;margin-bottom:.6rem;font-size:.75rem;color:var(--text2)">🔔 Erinnerungen werden als Push-Notification geliefert.</div>'+
-    filterChips+
-    (vergangen.length?'<div class="section-title" style="color:var(--red)">Überfällig ('+vergangen.length+')</div><div class="card-list">'+vergangen.slice(0,10).map(renderTermin).join('')+'</div>':'')+
-    '<div class="section-title">Nächste 60 Tage ('+bald.length+')</div>'+
-    (bald.length?'<div class="card-list">'+bald.map(renderTermin).join('')+'</div>':'<div class="empty-state">Keine Termine</div>')+
-    (spaeter.length?'<div class="section-title">Später</div><div class="card-list">'+spaeter.slice(0,10).map(renderTermin).join('')+'</div>':'')+
-    '<div id="kalender-overlay" class="form-overlay" style="display:none">'+
-      '<div class="form-sheet">'+
-        '<div class="form-header"><h3>Termin erfassen</h3><button class="close-btn" onclick="closeForm(\'kalender-overlay\')">✕</button></div>'+
-        '<div class="form-body">'+
-          '<input id="kt-titel" class="inp" placeholder="Titel * (z.B. Tierarztbesuch, AMA-Kontrolle)" />'+
-          '<label class="inp-label">Datum</label>'+
-          '<input id="kt-datum" class="inp" type="date" value="'+isoDate(new Date())+'" />'+
-          '<label class="inp-label">🎨 Kategorie</label>'+
-          '<div style="display:flex;gap:.3rem;flex-wrap:wrap;margin-bottom:.5rem" id="kt-kat-chips">'+
-            ['tierarzt','kontrolle','wartung','sonstiges'].map(function(k){
-              const kat=KATEGORIEN[k];
-              return '<button type="button" class="filter-chip '+(k==='sonstiges'?'active':'')+'" style="font-size:.72rem;border-color:'+kat.farbe+'44" onclick="selectKtKategorie(\''+k+'\',this)">'+
-                '<span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:'+kat.farbe+';margin-right:3px;vertical-align:middle"></span>'+
-                kat.label+
-              '</button>';
-            }).join('')+
-          '</div>'+
-          '<input type="hidden" id="kt-kategorie" value="sonstiges" />'+
-          '<label class="inp-label">🔔 Erinnerung</label>'+
-          '<div style="display:flex;gap:.4rem;flex-wrap:wrap;margin-bottom:.5rem">'+
-            '<button type="button" class="filter-chip active" onclick="selectKtErinnerung(0,this)">Keine</button>'+
-            '<button type="button" class="filter-chip" onclick="selectKtErinnerung(1,this)">1 Tag vorher</button>'+
-            '<button type="button" class="filter-chip" onclick="selectKtErinnerung(3,this)">3 Tage vorher</button>'+
-            '<button type="button" class="filter-chip" onclick="selectKtErinnerung(7,this)">1 Woche vorher</button>'+
-          '</div>'+
-          '<input type="hidden" id="kt-erinnerung" value="0" />'+
-          '<textarea id="kt-notiz" class="inp" rows="2" placeholder="Notiz (optional)"></textarea>'+
-          '<div class="form-actions">'+
-            '<button class="btn-secondary" onclick="closeForm(\'kalender-overlay\')">Abbrechen</button>'+
-            '<button class="btn-primary" onclick="saveKalenderTermin()">Speichern</button>'+
-          '</div>'+
-        '</div>'+
-      '</div>'+
-    '</div>';
-}
-
-  Object.entries(behandlungen).forEach(([id,b]) => {
-    const k=kuehe[b.kuhId];
-    if(b.wartezeitEnde && !b.warteAbgeschlossen)
-      termine.push({ ts:b.wartezeitEnde, typ:'wartezeit', label:'Wartezeit: '+(b.medikament||''), kuh:'#'+(k?.nr||'')+' '+(k?.name||''), farbe:'var(--orange)', icon:'⚕', id, dbPath:'behandlungen/'+id });
-    if(b.folgeTermin && !b.folgeErledigt)
-      termine.push({ ts:b.folgeTermin, typ:'folge', label:'Folgebehandlung: '+(b.diagnose||''), kuh:'#'+(k?.nr||'')+' '+(k?.name||''), farbe:'var(--red)', icon:'⚕', id, dbPath:'behandlungen/'+id });
-  });
-
-  Object.entries(besamungen).forEach(([id,b]) => {
-    const k=kuehe[b.kuhId];
-    if(b.erwartetGeburt && b.status==='tragend')
-      termine.push({ ts:b.erwartetGeburt, typ:'geburt', label:'Geburt erwartet', kuh:'#'+(k?.nr||'')+' '+(k?.name||''), farbe:'var(--green)', icon:'🐄', id, dbPath:'besamungen/'+id });
-    if(b.trockenstell && b.status==='tragend')
-      termine.push({ ts:b.trockenstell, typ:'trocken', label:'Trockenstellung', kuh:'#'+(k?.nr||'')+' '+(k?.name||''), farbe:'var(--blue)', icon:'💧', id, dbPath:'besamungen/'+id });
-    if(b.erinnerungDatum && !b.erinnerungErledigt)
-      termine.push({ ts:b.erinnerungDatum, typ:'erinnerung', label:'Trächtigkeitsprüfung', kuh:'#'+(k?.nr||'')+' '+(k?.name||''), farbe:'var(--gold)', icon:'🔔', id, dbPath:'besamungen/'+id });
-  });
-
-  const heuteDatum=isoDate(new Date());
-  Object.values(weideTage).forEach(w => {
-    if(w.datum===heuteDatum)
-      termine.push({ ts:Date.now(), typ:'weide', label:'Weide: '+(weiden[w.weideId]?.name||w.weideText||''), kuh:(w.kuhIds?.length||0)+' Tiere', farbe:'var(--green)', icon:'🌿' });
-  });
-
-  Object.entries(kalenderTermine).forEach(([id,t]) => {
-    if(!t.erledigt) {
-      const lsKey = 'kalErinnerung_manuell_'+id;
-      const lsData = JSON.parse(localStorage.getItem(lsKey)||'null');
-      const erin = t.erinnerungTage||(lsData?lsData.tage:0)||0;
-      termine.push({ ts:t.datum, typ:'manuell', label:t.titel, kuh:t.notiz||'', farbe:'var(--gold)', icon:'📌', id, manuell:true, dbPath:'kalenderTermine/'+id, erinnerung:erin });
-    }
-  });
-
-  termine.sort((a,b)=>a.ts-b.ts);
-  const vergangen = termine.filter(t=>t.ts<heute);
-  const bald = termine.filter(t=>t.ts>=heute && t.ts<=in60);
-  const spaeter = termine.filter(t=>t.ts>in60);
-
-  const renderTermin = function(t) {
-    const lsKey = 'kalErinnerung_'+(t.typ)+'_'+(t.id||(t.dbPath||'').replace(/\//g,'_'));
-    const lsData = JSON.parse(localStorage.getItem(lsKey)||'null');
-    const aktErin = t.erinnerung||(lsData?lsData.tage:0)||0;
-    const opts = [{tage:0,label:'Keine'},{tage:1,label:'1 Tag'},{tage:3,label:'3 Tage'},{tage:7,label:'7 Tage'}];
-    return '<div class="list-card" style="border-left:3px solid '+t.farbe+';flex-direction:column;align-items:stretch;gap:.3rem">'+
-      '<div style="display:flex;align-items:center;gap:.5rem">'+
-        '<span style="font-size:1.1rem">'+t.icon+'</span>'+
-        '<div style="flex:1;min-width:0">'+
-          '<div class="list-card-title">'+t.label+'</div>'+
-          '<div class="list-card-sub">'+t.kuh+' · '+new Date(t.ts).toLocaleDateString('de-AT',{weekday:'short',day:'numeric',month:'short',year:'numeric'})+'</div>'+
-        '</div>'+
-        '<div style="display:flex;flex-direction:column;align-items:flex-end;gap:.2rem;flex-shrink:0">'+
-          '<span style="font-size:.72rem;font-weight:600;color:'+(t.ts<heute?'var(--red)':Math.ceil((t.ts-heute)/86400000)<=3?'var(--orange)':'var(--text3)')+'">'+
-            (t.ts<heute?'vor '+Math.floor((heute-t.ts)/86400000)+'d':'in '+Math.ceil((t.ts-heute)/86400000)+'d')+
-          '</span>'+
-          (t.manuell?'<button class="btn-xs-danger" onclick="deleteKalenderTermin(\''+t.id+'\')">✕</button>':'')+
-        '</div>'+
-      '</div>'+
-      '<div style="display:flex;align-items:center;gap:.4rem;padding-top:.25rem;border-top:1px solid var(--border)">'+
-        '<span style="font-size:.65rem;color:var(--text3);white-space:nowrap">🔔 Erinnerung:</span>'+
-        '<div style="display:flex;gap:.2rem;flex-wrap:wrap">'+
-          opts.map(function(o){
-            const active = aktErin===o.tage ? 'active' : '';
-            const id2 = t.id||'';
-            const dp = t.dbPath||'';
-            const tp = t.typ||'';
-            return '<button class="filter-chip '+active+'" style="font-size:.63rem;padding:.12rem .45rem" data-id="'+id2+'" data-dp="'+dp+'" data-tage="'+o.tage+'" data-typ="'+tp+'" onclick="setKalenderErinnerungBtn(this)">'+o.label+'</button>';
-          }).join('')+
-        '</div>'+
-      '</div>'+
-    '</div>';
-  };
 
   return '<div class="page-header"><h2>📅 Kalender</h2><button class="btn-primary" onclick="showKalenderForm()">+ Termin</button></div>'+
     '<div style="background:rgba(212,168,75,.07);border:1px solid rgba(212,168,75,.2);border-radius:var(--radius-sm);padding:.5rem .8rem;margin-bottom:.7rem;font-size:.75rem;color:var(--text2)">🔔 Erinnerungen werden als Push-Notification geliefert – Benachrichtigungen müssen erlaubt sein.</div>'+
