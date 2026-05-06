@@ -19,11 +19,11 @@
 ═══════════════════════════════════════════════════════════════════════════ -->
 <script>
 // Force clear cache if version changed
-if(localStorage.getItem('hp_version') !== 'v28.2') {
+if(localStorage.getItem('hp_version') !== 'v28.3') {
   // Keep Firebase auth but clear nav/order caches
   localStorage.removeItem('mainNav');
   localStorage.removeItem('mehrOrder');
-  localStorage.setItem('hp_version','v28.2');
+  localStorage.setItem('hp_version','v28.3');
 }
 window.FIREBASE_CONFIG = {
   apiKey:            "AIzaSyB2YSWcf1Kk2QG_JcCjkgJikx-f73yj-kc",
@@ -6907,6 +6907,24 @@ window.navigate = function(view) {
   }
   _origNav2(view);
 };
+
+function renderSuche() {
+  return `
+    <div class="page-header"><h2>🔍 Suche</h2></div>
+    <div class="search-bar" style="margin-bottom:.6rem">
+      <input id="suche-input" class="search-inp" placeholder="Kühe, Bauern, Behandlungen, Journal…"
+        oninput="globalSearch(this.value)" autofocus
+        style="font-size:1rem;padding:.65rem .9rem" />
+    </div>
+    <div id="suche-results">
+      <div style="text-align:center;color:var(--text3);font-size:.85rem;margin-top:2rem;padding:1rem">
+        <div style="font-size:2rem;margin-bottom:.5rem">🔍</div>
+        Suchbegriff eingeben…<br>
+        <span style="font-size:.75rem">Kühe · Bauern · Behandlungen · Besamungen · Milch · Journal · Kontakte</span>
+      </div>
+    </div>
+  `;
+}
 
 window.globalSearch = function(q) {
   const el = document.getElementById('suche-results');
