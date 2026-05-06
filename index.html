@@ -19,11 +19,11 @@
 ═══════════════════════════════════════════════════════════════════════════ -->
 <script>
 // Force clear cache if version changed
-if(localStorage.getItem('hp_version') !== 'v28.0') {
+if(localStorage.getItem('hp_version') !== 'v28.2') {
   // Keep Firebase auth but clear nav/order caches
   localStorage.removeItem('mainNav');
   localStorage.removeItem('mehrOrder');
-  localStorage.setItem('hp_version','v28.0');
+  localStorage.setItem('hp_version','v28.2');
 }
 window.FIREBASE_CONFIG = {
   apiKey:            "AIzaSyB2YSWcf1Kk2QG_JcCjkgJikx-f73yj-kc",
@@ -8656,6 +8656,20 @@ function initAuth() {
         if(typeof initApp === 'function' && !window._appInitialized) {
           window._appInitialized = true;
         
+          initApp();
+        }
+      } catch(e) {
+        console.error('Role load error:', e);
+        showLoginError && showLoginError('Fehler beim Laden. Bitte neu laden.');
+      }
+    } else {
+      document.getElementById('login-screen').style.display = 'flex';
+      document.getElementById('root').style.display = 'none';
+      window._appInitialized = false;
+    }
+  });
+}
+
 window.alleAuftreiben = async function() {
   if(!confirm('Alle Kühe als aufgetrieben markieren?')) return;
   const updates = {};
@@ -9403,20 +9417,6 @@ window.removeStep = function(si,ai){
     renderNav(); renderMehrGrid();
   }, true); // capture phase - fires before any element handler
 })();
-  initApp();
-        }
-      } catch(e) {
-        console.error('Role load error:', e);
-        showLoginError('Fehler beim Laden. Bitte neu laden.');
-      }
-    } else {
-      // Not logged in
-      document.getElementById('login-screen').style.display = 'flex';
-      document.getElementById('root').style.display = 'none';
-      window._appInitialized = false;
-    }
-  });
-}
 
 function updateUserDisplay() {
   const role = window._currentRole || 'hirte';
