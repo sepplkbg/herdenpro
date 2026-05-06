@@ -19,11 +19,11 @@
 ═══════════════════════════════════════════════════════════════════════════ -->
 <script>
 // Force clear cache if version changed
-if(localStorage.getItem('hp_version') !== 'v29.0') {
+if(localStorage.getItem('hp_version') !== 'v29.1') {
   // Keep Firebase auth but clear nav/order caches
   localStorage.removeItem('mainNav');
   localStorage.removeItem('mehrOrder');
-  localStorage.setItem('hp_version','v29.0');
+  localStorage.setItem('hp_version','v29.1');
 }
 window.FIREBASE_CONFIG = {
   apiKey:            "AIzaSyB2YSWcf1Kk2QG_JcCjkgJikx-f73yj-kc",
@@ -1896,6 +1896,8 @@ function renderKuhDetail() {
   `;
   // Set chart data immediately so it's available when tab is clicked
   window._kdChartData = chartDaten.slice(-30);
+  // Start retry draw - handles direct milch-tab opening
+  setTimeout(function() { window.kdDrawWithRetry && window.kdDrawWithRetry(0); }, 50);
 }
 
 // ══════════════════════════════════════════════════════════
@@ -1910,18 +1912,22 @@ window.kdSwitchTab = function(tabId, btn) {
   });
   document.querySelectorAll('.kd-tab-btn').forEach(function(b){b.classList.remove('active');});
   if(btn) btn.classList.add('active');
-  if(tabId==='kd-tab-m') {
-    // Double RAF ensures canvas is visible and has dimensions before drawing
-    requestAnimationFrame(function(){
-      requestAnimationFrame(function(){
-        window.drawKdChart();
-      });
-    });
-  }
+  if(tabId==='kd-tab-m') window.kdDrawWithRetry(0);
 };
 
 // Chart data store
 window._kdChartData = null;
+
+// Retry-Zeichnung: versucht bis zu 20x alle 60ms
+window.kdDrawWithRetry = function(attempt) {
+  attempt = attempt || 0;
+  var canvas = document.getElementById('kd-chart-canvas');
+  if(!canvas) { if(attempt < 20) setTimeout(function(){ window.kdDrawWithRetry(attempt+1); }, 60); return; }
+  var data = window._kdChartData;
+  if(!data || data.length < 2) return;
+  if(canvas.offsetWidth < 10) { if(attempt < 20) setTimeout(function(){ window.kdDrawWithRetry(attempt+1); }, 60); return; }
+  window.drawKdChart();
+};
 
 // Canvas Milch Chart
 window.drawKdChart = function() {
@@ -1929,12 +1935,13 @@ window.drawKdChart = function() {
   if(!canvas) return;
   var data = window._kdChartData;
   if(!data || data.length < 2) {
-    canvas.getContext('2d').clearRect(0,0,canvas.width,canvas.height);
+    if(canvas.width > 0) canvas.getContext('2d').clearRect(0,0,canvas.width,canvas.height);
     return;
   }
-  // If canvas not yet visible (width=0), retry after short delay
-  if(canvas.offsetWidth < 10) {
-    setTimeout(window.drawKdChart, 80);
+  // Ensure canvas is visible with real dimensions
+  var W = canvas.offsetWidth;
+  if(W < 10) {
+    // Canvas not visible yet - let retry handle it
     return;
   }
   var ctx = canvas.getContext('2d');
