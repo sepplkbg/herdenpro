@@ -19,11 +19,11 @@
 ═══════════════════════════════════════════════════════════════════════════ -->
 <script>
 // Force clear cache if version changed
-if(localStorage.getItem('hp_version') !== 'v28.8') {
+if(localStorage.getItem('hp_version') !== 'v29.0') {
   // Keep Firebase auth but clear nav/order caches
   localStorage.removeItem('mainNav');
   localStorage.removeItem('mehrOrder');
-  localStorage.setItem('hp_version','v28.8');
+  localStorage.setItem('hp_version','v29.0');
 }
 window.FIREBASE_CONFIG = {
   apiKey:            "AIzaSyB2YSWcf1Kk2QG_JcCjkgJikx-f73yj-kc",
@@ -1082,9 +1082,14 @@ function render() {
       var mc=document.getElementById('milch-saison-canvas');
       if(mc) drawMilchSaisonChart(mc);
     }
-    // Kuh Detail Chart (initial tab is Behandlung, chart drawn when tab switched)
+    // Kuh Detail Chart
     if(currentView==='kuh-detail' && window._kdChartData) {
       setTimeout(window.drawKdChart, 120);
+    }
+    // Stallplan Kuh-Animation
+    if(currentView==='stallplan' && typeof window.spStartAnimation === 'function') {
+      var aktivStall = window._aktivStall || Object.keys(stallplan)[0] || null;
+      if(aktivStall) setTimeout(function(){ window.spStartAnimation(aktivStall); }, 200);
     }
   });
   
@@ -1889,8 +1894,8 @@ function renderKuhDetail() {
 
   ${behandlungFormHTML(id)}${besamungFormHTML(id)}${kalbungFormHTML()}
   `;
-  // Pass chart data globally after render
-  setTimeout(function(){ window._kdAfterRender && window._kdAfterRender(chartJson); }, 30);
+  // Set chart data immediately so it's available when tab is clicked
+  window._kdChartData = chartDaten.slice(-30);
 }
 
 // ══════════════════════════════════════════════════════════
@@ -4087,21 +4092,14 @@ function renderStallplan() {
     const status = k ? kuhStatus(kuhId) : null;
     const ampelColor = {gruen:'#4db84e',orange:'#d4844b',rot:'#d44b4b'}[status]||'transparent';
     const foto = kuhId && fotos[kuhId] ? fotos[kuhId].data : null;
-    const tuer = stall.tueren?.[boxIdx] || ''; // 'top'|'bottom'|'left'|'right'|''
-
-    // Tür-Indikator Positionen
+    const tuer = stall.tueren?.[boxIdx] || '';
     const tuerPos = {
-      top:    'top:-5px;left:50%;transform:translateX(-50%)',
-      bottom: 'bottom:-5px;left:50%;transform:translateX(-50%)',
-      left:   'left:-5px;top:50%;transform:translateY(-50%)',
-      right:  'right:-5px;top:50%;transform:translateY(-50%)',
+      top:'top:-5px;left:50%;transform:translateX(-50%)',
+      bottom:'bottom:-5px;left:50%;transform:translateX(-50%)',
+      left:'left:-5px;top:50%;transform:translateY(-50%)',
+      right:'right:-5px;top:50%;transform:translateY(-50%)',
     };
-
-    // Click-Handler: belegte Box = navigiere zu Kuh, leere Box = zuweisen
-    // Longpress auf belegte Box = neu zuweisen
-    const clickHandler = k
-      ? `spBoxKlick('${stallId}',${boxIdx},'${kuhId}')`
-      : `spBoxTippen('${stallId}',${boxIdx},'')`;
+    const clickHandler = k ? `spBoxKlick('${stallId}',${boxIdx},'${kuhId}')` : `spBoxTippen('${stallId}',${boxIdx},'')`;
 
     return `<div class="sp-box ${k?'sp-box-belegt':'sp-box-leer'}"
       id="sp-box-${stallId}-${boxIdx}"
@@ -4109,42 +4107,79 @@ function renderStallplan() {
       data-stallid="${stallId}" data-boxidx="${boxIdx}" data-kuhid="${kuhId||''}"
       style="position:relative;background:${k?'var(--bg3)':'var(--bg2)'};border:1.5px solid ${k?'rgba(212,168,75,.25)':'var(--border)'};border-radius:10px;padding:.35rem .3rem;text-align:center;cursor:pointer;transition:all .15s;min-height:72px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px"
       onpointerdown="spBoxPointerDown(this,event)" onpointerup="spBoxPointerUp(this)" onpointerleave="spBoxPointerUp(this)">
-      <!-- Box-Nummer -->
       <div style="position:absolute;top:3px;left:4px;font-size:.55rem;color:var(--text3);font-weight:600">${boxIdx+1}</div>
-      <!-- Ampel -->
       ${k?`<div style="position:absolute;top:3px;right:4px;width:7px;height:7px;border-radius:50%;background:${ampelColor};box-shadow:0 0 5px ${ampelColor}"></div>`:''}
-      <!-- Tür -->
-      ${tuer?`<div style="position:absolute;${tuerPos[tuer]};background:#8B6914;width:${tuer==='left'||tuer==='right'?'5px':'12px'};height:${tuer==='top'||tuer==='bottom'?'5px':'12px'};border-radius:2px;border:1px solid var(--gold);z-index:2" title="Tür ${tuer}">
-        <div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);font-size:8px">🚪</div>
-      </div>`:''}
-      <!-- Foto oder Emoji -->
-      ${foto
-        ? `<img src="${foto}" style="width:32px;height:32px;border-radius:50%;object-fit:cover;border:1.5px solid ${ampelColor};margin-bottom:1px" />`
-        : k ? `<div style="font-size:1.3rem;line-height:1">🐄</div>` : `<div style="font-size:1rem;color:var(--text3)">+</div>`}
-      <!-- Name -->
-      ${k ? `<div style="font-size:.6rem;font-weight:700;color:var(--text);line-height:1.1;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${k.name||'#'+k.nr}</div>
-             <div style="font-size:.52rem;color:var(--text3)">#${k.nr}</div>` : ''}
-      <!-- Tür-Edit Button (im Edit-Modus) -->
+      ${tuer?`<div style="position:absolute;${tuerPos[tuer]};background:#8B6914;width:${tuer==='left'||tuer==='right'?'5px':'12px'};height:${tuer==='top'||tuer==='bottom'?'5px':'12px'};border-radius:2px;border:1px solid var(--gold);z-index:2"><div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);font-size:8px">🚪</div></div>`:''}
+      <div class="sp-kuh-content" id="sp-content-${stallId}-${boxIdx}" style="${k?'opacity:0':''}">
+        ${foto
+          ? `<img src="${foto}" style="width:32px;height:32px;border-radius:50%;object-fit:cover;border:1.5px solid ${ampelColor};margin-bottom:1px" />`
+          : k ? `<div style="font-size:1.3rem;line-height:1">🐄</div>` : `<div style="font-size:1rem;color:var(--text3)">+</div>`}
+        ${k ? `<div style="font-size:.6rem;font-weight:700;color:var(--text);line-height:1.1;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${k.name||'#'+k.nr}</div>
+               <div style="font-size:.52rem;color:var(--text3)">#${k.nr}</div>` : ''}
+      </div>
       ${window._spEditModus?`<div onclick="event.stopPropagation();spTuerMenu('${stallId}',${boxIdx},this)" style="position:absolute;bottom:2px;right:2px;font-size:.6rem;background:rgba(0,0,0,.4);border-radius:4px;padding:1px 3px;cursor:pointer;color:var(--gold)">🚪</div>`:''}
     </div>`;
   }
 
+  // Belegte Boxen für die Animation sammeln
+  const belegteBoxen = stall ? Object.entries(stall.boxen||{})
+    .filter(([,kuhId])=>kuhId && kuehe[kuhId])
+    .sort((a,b)=>parseInt(a[0])-parseInt(b[0])) : [];
+
   return `
     <style>
-      .sp-box:hover { border-color: rgba(212,168,75,.5) !important; background: var(--bg3) !important; }
-      @keyframes spLongPress { from{transform:scale(1)} to{transform:scale(.88)} }
-      .sp-longpress { animation: spLongPress .6s ease forwards !important; }
+      .sp-box:hover { border-color: rgba(212,168,75,.5) !important; }
+
+      /* ── Laufende Kuh ── */
+      @keyframes spKuhLauf {
+        0%   { transform: translateX(0) scaleX(1); }
+        45%  { transform: translateX(var(--sp-ziel-x)) translateY(-2px) scaleX(1); }
+        55%  { transform: translateX(var(--sp-ziel-x)) translateY(-2px) scaleX(1); }
+        65%  { transform: translateX(var(--sp-ziel-x)) translateY(-8px) scaleX(1); }
+        75%  { transform: translateX(var(--sp-ziel-x)) translateY(2px) scaleX(1); }
+        85%  { transform: translateX(var(--sp-ziel-x)) translateY(-3px) scaleX(1); }
+        100% { transform: translateX(var(--sp-ziel-x)) translateY(0) scaleX(1); }
+      }
+      @keyframes spKuhVerschwinde {
+        0%   { opacity:1; transform: scale(1); }
+        70%  { opacity:1; transform: scale(1); }
+        85%  { opacity:0; transform: scale(0.3); }
+        100% { opacity:0; transform: scale(0); }
+      }
+      @keyframes spBoxAuftauchen {
+        0%   { opacity:0; transform: scale(0.3); }
+        60%  { opacity:1; transform: scale(1.15); }
+        80%  { transform: scale(0.92); }
+        100% { opacity:1; transform: scale(1); }
+      }
+      .sp-kuh-einspringen {
+        animation: spBoxAuftauchen 0.4s cubic-bezier(.16,1,.3,1) forwards;
+      }
+      #sp-lauf-container {
+        position:fixed;
+        top:0; left:0; right:0; bottom:0;
+        pointer-events:none;
+        z-index:500;
+        overflow:hidden;
+      }
+      .sp-lauf-kuh {
+        position:absolute;
+        font-size:2.2rem;
+        line-height:1;
+        will-change:transform;
+        white-space:nowrap;
+      }
     </style>
 
     <div class="page-header">
       <h2>🏚 Stallplan</h2>
       <div style="display:flex;gap:.35rem">
-        <button class="btn-secondary ${window._spEditModus?'active':''}" onclick="window._spEditModus=!window._spEditModus;render()" title="Tür-Bearbeitungsmodus">🚪</button>
+        <button class="btn-secondary ${window._spEditModus?'active':''}" onclick="window._spEditModus=!window._spEditModus;render()" title="Tür-Modus">🚪</button>
         <button class="btn-primary" onclick="spNeuerStall()">+ Stall</button>
       </div>
     </div>
 
-    ${window._spEditModus?`<div style="background:rgba(212,168,75,.1);border:1px solid rgba(212,168,75,.3);border-radius:var(--radius-sm);padding:.4rem .8rem;margin-bottom:.5rem;font-size:.75rem;color:var(--gold)">🚪 Tür-Modus aktiv – 🚪-Button in der Box antippen um Tür zu setzen</div>`:''}
+    ${window._spEditModus?`<div style="background:rgba(212,168,75,.1);border:1px solid rgba(212,168,75,.3);border-radius:var(--radius-sm);padding:.4rem .8rem;margin-bottom:.5rem;font-size:.75rem;color:var(--gold)">🚪 Tür-Modus – 🚪 in der Box antippen</div>`:''}
 
     ${stallListe.length > 0 ? `
     <div style="display:flex;gap:.3rem;flex-wrap:wrap;margin-bottom:.7rem;align-items:center">
@@ -4171,12 +4206,9 @@ function renderStallplan() {
       <span><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#4db84e;margin-right:3px"></span>OK</span>
       <span><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#d4844b;margin-right:3px"></span>WZ läuft</span>
       <span><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#d44b4b;margin-right:3px"></span>WZ endet bald</span>
-      <span><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--border);margin-right:3px"></span>Leer</span>
-      <span>🐄 Tippen = Profil öffnen</span>
-      <span>🔒 Lang drücken = Box ändern</span>
     </div>
 
-    <div style="display:grid;grid-template-columns:repeat(${stall.spalten},1fr);gap:.3rem">
+    <div id="sp-grid-${aktivStall}" style="display:grid;grid-template-columns:repeat(${stall.spalten},1fr);gap:.3rem">
       ${Array.from({length:stall.reihen*stall.spalten},(_,i)=>{
         const kuhId = stall.boxen?.[i] || '';
         return boxHTML(aktivStall, i, kuhId);
@@ -4185,8 +4217,8 @@ function renderStallplan() {
 
     <div style="margin-top:.8rem;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);padding:.5rem .8rem">
       <div style="display:flex;justify-content:space-between;font-size:.78rem">
-        <span style="color:var(--text2)">Belegt: <b style="color:var(--gold)">${Object.values(stall.boxen||{}).filter(Boolean).length}</b></span>
-        <span style="color:var(--text2)">Frei: <b style="color:var(--green)">${stall.reihen*stall.spalten - Object.values(stall.boxen||{}).filter(Boolean).length}</b></span>
+        <span style="color:var(--text2)">Belegt: <b style="color:var(--gold)">${belegteBoxen.length}</b></span>
+        <span style="color:var(--text2)">Frei: <b style="color:var(--green)">${stall.reihen*stall.spalten - belegteBoxen.length}</b></span>
         <span style="color:var(--text2)">Gesamt: <b>${stall.reihen*stall.spalten}</b></span>
       </div>
     </div>
@@ -4203,12 +4235,12 @@ function renderStallplan() {
         <div class="form-header"><h3 id="sp-form-title">Stall anlegen</h3><button class="close-btn" onclick="closeForm('sp-stall-overlay')">✕</button></div>
         <div class="form-body">
           <input type="hidden" id="sp-edit-id" value="" />
-          <input id="sp-name" class="inp" placeholder="Stallname (z.B. Stall A, Jungviehstall)" />
+          <input id="sp-name" class="inp" placeholder="Stallname" />
           <label class="inp-label">Reihen</label>
           <input id="sp-reihen" class="inp" type="number" min="1" max="20" value="4" inputmode="numeric" style="width:100px" />
-          <label class="inp-label">Spalten (Boxen pro Reihe)</label>
+          <label class="inp-label">Spalten</label>
           <input id="sp-spalten" class="inp" type="number" min="1" max="20" value="5" inputmode="numeric" style="width:100px" />
-          <p style="font-size:.75rem;color:var(--text3);margin:.3rem 0">= <span id="sp-total">20</span> Boxen total</p>
+          <p style="font-size:.75rem;color:var(--text3);margin:.3rem 0">= <span id="sp-total">20</span> Boxen</p>
           <div class="form-actions">
             <button class="btn-secondary" onclick="closeForm('sp-stall-overlay')">Abbrechen</button>
             <button class="btn-primary" onclick="spSaveStall()">Speichern</button>
@@ -4217,7 +4249,7 @@ function renderStallplan() {
       </div>
     </div>
 
-    <!-- Box-Zuweisung Overlay -->
+    <!-- Box-Overlay -->
     <div id="sp-box-overlay" class="form-overlay" style="display:none">
       <div class="form-sheet">
         <div class="form-header"><h3>Box belegen</h3><button class="close-btn" onclick="closeForm('sp-box-overlay')">✕</button></div>
@@ -4238,13 +4270,12 @@ function renderStallplan() {
       </div>
     </div>
 
-    <!-- Tür-Menü Overlay -->
+    <!-- Tür-Overlay -->
     <div id="sp-tuer-overlay" class="form-overlay" style="display:none">
       <div class="form-sheet">
         <div class="form-header"><h3>🚪 Tür setzen</h3><button class="close-btn" onclick="closeForm('sp-tuer-overlay')">✕</button></div>
         <div class="form-body">
           <input type="hidden" id="sp-tuer-stallid" /><input type="hidden" id="sp-tuer-boxidx" />
-          <p style="font-size:.8rem;color:var(--text2);margin-bottom:.8rem">An welcher Seite der Box ist die Tür?</p>
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:.5rem">
             <button class="btn-secondary" onclick="spSaveTuer('top')">⬆ Oben</button>
             <button class="btn-secondary" onclick="spSaveTuer('bottom')">⬇ Unten</button>
@@ -4291,6 +4322,116 @@ window.spBoxPointerUp = function(el) {
     clearTimeout(window._spLongPressTimer);
     window._spLongPressTimer = null;
   }
+};
+
+// ── Kuh-Einlauf-Animation ──
+window.spStartAnimation = function(stallId) {
+  if(!stallId || !stallplan[stallId]) return;
+  const stall = stallplan[stallId];
+  const boxen = stall.boxen || {};
+  const belegteBoxen = Object.entries(boxen)
+    .filter(([,kuhId])=>kuhId && kuehe[kuhId])
+    .sort((a,b)=>parseInt(a[0])-parseInt(b[0]));
+  if(!belegteBoxen.length) return;
+
+  // Lauf-Container erstellen
+  var container = document.getElementById('sp-lauf-container');
+  if(!container) {
+    container = document.createElement('div');
+    container.id = 'sp-lauf-container';
+    document.body.appendChild(container);
+  }
+  container.innerHTML = '';
+
+  // Screenbreite
+  var screenW = window.innerWidth;
+  var screenH = window.innerHeight;
+
+  belegteBoxen.forEach(function([boxIdx, kuhId], animIdx) {
+    var k = kuehe[kuhId];
+    if(!k) return;
+
+    // Ziel-Box Position ermitteln
+    var boxEl = document.getElementById('sp-box-'+stallId+'-'+boxIdx);
+    if(!boxEl) return;
+    var rect = boxEl.getBoundingClientRect();
+    var zielX = rect.left + rect.width/2;
+    var zielY = rect.top + rect.height/2;
+
+    // Startposition: links außerhalb des Screens, zufällige Y-Position
+    var startX = -80;
+    var laufY = zielY - 20; // Lauf-Höhe
+
+    var delay = animIdx * 320; // gestaffelt
+
+    // Kuh-Element erstellen
+    var kuhEl = document.createElement('div');
+    kuhEl.className = 'sp-lauf-kuh';
+    kuhEl.style.left = startX + 'px';
+    kuhEl.style.top = laufY + 'px';
+    kuhEl.style.opacity = '0';
+
+    // Foto oder Emoji
+    var foto = fotos[kuhId];
+    if(foto) {
+      kuhEl.innerHTML = '<img src="'+foto.data+'" style="width:36px;height:36px;border-radius:50%;object-fit:cover;border:2px solid var(--gold);box-shadow:0 2px 8px rgba(0,0,0,.5)" />';
+    } else {
+      kuhEl.textContent = '🐄';
+    }
+
+    container.appendChild(kuhEl);
+
+    // Lauf-Abstand berechnen
+    var laufDistanz = zielX - startX - 18;
+
+    setTimeout(function() {
+      kuhEl.style.opacity = '1';
+
+      // Phase 1: Laufen von links nach rechts
+      var laufDauer = Math.max(600, laufDistanz * 1.2);
+      kuhEl.style.transition = 'transform '+laufDauer+'ms cubic-bezier(.25,.1,.25,1)';
+
+      // Hüpf-Animation während des Laufens
+      var hüpfInterval = setInterval(function() {
+        var aktuell = parseInt(kuhEl.style.marginTop)||0;
+        kuhEl.style.marginTop = aktuell===0 ? '-6px' : '0';
+      }, 160);
+
+      // Horizontal bewegen
+      kuhEl.style.transform = 'translateX('+(laufDistanz)+'px)';
+
+      setTimeout(function() {
+        clearInterval(hüpfInterval);
+        kuhEl.style.marginTop = '0';
+
+        // Phase 2: Sprung in die Box (nach oben-links zur Boxmitte)
+        var sprungX = zielX - startX - 18;
+        var sprungY = zielY - laufY;
+        kuhEl.style.transition = 'transform 0.25s cubic-bezier(.2,1.5,.4,1), opacity 0.15s ease';
+        kuhEl.style.transform = 'translateX('+sprungX+'px) translateY('+sprungY+'px) scale(0.7)';
+        kuhEl.style.opacity = '0';
+
+        // Box-Inhalt einblenden
+        setTimeout(function() {
+          kuhEl.remove();
+          var content = document.getElementById('sp-content-'+stallId+'-'+boxIdx);
+          if(content) {
+            content.style.animation = 'spBoxAuftauchen 0.4s cubic-bezier(.16,1,.3,1) forwards';
+            content.style.opacity = '1';
+          }
+          // Vibration bei jeder Kuh
+          if(navigator.vibrate) navigator.vibrate(20);
+        }, 220);
+
+      }, laufDauer);
+    }, delay);
+  });
+
+  // Container nach Ende aufräumen
+  var gesamtDauer = belegteBoxen.length * 320 + 1500;
+  setTimeout(function() {
+    if(container) container.remove();
+  }, gesamtDauer);
 };
 
 // ── Tür-Menü ──

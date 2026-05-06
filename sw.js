@@ -1,4 +1,4 @@
-const CACHE = 'herdenpro-v37';
+const CACHE = 'herdenpro-v39';
 const SHELL = [
   '/herdenpro/',
   '/herdenpro/index.html',
