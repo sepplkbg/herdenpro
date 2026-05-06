@@ -19,11 +19,11 @@
 ═══════════════════════════════════════════════════════════════════════════ -->
 <script>
 // Force clear cache if version changed
-if(localStorage.getItem('hp_version') !== 'v28.3') {
+if(localStorage.getItem('hp_version') !== 'v28.8') {
   // Keep Firebase auth but clear nav/order caches
   localStorage.removeItem('mainNav');
   localStorage.removeItem('mehrOrder');
-  localStorage.setItem('hp_version','v28.3');
+  localStorage.setItem('hp_version','v28.8');
 }
 window.FIREBASE_CONFIG = {
   apiKey:            "AIzaSyB2YSWcf1Kk2QG_JcCjkgJikx-f73yj-kc",
@@ -1905,7 +1905,14 @@ window.kdSwitchTab = function(tabId, btn) {
   });
   document.querySelectorAll('.kd-tab-btn').forEach(function(b){b.classList.remove('active');});
   if(btn) btn.classList.add('active');
-  if(tabId==='kd-tab-m') setTimeout(window.drawKdChart, 60);
+  if(tabId==='kd-tab-m') {
+    // Double RAF ensures canvas is visible and has dimensions before drawing
+    requestAnimationFrame(function(){
+      requestAnimationFrame(function(){
+        window.drawKdChart();
+      });
+    });
+  }
 };
 
 // Chart data store
@@ -1916,7 +1923,15 @@ window.drawKdChart = function() {
   var canvas = document.getElementById('kd-chart-canvas');
   if(!canvas) return;
   var data = window._kdChartData;
-  if(!data || data.length < 2) { canvas.getContext('2d').clearRect(0,0,canvas.width,canvas.height); return; }
+  if(!data || data.length < 2) {
+    canvas.getContext('2d').clearRect(0,0,canvas.width,canvas.height);
+    return;
+  }
+  // If canvas not yet visible (width=0), retry after short delay
+  if(canvas.offsetWidth < 10) {
+    setTimeout(window.drawKdChart, 80);
+    return;
+  }
   var ctx = canvas.getContext('2d');
   var dpr = window.devicePixelRatio||1;
   var W = canvas.offsetWidth, H = 130;
@@ -1991,7 +2006,12 @@ window.drawKdChart = function() {
 // After render: receive chart data and draw
 window._kdAfterRender = function(chartData) {
   window._kdChartData = typeof chartData === 'string' ? JSON.parse(chartData) : chartData;
-  setTimeout(function(){ window.drawKdChart(); }, 80);
+  // Draw immediately with double RAF to ensure layout is done
+  requestAnimationFrame(function(){
+    requestAnimationFrame(function(){
+      window.drawKdChart();
+    });
+  });
 };
 
 // Foto Vollbild mit Pinch-Zoom
@@ -2346,7 +2366,7 @@ function behandlungFormHTML(vorId, editId, editData) {
               const counts = {};
               Object.values(behandlungen).forEach(b=>{ if(b.medikament) counts[b.medikament]=(counts[b.medikament]||0)+1; });
               const top = Object.entries(counts).sort((a,b)=>b[1]-a[1]).slice(0,5).map(([m])=>m);
-              return top.map(m=>`<button type="button" class="filter-chip" style="font-size:.72rem" onclick="selectMedikament(${JSON.stringify(m)})">${m}</button>`).join('');
+              return top.map(m=>`<button type="button" class="filter-chip" style="font-size:.72rem" onclick="selectMedikament(this.dataset.med)" data-med="${m.replace(/"/g,'&quot;')}">${m}</button>`).join('');
             })()}
           </div>
           <!-- Input mit Dropdown -->
@@ -4053,15 +4073,10 @@ function renderStallplan() {
   const stallListe = Object.entries(stallplan);
   const heute = Date.now();
 
-  // WZ-Status pro Kuh berechnen
   function kuhStatus(kuhId) {
     const aktBeh = Object.values(behandlungen).filter(b=>b.kuhId===kuhId&&b.aktiv);
+    const hatProblem = aktBeh.some(b=>{ const e=new Date(b.wzMilchEnde||0);e.setHours(0,0,0,0);const h=new Date(heute);h.setHours(0,0,0,0);return b.wzMilchEnde&&Math.round((e-h)/86400000)<=1; });
     const hatWZ = aktBeh.some(b=>(b.wzMilchEnde&&b.wzMilchEnde>heute)||(b.wzFleischEnde&&b.wzFleischEnde>heute));
-    const hatProblem = aktBeh.some(b=>{
-      const e=new Date(b.wzMilchEnde||0);e.setHours(0,0,0,0);
-      const h=new Date(heute);h.setHours(0,0,0,0);
-      return b.wzMilchEnde&&Math.round((e-h)/86400000)<=1;
-    });
     if(hatProblem) return 'rot';
     if(hatWZ) return 'orange';
     return 'gruen';
@@ -4072,15 +4087,36 @@ function renderStallplan() {
     const status = k ? kuhStatus(kuhId) : null;
     const ampelColor = {gruen:'#4db84e',orange:'#d4844b',rot:'#d44b4b'}[status]||'transparent';
     const foto = kuhId && fotos[kuhId] ? fotos[kuhId].data : null;
+    const tuer = stall.tueren?.[boxIdx] || ''; // 'top'|'bottom'|'left'|'right'|''
+
+    // Tür-Indikator Positionen
+    const tuerPos = {
+      top:    'top:-5px;left:50%;transform:translateX(-50%)',
+      bottom: 'bottom:-5px;left:50%;transform:translateX(-50%)',
+      left:   'left:-5px;top:50%;transform:translateY(-50%)',
+      right:  'right:-5px;top:50%;transform:translateY(-50%)',
+    };
+
+    // Click-Handler: belegte Box = navigiere zu Kuh, leere Box = zuweisen
+    // Longpress auf belegte Box = neu zuweisen
+    const clickHandler = k
+      ? `spBoxKlick('${stallId}',${boxIdx},'${kuhId}')`
+      : `spBoxTippen('${stallId}',${boxIdx},'')`;
 
     return `<div class="sp-box ${k?'sp-box-belegt':'sp-box-leer'}"
-      onclick="spBoxTippen('${stallId}',${boxIdx},'${kuhId||''}')"
+      id="sp-box-${stallId}-${boxIdx}"
+      onclick="${clickHandler}"
+      data-stallid="${stallId}" data-boxidx="${boxIdx}" data-kuhid="${kuhId||''}"
       style="position:relative;background:${k?'var(--bg3)':'var(--bg2)'};border:1.5px solid ${k?'rgba(212,168,75,.25)':'var(--border)'};border-radius:10px;padding:.35rem .3rem;text-align:center;cursor:pointer;transition:all .15s;min-height:72px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px"
-      onpointerdown="this.style.transform='scale(.95)'" onpointerup="this.style.transform=''" onpointerleave="this.style.transform=''">
+      onpointerdown="spBoxPointerDown(this,event)" onpointerup="spBoxPointerUp(this)" onpointerleave="spBoxPointerUp(this)">
       <!-- Box-Nummer -->
       <div style="position:absolute;top:3px;left:4px;font-size:.55rem;color:var(--text3);font-weight:600">${boxIdx+1}</div>
       <!-- Ampel -->
       ${k?`<div style="position:absolute;top:3px;right:4px;width:7px;height:7px;border-radius:50%;background:${ampelColor};box-shadow:0 0 5px ${ampelColor}"></div>`:''}
+      <!-- Tür -->
+      ${tuer?`<div style="position:absolute;${tuerPos[tuer]};background:#8B6914;width:${tuer==='left'||tuer==='right'?'5px':'12px'};height:${tuer==='top'||tuer==='bottom'?'5px':'12px'};border-radius:2px;border:1px solid var(--gold);z-index:2" title="Tür ${tuer}">
+        <div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);font-size:8px">🚪</div>
+      </div>`:''}
       <!-- Foto oder Emoji -->
       ${foto
         ? `<img src="${foto}" style="width:32px;height:32px;border-radius:50%;object-fit:cover;border:1.5px solid ${ampelColor};margin-bottom:1px" />`
@@ -4088,33 +4124,38 @@ function renderStallplan() {
       <!-- Name -->
       ${k ? `<div style="font-size:.6rem;font-weight:700;color:var(--text);line-height:1.1;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${k.name||'#'+k.nr}</div>
              <div style="font-size:.52rem;color:var(--text3)">#${k.nr}</div>` : ''}
+      <!-- Tür-Edit Button (im Edit-Modus) -->
+      ${window._spEditModus?`<div onclick="event.stopPropagation();spTuerMenu('${stallId}',${boxIdx},this)" style="position:absolute;bottom:2px;right:2px;font-size:.6rem;background:rgba(0,0,0,.4);border-radius:4px;padding:1px 3px;cursor:pointer;color:var(--gold)">🚪</div>`:''}
     </div>`;
   }
 
   return `
     <style>
       .sp-box:hover { border-color: rgba(212,168,75,.5) !important; background: var(--bg3) !important; }
-      .sp-reihe-label { font-size:.62rem;color:var(--text3);text-align:center;padding:.2rem 0;font-weight:600 }
+      @keyframes spLongPress { from{transform:scale(1)} to{transform:scale(.88)} }
+      .sp-longpress { animation: spLongPress .6s ease forwards !important; }
     </style>
 
     <div class="page-header">
       <h2>🏚 Stallplan</h2>
-      <button class="btn-primary" onclick="spNeuerStall()">+ Stall</button>
+      <div style="display:flex;gap:.35rem">
+        <button class="btn-secondary ${window._spEditModus?'active':''}" onclick="window._spEditModus=!window._spEditModus;render()" title="Tür-Bearbeitungsmodus">🚪</button>
+        <button class="btn-primary" onclick="spNeuerStall()">+ Stall</button>
+      </div>
     </div>
 
-    <!-- Stall-Tabs -->
+    ${window._spEditModus?`<div style="background:rgba(212,168,75,.1);border:1px solid rgba(212,168,75,.3);border-radius:var(--radius-sm);padding:.4rem .8rem;margin-bottom:.5rem;font-size:.75rem;color:var(--gold)">🚪 Tür-Modus aktiv – 🚪-Button in der Box antippen um Tür zu setzen</div>`:''}
+
     ${stallListe.length > 0 ? `
     <div style="display:flex;gap:.3rem;flex-wrap:wrap;margin-bottom:.7rem;align-items:center">
       ${stallListe.map(([sid,s])=>`
         <button class="filter-chip ${aktivStall===sid?'active':''}" onclick="window._aktivStall='${sid}';render()" style="font-size:.78rem">
-          ${s.name}
-          <span style="font-size:.62rem;color:${aktivStall===sid?'rgba(255,255,255,.6)':'var(--text3)'}"> ${s.reihen*s.spalten} Boxen</span>
+          ${s.name}<span style="font-size:.62rem;color:${aktivStall===sid?'rgba(255,255,255,.6)':'var(--text3)'}"> ${s.reihen*s.spalten} Boxen</span>
         </button>`).join('')}
-      <button class="btn-xs" onclick="spNeuerStall()" style="padding:.2rem .5rem">+ Stall</button>
+      <button class="btn-xs" onclick="spNeuerStall()">+ Stall</button>
     </div>` : ''}
 
     ${stall ? `
-    <!-- Stall-Header -->
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.5rem">
       <div>
         <div style="font-size:1rem;font-weight:700;color:var(--gold)">${stall.name}</div>
@@ -4126,15 +4167,15 @@ function renderStallplan() {
       </div>
     </div>
 
-    <!-- Legende -->
-    <div style="display:flex;gap:.8rem;margin-bottom:.6rem;font-size:.68rem;color:var(--text3)">
+    <div style="display:flex;gap:.8rem;margin-bottom:.6rem;font-size:.68rem;color:var(--text3);flex-wrap:wrap">
       <span><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#4db84e;margin-right:3px"></span>OK</span>
       <span><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#d4844b;margin-right:3px"></span>WZ läuft</span>
       <span><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#d44b4b;margin-right:3px"></span>WZ endet bald</span>
       <span><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--border);margin-right:3px"></span>Leer</span>
+      <span>🐄 Tippen = Profil öffnen</span>
+      <span>🔒 Lang drücken = Box ändern</span>
     </div>
 
-    <!-- Stallplan Grid -->
     <div style="display:grid;grid-template-columns:repeat(${stall.spalten},1fr);gap:.3rem">
       ${Array.from({length:stall.reihen*stall.spalten},(_,i)=>{
         const kuhId = stall.boxen?.[i] || '';
@@ -4142,7 +4183,6 @@ function renderStallplan() {
       }).join('')}
     </div>
 
-    <!-- Belegungs-Übersicht -->
     <div style="margin-top:.8rem;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);padding:.5rem .8rem">
       <div style="display:flex;justify-content:space-between;font-size:.78rem">
         <span style="color:var(--text2)">Belegt: <b style="color:var(--gold)">${Object.values(stall.boxen||{}).filter(Boolean).length}</b></span>
@@ -4164,7 +4204,7 @@ function renderStallplan() {
         <div class="form-body">
           <input type="hidden" id="sp-edit-id" value="" />
           <input id="sp-name" class="inp" placeholder="Stallname (z.B. Stall A, Jungviehstall)" />
-          <label class="inp-label">Reihen (von vorne nach hinten)</label>
+          <label class="inp-label">Reihen</label>
           <input id="sp-reihen" class="inp" type="number" min="1" max="20" value="4" inputmode="numeric" style="width:100px" />
           <label class="inp-label">Spalten (Boxen pro Reihe)</label>
           <input id="sp-spalten" class="inp" type="number" min="1" max="20" value="5" inputmode="numeric" style="width:100px" />
@@ -4189,9 +4229,6 @@ function renderStallplan() {
             <option value="">— Leer lassen —</option>
             ${Object.entries(kuehe).sort((a,b)=>(parseInt(a[1].nr)||0)-(parseInt(b[1].nr)||0)).map(([id,k])=>`<option value="${id}">#${k.nr} ${k.name||'–'} ${k.bauer?'('+k.bauer+')':''}</option>`).join('')}
           </select>
-          ${Object.values(kuehe).some(k=>k.almStatus==='oben')
-            ? '<div style="font-size:.7rem;color:var(--text3);margin-bottom:.5rem">⛰ Kühe auf der Alm sind oben in der Liste</div>'
-            : ''}
           <div id="sp-box-kuh-preview" style="min-height:40px"></div>
           <div class="form-actions">
             <button class="btn-secondary" onclick="closeForm('sp-box-overlay')">Abbrechen</button>
@@ -4200,8 +4237,81 @@ function renderStallplan() {
         </div>
       </div>
     </div>
+
+    <!-- Tür-Menü Overlay -->
+    <div id="sp-tuer-overlay" class="form-overlay" style="display:none">
+      <div class="form-sheet">
+        <div class="form-header"><h3>🚪 Tür setzen</h3><button class="close-btn" onclick="closeForm('sp-tuer-overlay')">✕</button></div>
+        <div class="form-body">
+          <input type="hidden" id="sp-tuer-stallid" /><input type="hidden" id="sp-tuer-boxidx" />
+          <p style="font-size:.8rem;color:var(--text2);margin-bottom:.8rem">An welcher Seite der Box ist die Tür?</p>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:.5rem">
+            <button class="btn-secondary" onclick="spSaveTuer('top')">⬆ Oben</button>
+            <button class="btn-secondary" onclick="spSaveTuer('bottom')">⬇ Unten</button>
+            <button class="btn-secondary" onclick="spSaveTuer('left')">⬅ Links</button>
+            <button class="btn-secondary" onclick="spSaveTuer('right')">➡ Rechts</button>
+          </div>
+          <button class="btn-secondary btn-block" style="margin-top:.5rem;color:var(--red)" onclick="spSaveTuer('')">✕ Tür entfernen</button>
+        </div>
+      </div>
+    </div>
   `;
 }
+
+// ── Box Klick: belegte Box → Kuh-Profil, leere → zuweisen ──
+window.spBoxKlick = function(stallId, boxIdx, kuhId) {
+  if(kuhId && kuehe[kuhId]) {
+    showKuhDetail(kuhId);
+  } else {
+    spBoxTippen(stallId, boxIdx, '');
+  }
+};
+
+// ── Longpress für belegte Box → Neu zuweisen ──
+window._spLongPressTimer = null;
+
+window.spBoxPointerDown = function(el, event) {
+  el.style.transform = 'scale(.95)';
+  const stallId = el.dataset.stallid;
+  const boxIdx  = parseInt(el.dataset.boxidx);
+  const kuhId   = el.dataset.kuhid;
+  if(!kuhId) return; // leere Box: kein longpress nötig
+  window._spLongPressTimer = setTimeout(function() {
+    if(navigator.vibrate) navigator.vibrate(60);
+    el.style.transform = '';
+    el.style.borderColor = 'var(--gold)';
+    setTimeout(function(){ el.style.borderColor=''; }, 600);
+    spBoxTippen(stallId, boxIdx, kuhId);
+  }, 600);
+};
+
+window.spBoxPointerUp = function(el) {
+  el.style.transform = '';
+  if(window._spLongPressTimer) {
+    clearTimeout(window._spLongPressTimer);
+    window._spLongPressTimer = null;
+  }
+};
+
+// ── Tür-Menü ──
+window.spTuerMenu = function(stallId, boxIdx, btn) {
+  document.getElementById('sp-tuer-stallid').value = stallId;
+  document.getElementById('sp-tuer-boxidx').value  = boxIdx;
+  document.getElementById('sp-tuer-overlay').style.display = 'flex';
+};
+
+window.spSaveTuer = async function(position) {
+  const stallId = document.getElementById('sp-tuer-stallid')?.value;
+  const boxIdx  = document.getElementById('sp-tuer-boxidx')?.value;
+  if(!stallId || boxIdx === '') return;
+  if(position) {
+    await update(ref(db, 'stallplan/'+stallId+'/tueren'), {[boxIdx]: position});
+  } else {
+    await remove(ref(db, 'stallplan/'+stallId+'/tueren/'+boxIdx));
+  }
+  closeForm('sp-tuer-overlay');
+  showSaveToast && showSaveToast(position ? 'Tür gesetzt: '+({top:'Oben',bottom:'Unten',left:'Links',right:'Rechts'}[position]||position) : 'Tür entfernt');
+};
 
 window.spNeuerStall = function() {
   document.getElementById('sp-edit-id').value = '';
@@ -5853,7 +5963,9 @@ window.berechneWartezeiten = function() {
 // ══════════════════════════════════════════════════════════════
 //  MEDIKAMENT AUTOCOMPLETE
 // ══════════════════════════════════════════════════════════════
-window.selectMedikament = function(name) {
+window.selectMedikament = function(nameOrEl) {
+  const name = (typeof nameOrEl === 'string') ? nameOrEl : nameOrEl?.dataset?.med || '';
+  if(!name) return;
   const inp = document.getElementById('b-medikament');
   if(inp) {
     inp.value = name;
@@ -5911,7 +6023,7 @@ window.onMedInput = function(inp) {
   if(!gefiltert.length) { dd.style.display='none'; return; }
 
   dd.innerHTML = gefiltert.map(({m,c})=>`
-    <div onclick="selectMedikament(${JSON.stringify(m)})"
+    <div onclick="selectMedikament(this.dataset.med)" data-med="${m.replace(/"/g,'&quot;').replace(/'/g,'&#39;')}"
       style="padding:.55rem .8rem;cursor:pointer;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--border);transition:background .1s"
       onpointerenter="this.style.background='rgba(212,168,75,.1)'"
       onpointerleave="this.style.background=''">
@@ -8224,7 +8336,7 @@ function renderBestandsbuch() {
       <div style="font-size:.7rem;color:var(--text3);margin-bottom:.35rem;font-weight:600">FILTER MEDIKAMENT</div>
       <div style="display:flex;flex-wrap:wrap;gap:.3rem">
         <button class="filter-chip ${!medFilter?'active':''}" onclick="window._bbMedFilter='';render()">Alle (${alleBehandlungen.length})</button>
-        ${medListe.map(m=>`<button class="filter-chip ${medFilter===m?'active':''}" onclick="window._bbMedFilter=${JSON.stringify(m)};render()">${m} (${alleBehandlungen.filter(([,b])=>b.medikament===m).length})</button>`).join('')}
+        ${medListe.map(m=>`<button class="filter-chip ${medFilter===m?'active':''}" data-med="${m.replace(/"/g,'&quot;')}" onclick="window._bbMedFilter=this.dataset.med;render()">${m} (${alleBehandlungen.filter(([,b])=>b.medikament===m).length})</button>`).join('')}
       </div>
     </div>`:''}
 
