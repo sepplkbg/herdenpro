@@ -19,11 +19,11 @@
 ═══════════════════════════════════════════════════════════════════════════ -->
 <script>
 // Force clear cache if version changed
-if(localStorage.getItem('hp_version') !== 'v31.3') {
+if(localStorage.getItem('hp_version') !== 'v31.5') {
   // Keep Firebase auth but clear nav/order caches
   localStorage.removeItem('mainNav');
   localStorage.removeItem('mehrOrder');
-  localStorage.setItem('hp_version','v31.3');
+  localStorage.setItem('hp_version','v31.5');
 }
 window.FIREBASE_CONFIG = {
   apiKey:            "AIzaSyB2YSWcf1Kk2QG_JcCjkgJikx-f73yj-kc",
@@ -974,6 +974,7 @@ let kalenderTermine={};   // manuelle Kalendertermine
 let traenkeLog={};         // Tränke/Wasser-Protokoll
 let saisonArchiv={};       // Saisonvergleich-Archivdaten
 let stallplan={};          // Stallplan: {stallId: {name, reihen, spalten, boxen: {boxId: kuhId}}}
+let klauenpflege={};       // Klauenpflege-Protokoll pro Kuh
 let _editStore = {};
 let _chatName=localStorage.getItem('chatName')||'';
 let currentView='dashboard', editId=null;
@@ -1018,6 +1019,7 @@ function initApp() {
   onValue(ref(db,'wartung'),       s=>{ window._wartungData=s.val()||{};   render(); });
   onValue(ref(db,'lager'),         s=>{ window._lagerData=s.val()||{};     render(); });
   onValue(ref(db,'aufgaben'),      s=>{ window._aufgabenData=s.val()||{};  render(); });
+  onValue(ref(db,'klauenpflege'), s=>{ klauenpflege=s.val()||{};           render(); });
 
   registerSW();
   requestNotificationPermission();
@@ -1101,6 +1103,8 @@ function render() {
     if(typeof window.drawFieberChart === 'function') {
       setTimeout(window.drawFieberChart, 80);
     }
+    // Stallplan Kuh-Animation
+    if(currentView==='stallplan' && typeof window.spStartAnimation === 'function') {
       var aktivStall = window._aktivStall || Object.keys(stallplan)[0] || null;
       if(aktivStall) setTimeout(function(){ window.spStartAnimation(aktivStall); }, 200);
     }
@@ -1817,6 +1821,7 @@ function renderKuhDetail() {
     <button class="kd-tab-btn active" onclick="kdSwitchTab('kd-tab-b',this)">⚕ Behandlung${aktBeh.length?` <span style="background:var(--red);color:#fff;border-radius:50%;width:15px;height:15px;display:inline-flex;align-items:center;justify-content:center;font-size:.58rem;margin-left:2px;vertical-align:middle">${aktBeh.length}</span>`:''}</button>
     <button class="kd-tab-btn" onclick="kdSwitchTab('kd-tab-r',this)">🐮 Besamung${bsList.length?` (${bsList.length})`:''}</button>
     <button class="kd-tab-btn" onclick="kdSwitchTab('kd-tab-m',this)">🥛 Milch${chartDaten.length?` (${chartDaten.length})`:''}</button>
+    <button class="kd-tab-btn" onclick="kdSwitchTab('kd-tab-k',this)">🐾 Klauen</button>
   </div>
 
   <!-- Tab Behandlung -->
@@ -1923,6 +1928,80 @@ function renderKuhDetail() {
     </div>` : '<div class="empty-state">Noch keine Besamungen erfasst</div>'}
   </div>
 
+  <!-- Tab Klauen -->
+  <div id="kd-tab-k" style="display:none">
+    <div style="display:flex;gap:.35rem;margin-bottom:.7rem">
+      <button class="btn-primary" style="flex:1" onclick="showKlauenForm('${id}')">+ Klauenpflege erfassen</button>
+    </div>
+    ${(()=>{
+      const klauenListe = Object.entries(klauenpflege||{})
+        .filter(([,e])=>e.kuhId===id)
+        .sort((a,b)=>b[1].datum-a[1].datum);
+      if(!klauenListe.length) return '<div class="empty-state">Noch keine Klauenpflege-Einträge</div>';
+      const heute = Date.now();
+      return klauenListe.map(([kid,e])=>{
+        const naechsterFaellig = e.naechsterTermin && new Date(e.naechsterTermin+'T12:00').getTime();
+        const istFaellig = naechsterFaellig && naechsterFaellig <= heute;
+        const bald = naechsterFaellig && !istFaellig && (naechsterFaellig-heute) < 14*86400000;
+        return `<div class="list-card" style="flex-direction:column;gap:.4rem;align-items:stretch;padding:.65rem .8rem;border-left:3px solid ${istFaellig?'var(--red)':bald?'var(--orange)':'var(--gold)'}">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start">
+            <div>
+              <div style="font-size:.85rem;font-weight:700;color:var(--gold)">${new Date(e.datum).toLocaleDateString('de-AT',{day:'numeric',month:'long',year:'numeric'})}</div>
+              ${e.klauenpfleger?`<div style="font-size:.7rem;color:var(--text3)">👤 ${e.klauenpfleger}</div>`:''}
+            </div>
+            <div style="display:flex;gap:.3rem">
+              <button class="btn-xs-danger" onclick="deleteKlauen('${kid}')">✕</button>
+            </div>
+          </div>
+          ${e.befund?`<div style="font-size:.8rem;color:var(--text2)"><b>Befund:</b> ${e.befund}</div>`:''}
+          ${e.behandlung?`<div style="font-size:.8rem;color:var(--text2)"><b>Behandlung:</b> ${e.behandlung}</div>`:''}
+          ${e.naechsterTermin?`<div style="font-size:.72rem;color:${istFaellig?'var(--red)':bald?'var(--orange)':'var(--text3)'}">
+            📅 Nächster Termin: ${new Date(e.naechsterTermin+'T12:00').toLocaleDateString('de-AT',{day:'numeric',month:'long',year:'numeric'})}
+            ${istFaellig?' ⚠ Fällig!':bald?' ⚠ Bald fällig':''}
+          </div>`:''}
+          ${e.fotoData?`<div style="margin-top:.3rem;position:relative;display:inline-block">
+            <img src="${e.fotoData}" style="max-height:100px;max-width:100%;border-radius:8px;object-fit:cover;cursor:zoom-in;border:1px solid var(--border)" onclick="showFotoVollbild('${e.fotoData}','Klaue')" />
+            <span style="position:absolute;bottom:4px;right:4px;background:rgba(0,0,0,.5);color:#fff;font-size:.6rem;border-radius:4px;padding:1px 4px">🔍</span>
+          </div>`:''}
+          ${e.notiz?`<div style="font-size:.72rem;color:var(--text3);font-style:italic">${e.notiz}</div>`:''}
+        </div>`;
+      }).join('');
+    })()}
+
+    <!-- Klauenpflege-Formular -->
+    <div id="klauen-overlay" class="form-overlay" style="display:none">
+      <div class="form-sheet" style="max-height:92vh;overflow-y:auto">
+        <div class="form-header"><h3>🐾 Klauenpflege</h3><button class="close-btn" onclick="closeForm('klauen-overlay')">✕</button></div>
+        <div class="form-body">
+          <input type="hidden" id="kl-kuh-id" value="${id}" />
+          <label class="inp-label">Datum</label>
+          <input id="kl-datum" class="inp" type="date" value="${isoDate(new Date())}" />
+          <input id="kl-klauenpfleger" class="inp" placeholder="Klauenpfleger / Durchgeführt von" />
+          <label class="inp-label">Befund (frei beschreibbar)</label>
+          <textarea id="kl-befund" class="inp" rows="3" placeholder="z.B. Mortellaro Stadium M2 rechts hinten, leichte Ballenfäule links vorne…"></textarea>
+          <label class="inp-label">Behandlung / Maßnahmen</label>
+          <textarea id="kl-behandlung" class="inp" rows="3" placeholder="z.B. Klauenschnitt, Salicylpflaster, Klauenblock links…"></textarea>
+          <label class="inp-label">Nächster Termin</label>
+          <input id="kl-naechster" class="inp" type="date" />
+          <label class="inp-label">Foto (optional)</label>
+          <div id="kl-foto-preview" style="display:none;margin-bottom:.4rem">
+            <img id="kl-foto-img" style="max-height:120px;border-radius:8px;object-fit:cover;border:1px solid var(--border)" />
+          </div>
+          <label style="cursor:pointer;display:block;margin-bottom:.4rem">
+            <div style="background:var(--bg3);border:1px dashed var(--border);border-radius:8px;padding:.5rem;text-align:center;font-size:.78rem;color:var(--text3)">📷 Foto aufnehmen oder wählen</div>
+            <input type="file" accept="image/*" capture="environment" style="display:none" onchange="klauenFotoGewaehlt(this)" />
+          </label>
+          <input type="hidden" id="kl-foto-data" />
+          <textarea id="kl-notiz" class="inp" rows="2" placeholder="Notiz (optional)"></textarea>
+          <div class="form-actions">
+            <button class="btn-secondary" onclick="closeForm('klauen-overlay')">Abbrechen</button>
+            <button class="btn-primary" onclick="saveKlauen()">Speichern</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- Tab Milch -->
   <div id="kd-tab-m" style="display:none">
     ${chartDaten.length>=2 ? `
@@ -1994,7 +2073,7 @@ function renderKuhDetail() {
 
 // Tab switch
 window.kdSwitchTab = function(tabId, btn) {
-  ['kd-tab-b','kd-tab-r','kd-tab-m'].forEach(function(id){
+  ['kd-tab-b','kd-tab-r','kd-tab-m','kd-tab-k'].forEach(function(id){
     var el=document.getElementById(id);
     if(el) el.style.display=id===tabId?'':'none';
   });
@@ -7630,7 +7709,75 @@ function renderKraftfutter() {
   `;
 }
 
-window.showKraftfutterForm = function(kuhId) {
+window.showKlauenForm = function(kuhId) {
+  const ov = document.getElementById('klauen-overlay');
+  if(!ov){return;}
+  document.getElementById('kl-kuh-id').value = kuhId;
+  document.getElementById('kl-datum').value = isoDate(new Date());
+  document.getElementById('kl-klauenpfleger').value = '';
+  document.getElementById('kl-befund').value = '';
+  document.getElementById('kl-behandlung').value = '';
+  document.getElementById('kl-naechster').value = '';
+  document.getElementById('kl-notiz').value = '';
+  document.getElementById('kl-foto-data').value = '';
+  document.getElementById('kl-foto-preview').style.display = 'none';
+  ov.style.display = 'flex';
+};
+
+window.klauenFotoGewaehlt = function(input) {
+  const file = input.files?.[0]; if(!file) return;
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    // Bild komprimieren
+    const img = new Image();
+    img.onload = function() {
+      const canvas = document.createElement('canvas');
+      const max = 800;
+      const scale = Math.min(1, max/Math.max(img.width,img.height));
+      canvas.width = img.width*scale; canvas.height = img.height*scale;
+      canvas.getContext('2d').drawImage(img,0,0,canvas.width,canvas.height);
+      const data = canvas.toDataURL('image/jpeg',0.75);
+      document.getElementById('kl-foto-data').value = data;
+      document.getElementById('kl-foto-img').src = data;
+      document.getElementById('kl-foto-preview').style.display = 'block';
+    };
+    img.src = e.target.result;
+  };
+  reader.readAsDataURL(file);
+};
+
+window.saveKlauen = async function() {
+  const kuhId = document.getElementById('kl-kuh-id')?.value;
+  const datum = document.getElementById('kl-datum')?.value;
+  if(!datum){alert('Datum Pflicht');return;}
+  const data = {
+    kuhId,
+    datum: new Date(datum+'T12:00').getTime(),
+    klauenpfleger: document.getElementById('kl-klauenpfleger')?.value.trim()||'',
+    befund:    document.getElementById('kl-befund')?.value.trim()||'',
+    behandlung:document.getElementById('kl-behandlung')?.value.trim()||'',
+    naechsterTermin: document.getElementById('kl-naechster')?.value||'',
+    notiz:     document.getElementById('kl-notiz')?.value.trim()||'',
+    fotoData:  document.getElementById('kl-foto-data')?.value||null,
+    createdAt: Date.now()
+  };
+  await push(ref(db,'klauenpflege'), data);
+  // Nächsten Termin in Kalender eintragen
+  if(data.naechsterTermin) {
+    const k = kuehe[kuhId];
+    await push(ref(db,'kalenderTermine'),{
+      titel: 'Klauenpflege: '+(k?'#'+k.nr+' '+(k.name||''):''),
+      datum: new Date(data.naechsterTermin+'T12:00').getTime(),
+      kategorie:'kontrolle', erledigt:false, createdAt:Date.now()
+    });
+  }
+  closeForm('klauen-overlay');
+  showSaveToast&&showSaveToast('Klauenpflege gespeichert');
+};
+
+window.deleteKlauen = async function(id) {
+  if(confirm('Eintrag löschen?')) await remove(ref(db,'klauenpflege/'+id));
+};
   const ov = document.getElementById('kf-overlay');
   if(!ov){navigate('kraftfutter');setTimeout(()=>showKraftfutterForm(kuhId),150);return;}
   if(kuhId) document.getElementById('kf-kuh').value=kuhId;
