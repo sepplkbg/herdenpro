@@ -19,10 +19,10 @@
 ═══════════════════════════════════════════════════════════════════════════ -->
 <script>
 // Force clear cache if version changed
-if(localStorage.getItem('hp_version') !== 'v32.1') {
+if(localStorage.getItem('hp_version') !== 'v32.2') {
   localStorage.removeItem('mainNav');
   localStorage.removeItem('mehrOrder');
-  localStorage.setItem('hp_version','v32.1');
+  localStorage.setItem('hp_version','v32.2');
   // Force SW update
   if('serviceWorker' in navigator) {
     navigator.serviceWorker.getRegistrations().then(function(regs) {
@@ -38,8 +38,8 @@ if(localStorage.getItem('hp_version') !== 'v32.1') {
       });
     }
     // Reload once after clearing
-    if(!sessionStorage.getItem('reloaded_v32_1')) {
-      sessionStorage.setItem('reloaded_v32_1','1');
+    if(!sessionStorage.getItem('reloaded_v32_2')) {
+      sessionStorage.setItem('reloaded_v32_2','1');
       window.location.reload(true);
     }
   }
@@ -833,6 +833,164 @@ textarea.inp{resize:vertical;min-height:64px}
 <style id="kaese-css">
 /* Käse module styles */
 .kp-toolbar { display:flex;gap:.5rem;align-items:center;flex-wrap:wrap;padding:.5rem .6rem;border-bottom:1px solid var(--border);background:var(--bg2); }
+
+@keyframes spin{to{transform:rotate(360deg)}}
+/* KD Animations */
+@keyframes kd-in    { from{opacity:0;transform:translateY(18px)} to{opacity:1;transform:none} }
+    @keyframes kd-left  { from{opacity:0;transform:translateX(-16px)} to{opacity:1;transform:none} }
+    @keyframes kd-right { from{opacity:0;transform:translateX(16px)} to{opacity:1;transform:none} }
+    @keyframes kd-pop   { 0%{transform:scale(.85);opacity:0} 60%{transform:scale(1.06)} 100%{transform:scale(1);opacity:1} }
+    @keyframes kd-glow  { 0%,100%{box-shadow:0 0 8px rgba(212,168,75,.2)} 50%{box-shadow:0 0 22px rgba(212,168,75,.55)} }
+    @keyframes kd-pulse { 0%,100%{transform:scale(1)} 50%{transform:scale(1.07)} }
+    @keyframes kd-bar   { from{width:0!important} }
+    @keyframes kd-dot   { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:.4;transform:scale(.6)} }
+    @keyframes kd-shimmer { 0%{background-position:-200% center} 100%{background-position:200% center} }
+    @keyframes kd-num   { from{opacity:0;transform:translateY(6px)} to{opacity:1;transform:none} }
+
+    .kd-s1{animation:kd-in .32s .00s both}
+    .kd-s2{animation:kd-in .32s .06s both}
+    .kd-s3{animation:kd-in .32s .12s both}
+    .kd-s4{animation:kd-in .32s .18s both}
+    .kd-s5{animation:kd-in .32s .24s both}
+    .kd-s6{animation:kd-in .32s .30s both}
+    .kd-sl{animation:kd-left .32s .08s both}
+    .kd-sr{animation:kd-right .32s .08s both}
+
+    .kd-stat-num { animation: kd-num .5s ease both; }
+    .kd-stat-num.d1{animation-delay:.15s} .kd-stat-num.d2{animation-delay:.22s} .kd-stat-num.d3{animation-delay:.29s}
+
+    .kd-hero {
+      background: linear-gradient(135deg,#0f2010 0%,#152b12 60%,#1a2e0f 100%);
+      border: 1px solid rgba(212,168,75,.18);
+      border-radius: 18px;
+      padding: 1rem;
+      margin-bottom: .75rem;
+      position: relative;
+      overflow: hidden;
+      animation: kd-glow 4s ease-in-out infinite;
+    }
+    .kd-hero::before {
+      content:'';position:absolute;top:-30px;right:-30px;
+      width:120px;height:120px;
+      background:radial-gradient(circle,rgba(212,168,75,.15),transparent 70%);
+      pointer-events:none;
+    }
+    .kd-foto-ring {
+      width:76px;height:76px;border-radius:50%;
+      border:2.5px solid var(--gold2);
+      box-shadow:0 0 0 4px rgba(212,168,75,.12),0 6px 16px rgba(0,0,0,.5);
+      object-fit:cover;flex-shrink:0;
+    }
+    .kd-foto-placeholder {
+      width:76px;height:76px;border-radius:50%;
+      background:var(--bg);
+      border:2.5px dashed rgba(212,168,75,.4);
+      display:flex;align-items:center;justify-content:center;
+      font-size:2.2rem;flex-shrink:0;
+      animation:kd-pulse 3.5s ease-in-out infinite;
+    }
+    .kd-name {
+      font-size:1.45rem;font-weight:800;color:var(--gold);
+      line-height:1;
+      background:linear-gradient(90deg,#f0c060,#d4a84b,#f0c060);
+      background-size:200% auto;
+      -webkit-background-clip:text;-webkit-text-fill-color:transparent;
+      animation:kd-shimmer 3s linear infinite;
+    }
+    .kd-status-dot {
+      width:8px;height:8px;border-radius:50%;
+      background:${statusColor};
+      box-shadow:0 0 8px ${statusColor};
+      display:inline-block;
+      animation:kd-dot 2s ease-in-out infinite;
+    }
+    .kd-stat-card {
+      background:var(--bg3);
+      border:1px solid var(--border);
+      border-radius:12px;
+      padding:.55rem .4rem;
+      text-align:center;
+      transition:transform .15s,border-color .15s;
+    }
+    .kd-stat-card:active{transform:scale(.94)}
+
+    .kd-tab-btn {
+      flex:1;padding:.55rem .3rem;
+      background:transparent;border:none;
+      color:var(--text3);font-size:.78rem;font-weight:600;
+      border-bottom:2px solid transparent;
+      cursor:pointer;transition:color .2s,border-color .2s;
+    }
+    .kd-tab-btn.active{color:var(--gold);border-bottom-color:var(--gold)}
+
+    .kd-beh-aktiv {
+      background:rgba(212,75,75,.06);
+      border-left:3px solid var(--red);
+      border-radius:0 10px 10px 0;
+      padding:.4rem .6rem .4rem .7rem;
+      margin-bottom:.35rem;
+    }
+    .kd-beh-archiv {
+      border-left:2px solid var(--border2);
+      padding:.3rem .6rem .3rem .7rem;
+      margin-bottom:.3rem;opacity:.7;
+    }
+
+    #kd-chart-canvas {
+      width:100%;height:130px;display:block;border-radius:8px;
+      background:linear-gradient(180deg,rgba(74,184,232,.04) 0%,transparent 100%);
+    }
+    .kd-chart-label {
+      font-size:.62rem;color:var(--text3);
+      display:flex;justify-content:space-between;
+      margin-top:.3rem;padding:0 2px;
+    }
+    .kd-milch-row {
+      display:flex;align-items:center;gap:.6rem;
+      padding:.45rem 0;border-bottom:1px solid rgba(255,255,255,.04);
+    }
+    .kd-milch-row:last-child{border-bottom:none}
+    .kd-milch-bar-wrap {
+      flex:1;height:5px;background:var(--bg);border-radius:3px;overflow:hidden;
+    }
+    .kd-milch-bar {
+      height:100%;border-radius:3px;
+      background:linear-gradient(90deg,#4ab8e8,var(--gold));
+      animation:kd-bar .7s cubic-bezier(.16,1,.3,1) both;
+    }
+/* QR Animations */
+@keyframes qrScan {
+        0% { top: 15%; }
+        50% { top: 75%; }
+        100% { top: 15%; }
+      }
+/* Hirte Animations */
+@keyframes hirteRun{0%{transform:translateX(-120px)}100%{transform:translateX(120px)}}
+      @keyframes kuhRun{0%{transform:translateX(-180px)}100%{transform:translateX(60px)}}
+      @keyframes fadeInAnim{from{opacity:0}to{opacity:1}}
+      @keyframes fadeOutAnim{from{opacity:1}to{opacity:0}}
+      .hirte-scene{position:relative;width:300px;height:120px;overflow:hidden;}
+      .hirte{position:absolute;bottom:10px;font-size:3rem;animation:hirteRun 1.8s ease-in-out infinite alternate;}
+      .kuh{position:absolute;bottom:8px;font-size:2.5rem;animation:kuhRun 1.8s ease-in-out infinite alternate;animation-delay:.1s;}
+      .grass{position:absolute;bottom:0;left:0;right:0;height:20px;background:linear-gradient(transparent,rgba(77,184,78,.2));border-radius:0 0 8px 8px}
+/* Zaehlung Animations */
+@keyframes za-sky    { 0%{opacity:0} 8%{opacity:1} 88%{opacity:1} 100%{opacity:0} }
+    @keyframes za-title  { 0%{opacity:0;letter-spacing:.4em} 20%{opacity:1;letter-spacing:.08em} 85%{opacity:1} 100%{opacity:0} }
+    @keyframes za-sub    { 0%,25%{opacity:0;transform:translateY(6px)} 40%{opacity:1;transform:translateY(0)} 85%{opacity:1} 100%{opacity:0} }
+    @keyframes za-bar    { 0%{width:0} 85%{width:100%} 100%{width:100%} }
+    @keyframes za-count  { 0%,60%{opacity:0} 75%{opacity:1} 90%{opacity:1} 100%{opacity:0} }
+    @keyframes za-kuh    { 0%{transform:translateX(70vw) scaleX(-1)} 100%{transform:translateX(-40vw) scaleX(-1)} }
+    @keyframes za-hirte  { 0%{transform:translateX(85vw)} 100%{transform:translateX(-15vw)} }
+    @keyframes za-cloud  { 0%{transform:translateX(0)} 100%{transform:translateX(-15px)} }
+    @keyframes za-grass  { 0%,100%{transform:rotate(-2deg)} 50%{transform:rotate(2deg)} }
+    @keyframes za-leg-f  { 0%,100%{transform:rotate(30deg)} 50%{transform:rotate(-30deg)} }
+    @keyframes za-leg-b  { 0%,100%{transform:rotate(-30deg)} 50%{transform:rotate(30deg)} }
+    @keyframes za-arm-f  { 0%,100%{transform:rotate(-25deg)} 50%{transform:rotate(25deg)} }
+    @keyframes za-arm-b  { 0%,100%{transform:rotate(25deg)} 50%{transform:rotate(-25deg)} }
+    @keyframes za-tail   { 0%,100%{transform:rotate(-15deg)} 50%{transform:rotate(15deg)} }
+    @keyframes za-dust   { 0%{opacity:.7;transform:scale(0) translateX(0)} 100%{opacity:0;transform:scale(1.5) translateX(-20px)} }
+    @keyframes za-fadeout{ 0%{opacity:1} 100%{opacity:0} }
+    .za-dismissing { animation: za-fadeout .35s ease forwards !important; }
 /* Stallplan Canvas */
 #sp-canvas-wrap{position:relative;overflow:hidden;background:#1a1a1a;border-radius:12px;border:1px solid var(--border);touch-action:none;user-select:none;width:100%;aspect-ratio:4/3}
 #sp-canvas{display:block;width:100%;height:100%}
@@ -1630,130 +1788,6 @@ function renderKuhDetail() {
   const chartJson = JSON.stringify(chartDaten.slice(-30));
 
   return `
-  <style>
-    @keyframes kd-in    { from{opacity:0;transform:translateY(18px)} to{opacity:1;transform:none} }
-    @keyframes kd-left  { from{opacity:0;transform:translateX(-16px)} to{opacity:1;transform:none} }
-    @keyframes kd-right { from{opacity:0;transform:translateX(16px)} to{opacity:1;transform:none} }
-    @keyframes kd-pop   { 0%{transform:scale(.85);opacity:0} 60%{transform:scale(1.06)} 100%{transform:scale(1);opacity:1} }
-    @keyframes kd-glow  { 0%,100%{box-shadow:0 0 8px rgba(212,168,75,.2)} 50%{box-shadow:0 0 22px rgba(212,168,75,.55)} }
-    @keyframes kd-pulse { 0%,100%{transform:scale(1)} 50%{transform:scale(1.07)} }
-    @keyframes kd-bar   { from{width:0!important} }
-    @keyframes kd-dot   { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:.4;transform:scale(.6)} }
-    @keyframes kd-shimmer { 0%{background-position:-200% center} 100%{background-position:200% center} }
-    @keyframes kd-num   { from{opacity:0;transform:translateY(6px)} to{opacity:1;transform:none} }
-
-    .kd-s1{animation:kd-in .32s .00s both}
-    .kd-s2{animation:kd-in .32s .06s both}
-    .kd-s3{animation:kd-in .32s .12s both}
-    .kd-s4{animation:kd-in .32s .18s both}
-    .kd-s5{animation:kd-in .32s .24s both}
-    .kd-s6{animation:kd-in .32s .30s both}
-    .kd-sl{animation:kd-left .32s .08s both}
-    .kd-sr{animation:kd-right .32s .08s both}
-
-    .kd-stat-num { animation: kd-num .5s ease both; }
-    .kd-stat-num.d1{animation-delay:.15s} .kd-stat-num.d2{animation-delay:.22s} .kd-stat-num.d3{animation-delay:.29s}
-
-    .kd-hero {
-      background: linear-gradient(135deg,#0f2010 0%,#152b12 60%,#1a2e0f 100%);
-      border: 1px solid rgba(212,168,75,.18);
-      border-radius: 18px;
-      padding: 1rem;
-      margin-bottom: .75rem;
-      position: relative;
-      overflow: hidden;
-      animation: kd-glow 4s ease-in-out infinite;
-    }
-    .kd-hero::before {
-      content:'';position:absolute;top:-30px;right:-30px;
-      width:120px;height:120px;
-      background:radial-gradient(circle,rgba(212,168,75,.15),transparent 70%);
-      pointer-events:none;
-    }
-    .kd-foto-ring {
-      width:76px;height:76px;border-radius:50%;
-      border:2.5px solid var(--gold2);
-      box-shadow:0 0 0 4px rgba(212,168,75,.12),0 6px 16px rgba(0,0,0,.5);
-      object-fit:cover;flex-shrink:0;
-    }
-    .kd-foto-placeholder {
-      width:76px;height:76px;border-radius:50%;
-      background:var(--bg);
-      border:2.5px dashed rgba(212,168,75,.4);
-      display:flex;align-items:center;justify-content:center;
-      font-size:2.2rem;flex-shrink:0;
-      animation:kd-pulse 3.5s ease-in-out infinite;
-    }
-    .kd-name {
-      font-size:1.45rem;font-weight:800;color:var(--gold);
-      line-height:1;
-      background:linear-gradient(90deg,#f0c060,#d4a84b,#f0c060);
-      background-size:200% auto;
-      -webkit-background-clip:text;-webkit-text-fill-color:transparent;
-      animation:kd-shimmer 3s linear infinite;
-    }
-    .kd-status-dot {
-      width:8px;height:8px;border-radius:50%;
-      background:${statusColor};
-      box-shadow:0 0 8px ${statusColor};
-      display:inline-block;
-      animation:kd-dot 2s ease-in-out infinite;
-    }
-    .kd-stat-card {
-      background:var(--bg3);
-      border:1px solid var(--border);
-      border-radius:12px;
-      padding:.55rem .4rem;
-      text-align:center;
-      transition:transform .15s,border-color .15s;
-    }
-    .kd-stat-card:active{transform:scale(.94)}
-
-    .kd-tab-btn {
-      flex:1;padding:.55rem .3rem;
-      background:transparent;border:none;
-      color:var(--text3);font-size:.78rem;font-weight:600;
-      border-bottom:2px solid transparent;
-      cursor:pointer;transition:color .2s,border-color .2s;
-    }
-    .kd-tab-btn.active{color:var(--gold);border-bottom-color:var(--gold)}
-
-    .kd-beh-aktiv {
-      background:rgba(212,75,75,.06);
-      border-left:3px solid var(--red);
-      border-radius:0 10px 10px 0;
-      padding:.4rem .6rem .4rem .7rem;
-      margin-bottom:.35rem;
-    }
-    .kd-beh-archiv {
-      border-left:2px solid var(--border2);
-      padding:.3rem .6rem .3rem .7rem;
-      margin-bottom:.3rem;opacity:.7;
-    }
-
-    #kd-chart-canvas {
-      width:100%;height:130px;display:block;border-radius:8px;
-      background:linear-gradient(180deg,rgba(74,184,232,.04) 0%,transparent 100%);
-    }
-    .kd-chart-label {
-      font-size:.62rem;color:var(--text3);
-      display:flex;justify-content:space-between;
-      margin-top:.3rem;padding:0 2px;
-    }
-    .kd-milch-row {
-      display:flex;align-items:center;gap:.6rem;
-      padding:.45rem 0;border-bottom:1px solid rgba(255,255,255,.04);
-    }
-    .kd-milch-row:last-child{border-bottom:none}
-    .kd-milch-bar-wrap {
-      flex:1;height:5px;background:var(--bg);border-radius:3px;overflow:hidden;
-    }
-    .kd-milch-bar {
-      height:100%;border-radius:3px;
-      background:linear-gradient(90deg,#4ab8e8,var(--gold));
-      animation:kd-bar .7s cubic-bezier(.16,1,.3,1) both;
-    }
-  </style>
 
   <!-- Header -->
   <div class="page-header kd-s1" style="padding-bottom:.4rem">
@@ -5064,7 +5098,7 @@ window.saveLagerVerbrauch=async function(){const id=document.getElementById('lv-
 window.showLagerZugangForm=function(id){const ov=document.getElementById('lager-zugang-overlay');if(!ov){navigate('lager');setTimeout(()=>showLagerZugangForm(id),150);return;}const a=window._lagerData?.artikel?.[id]||{};document.getElementById('lz-artikel-id').value=id;document.getElementById('lz-artikel-info').textContent=a.name+' · Bestand: '+(a.bestand||0)+' '+(a.einheit||'');document.getElementById('lz-menge').value='';document.getElementById('lz-preis').value='';document.getElementById('lz-notiz').value='';ov.style.display='flex';};
 window.saveLagerZugang=async function(){const id=document.getElementById('lz-artikel-id')?.value;const menge=parseFloat(document.getElementById('lz-menge')?.value);if(!menge||menge<=0){alert('Menge eingeben');return;}const a=window._lagerData?.artikel?.[id]||{};const neuerBestand=(a.bestand||0)+menge;await update(ref(db,'lager/artikel/'+id),{bestand:neuerBestand,updatedAt:Date.now()});await push(ref(db,'lager/bewegungen'),{artikelId:id,typ:'zugang',menge,datum:Date.now(),preis:parseFloat(document.getElementById('lz-preis')?.value)||0,notiz:document.getElementById('lz-notiz')?.value.trim()||''});closeForm('lager-zugang-overlay');showSaveToast&&showSaveToast('Zugang gebucht');};
 window.showLagerFotoImport=function(){const ov=document.getElementById('lager-foto-overlay');if(!ov){navigate('lager');setTimeout(showLagerFotoImport,150);return;}document.getElementById('lager-ki-status').style.display='none';document.getElementById('lager-ki-vorschau').style.display='none';document.getElementById('lager-foto-preview').style.display='none';ov.style.display='flex';};
-window.lagerFotoGewaehlt=async function(input){const file=input.files?.[0];if(!file)return;const reader=new FileReader();reader.onload=async function(e){const dataUrl=e.target.result;document.getElementById('lager-foto-img').src=dataUrl;document.getElementById('lager-foto-preview').style.display='block';const status=document.getElementById('lager-ki-status');status.style.display='block';status.innerHTML='<div style="display:flex;align-items:center;gap:.6rem;padding:.6rem;background:var(--bg3);border-radius:8px"><div style="width:20px;height:20px;border:2px solid var(--border);border-top-color:var(--gold);border-radius:50%;animation:spin .8s linear infinite"></div><span style="font-size:.8rem;color:var(--text2)">KI analysiert Lieferschein…</span></div><style>@keyframes spin{to{transform:rotate(360deg)}}</style>';try{const base64=dataUrl.split(',')[1];const mediaType=file.type||'image/jpeg';const resp=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:1000,messages:[{role:'user',content:[{type:'image',source:{type:'base64',media_type:mediaType,data:base64}},{type:'text',text:'Analysiere diesen Lieferschein oder diese Rechnung. Extrahiere alle Artikel mit Name, Menge, Einheit, Einzelpreis. Antworte NUR mit JSON-Array:\n[{"name":"...","menge":0,"einheit":"Stück","preis":0,"kategorie":"Medikamente|Kraftfutter|Verbrauchsmaterial|Reinigungsmittel|Ersatzteile"}]\nKategorie schätzen nach Artikelname. Wenn kein Preis: preis=0.'}]}]})});const data=await resp.json();let text=data.content?.[0]?.text||'[]';text=text.replace(/```json|```/g,'').trim();const artikel=JSON.parse(text);lagerZeigeKiVorschau(artikel);}catch(err){status.innerHTML='<div style="color:var(--red);font-size:.8rem;padding:.5rem">❌ KI-Analyse fehlgeschlagen: '+err.message+'</div>';}};reader.readAsDataURL(file);};
+window.lagerFotoGewaehlt=async function(input){const file=input.files?.[0];if(!file)return;const reader=new FileReader();reader.onload=async function(e){const dataUrl=e.target.result;document.getElementById('lager-foto-img').src=dataUrl;document.getElementById('lager-foto-preview').style.display='block';const status=document.getElementById('lager-ki-status');status.style.display='block';status.innerHTML='<div style="display:flex;align-items:center;gap:.6rem;padding:.6rem;background:var(--bg3);border-radius:8px"><div style="width:20px;height:20px;border:2px solid var(--border);border-top-color:var(--gold);border-radius:50%;animation:spin .8s linear infinite"></div><span style="font-size:.8rem;color:var(--text2)">KI analysiert Lieferschein…</span></div>';try{const base64=dataUrl.split(',')[1];const mediaType=file.type||'image/jpeg';const resp=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:1000,messages:[{role:'user',content:[{type:'image',source:{type:'base64',media_type:mediaType,data:base64}},{type:'text',text:'Analysiere diesen Lieferschein oder diese Rechnung. Extrahiere alle Artikel mit Name, Menge, Einheit, Einzelpreis. Antworte NUR mit JSON-Array:\n[{"name":"...","menge":0,"einheit":"Stück","preis":0,"kategorie":"Medikamente|Kraftfutter|Verbrauchsmaterial|Reinigungsmittel|Ersatzteile"}]\nKategorie schätzen nach Artikelname. Wenn kein Preis: preis=0.'}]}]})});const data=await resp.json();let text=data.content?.[0]?.text||'[]';text=text.replace(/```json|```/g,'').trim();const artikel=JSON.parse(text);lagerZeigeKiVorschau(artikel);}catch(err){status.innerHTML='<div style="color:var(--red);font-size:.8rem;padding:.5rem">❌ KI-Analyse fehlgeschlagen: '+err.message+'</div>';}};reader.readAsDataURL(file);};
 window.lagerZeigeKiVorschau=function(artikel){const status=document.getElementById('lager-ki-status');const vorschau=document.getElementById('lager-ki-vorschau');if(!artikel||!artikel.length){status.innerHTML='<div style="color:var(--orange);font-size:.8rem;padding:.5rem">⚠ Keine Artikel erkannt.</div>';return;}status.innerHTML='<div style="color:var(--green);font-size:.8rem;padding:.4rem">✓ '+artikel.length+' Artikel erkannt</div>';vorschau.style.display='block';const KATEGORIEN=['Medikamente','Kraftfutter','Verbrauchsmaterial','Reinigungsmittel','Ersatzteile'];vorschau.innerHTML='<div style="font-size:.75rem;font-weight:700;color:var(--text3);margin-bottom:.5rem">VORSCHAU:</div>'+artikel.map((a,i)=>'<div style="background:var(--bg3);border:1px solid var(--border);border-radius:10px;padding:.55rem .8rem;margin-bottom:.4rem"><div style="display:flex;justify-content:space-between;align-items:center"><div style="flex:1"><div style="font-size:.85rem;font-weight:700" contenteditable="true" id="ki-name-'+i+'">'+a.name+'</div><div style="font-size:.72rem;color:var(--text3);margin-top:2px"><span contenteditable="true" id="ki-menge-'+i+'">'+a.menge+'</span> <span contenteditable="true" id="ki-einheit-'+i+'">'+(a.einheit||'Stück')+'</span>'+(a.preis?' · €<span contenteditable="true" id="ki-preis-'+i+'">'+a.preis+'</span>/Stk':'')+'</div><select id="ki-kat-'+i+'" style="background:var(--bg2);border:1px solid var(--border);border-radius:4px;font-size:.68rem;color:var(--text3);padding:1px 3px;margin-top:3px">'+KATEGORIEN.map(k=>'<option value="'+k+'"'+(a.kategorie===k?' selected':'')+'>'+k+'</option>').join('')+'</select></div><input type="checkbox" id="ki-check-'+i+'" checked style="width:20px;height:20px;accent-color:var(--green);flex-shrink:0;margin-left:.5rem" /></div></div>').join('')+'<div style="display:flex;gap:.4rem;margin-top:.6rem"><button class="btn-secondary" style="flex:1" onclick="closeForm(\'lager-foto-overlay\')">Abbrechen</button><button class="btn-primary" style="flex:2" onclick="lagerKiUebernehmen('+artikel.length+')">✓ Übernehmen</button></div>';};
 window.lagerKiUebernehmen=async function(count){let n=0;for(let i=0;i<count;i++){const check=document.getElementById('ki-check-'+i);if(!check?.checked)continue;const name=(document.getElementById('ki-name-'+i)?.textContent||'').trim();if(!name)continue;const menge=parseFloat(document.getElementById('ki-menge-'+i)?.textContent)||0;const einheit=(document.getElementById('ki-einheit-'+i)?.textContent||'Stück').trim();const preis=parseFloat(document.getElementById('ki-preis-'+i)?.textContent)||0;const kat=document.getElementById('ki-kat-'+i)?.value||'Verbrauchsmaterial';const vorhanden=Object.entries(window._lagerData?.artikel||{}).find(([,a])=>a.name.toLowerCase()===name.toLowerCase());if(vorhanden){const[vid,va]=vorhanden;await update(ref(db,'lager/artikel/'+vid),{bestand:(va.bestand||0)+menge,updatedAt:Date.now()});}else{await push(ref(db,'lager/artikel'),{kategorie:kat,name,einheit,bestand:menge,mindestBestand:0,preis,updatedAt:Date.now()});}n++;}closeForm('lager-foto-overlay');showSaveToast&&showSaveToast(n+' Artikel übernommen');};
 function renderQRScanner() {
@@ -5120,13 +5154,6 @@ function renderQRScanner() {
       <div class="feature-item">Hier QR-Scanner öffnen → Kuh scannen → Profil öffnet sich direkt</div>
     </div>
 
-    <style>
-      @keyframes qrScan {
-        0% { top: 15%; }
-        50% { top: 75%; }
-        100% { top: 15%; }
-      }
-    </style>
   `;
 }
 
@@ -7783,16 +7810,7 @@ window._showZaehlungAnim = function() {
   const overlay = document.createElement('div');
   overlay.style.cssText = 'position:fixed;inset:0;background:var(--bg);z-index:500;display:flex;flex-direction:column;align-items:center;justify-content:center;animation:fadeIn .3s ease';
   overlay.innerHTML = `
-    <style>
-      @keyframes hirteRun{0%{transform:translateX(-120px)}100%{transform:translateX(120px)}}
-      @keyframes kuhRun{0%{transform:translateX(-180px)}100%{transform:translateX(60px)}}
-      @keyframes fadeInAnim{from{opacity:0}to{opacity:1}}
-      @keyframes fadeOutAnim{from{opacity:1}to{opacity:0}}
-      .hirte-scene{position:relative;width:300px;height:120px;overflow:hidden;}
-      .hirte{position:absolute;bottom:10px;font-size:3rem;animation:hirteRun 1.8s ease-in-out infinite alternate;}
-      .kuh{position:absolute;bottom:8px;font-size:2.5rem;animation:kuhRun 1.8s ease-in-out infinite alternate;animation-delay:.1s;}
-      .grass{position:absolute;bottom:0;left:0;right:0;height:20px;background:linear-gradient(transparent,rgba(77,184,78,.2));border-radius:0 0 8px 8px}
-    </style>
+    
     <div style="font-size:.9rem;color:var(--text3);margin-bottom:1rem;animation:fadeInAnim .5s ease">Zählung wird gestartet…</div>
     <div class="hirte-scene">
       <div class="kuh">🐄</div>
@@ -8870,25 +8888,7 @@ window._showZaehlungAnim = function(cb) {
   const ov = document.createElement('div');
   ov.style.cssText = 'position:fixed;inset:0;z-index:9999;overflow:hidden;background:#1a4a0a;cursor:pointer';
 
-  ov.innerHTML = `<style>
-    @keyframes za-sky    { 0%{opacity:0} 8%{opacity:1} 88%{opacity:1} 100%{opacity:0} }
-    @keyframes za-title  { 0%{opacity:0;letter-spacing:.4em} 20%{opacity:1;letter-spacing:.08em} 85%{opacity:1} 100%{opacity:0} }
-    @keyframes za-sub    { 0%,25%{opacity:0;transform:translateY(6px)} 40%{opacity:1;transform:translateY(0)} 85%{opacity:1} 100%{opacity:0} }
-    @keyframes za-bar    { 0%{width:0} 85%{width:100%} 100%{width:100%} }
-    @keyframes za-count  { 0%,60%{opacity:0} 75%{opacity:1} 90%{opacity:1} 100%{opacity:0} }
-    @keyframes za-kuh    { 0%{transform:translateX(70vw) scaleX(-1)} 100%{transform:translateX(-40vw) scaleX(-1)} }
-    @keyframes za-hirte  { 0%{transform:translateX(85vw)} 100%{transform:translateX(-15vw)} }
-    @keyframes za-cloud  { 0%{transform:translateX(0)} 100%{transform:translateX(-15px)} }
-    @keyframes za-grass  { 0%,100%{transform:rotate(-2deg)} 50%{transform:rotate(2deg)} }
-    @keyframes za-leg-f  { 0%,100%{transform:rotate(30deg)} 50%{transform:rotate(-30deg)} }
-    @keyframes za-leg-b  { 0%,100%{transform:rotate(-30deg)} 50%{transform:rotate(30deg)} }
-    @keyframes za-arm-f  { 0%,100%{transform:rotate(-25deg)} 50%{transform:rotate(25deg)} }
-    @keyframes za-arm-b  { 0%,100%{transform:rotate(25deg)} 50%{transform:rotate(-25deg)} }
-    @keyframes za-tail   { 0%,100%{transform:rotate(-15deg)} 50%{transform:rotate(15deg)} }
-    @keyframes za-dust   { 0%{opacity:.7;transform:scale(0) translateX(0)} 100%{opacity:0;transform:scale(1.5) translateX(-20px)} }
-    @keyframes za-fadeout{ 0%{opacity:1} 100%{opacity:0} }
-    .za-dismissing { animation: za-fadeout .35s ease forwards !important; }
-  </style>
+  ov.innerHTML = `
 
   <!-- SKY GRADIENT -->
   <div style="position:absolute;inset:0;animation:za-sky ${DURATION}ms ease both;
