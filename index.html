@@ -19,11 +19,30 @@
 ═══════════════════════════════════════════════════════════════════════════ -->
 <script>
 // Force clear cache if version changed
-if(localStorage.getItem('hp_version') !== 'v31.6') {
-  // Keep Firebase auth but clear nav/order caches
+if(localStorage.getItem('hp_version') !== 'v31.7') {
   localStorage.removeItem('mainNav');
   localStorage.removeItem('mehrOrder');
-  localStorage.setItem('hp_version','v31.6');
+  localStorage.setItem('hp_version','v31.7');
+  // Force SW update
+  if('serviceWorker' in navigator) {
+    navigator.serviceWorker.getRegistrations().then(function(regs) {
+      regs.forEach(function(reg) {
+        reg.update();
+        reg.unregister();
+      });
+    });
+    // Clear all caches
+    if(window.caches) {
+      caches.keys().then(function(keys) {
+        keys.forEach(function(k) { caches.delete(k); });
+      });
+    }
+    // Reload once after clearing
+    if(!sessionStorage.getItem('reloaded_v31_7')) {
+      sessionStorage.setItem('reloaded_v31_7','1');
+      window.location.reload(true);
+    }
+  }
 }
 window.FIREBASE_CONFIG = {
   apiKey:            "AIzaSyB2YSWcf1Kk2QG_JcCjkgJikx-f73yj-kc",
