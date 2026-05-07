@@ -19,10 +19,10 @@
 ═══════════════════════════════════════════════════════════════════════════ -->
 <script>
 // Force clear cache if version changed
-if(localStorage.getItem('hp_version') !== 'v31.9') {
+if(localStorage.getItem('hp_version') !== 'v32.0') {
   localStorage.removeItem('mainNav');
   localStorage.removeItem('mehrOrder');
-  localStorage.setItem('hp_version','v31.9');
+  localStorage.setItem('hp_version','v32.0');
   // Force SW update
   if('serviceWorker' in navigator) {
     navigator.serviceWorker.getRegistrations().then(function(regs) {
@@ -38,8 +38,8 @@ if(localStorage.getItem('hp_version') !== 'v31.9') {
       });
     }
     // Reload once after clearing
-    if(!sessionStorage.getItem('reloaded_v31_9')) {
-      sessionStorage.setItem('reloaded_v31_9','1');
+    if(!sessionStorage.getItem('reloaded_v32_0')) {
+      sessionStorage.setItem('reloaded_v32_0','1');
       window.location.reload(true);
     }
   }
@@ -8044,6 +8044,8 @@ window.drawFieberChart = function() {
     ctx.fillStyle=p.t>39.5?'#d44b4b':p.t>38.5?'#d4844b':'#4db84e'; ctx.fill();
   });
 };
+
+window.selectMedikament = function(nameOrEl) {
   const name = (typeof nameOrEl === 'string') ? nameOrEl : nameOrEl?.dataset?.med || '';
   if(!name) return;
   const inp = document.getElementById('b-medikament');
