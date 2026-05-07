@@ -19,10 +19,10 @@
 ═══════════════════════════════════════════════════════════════════════════ -->
 <script>
 // Force clear cache if version changed
-if(localStorage.getItem('hp_version') !== 'v31.7') {
+if(localStorage.getItem('hp_version') !== 'v31.8') {
   localStorage.removeItem('mainNav');
   localStorage.removeItem('mehrOrder');
-  localStorage.setItem('hp_version','v31.7');
+  localStorage.setItem('hp_version','v31.8');
   // Force SW update
   if('serviceWorker' in navigator) {
     navigator.serviceWorker.getRegistrations().then(function(regs) {
@@ -38,8 +38,8 @@ if(localStorage.getItem('hp_version') !== 'v31.7') {
       });
     }
     // Reload once after clearing
-    if(!sessionStorage.getItem('reloaded_v31_7')) {
-      sessionStorage.setItem('reloaded_v31_7','1');
+    if(!sessionStorage.getItem('reloaded_v31_8')) {
+      sessionStorage.setItem('reloaded_v31_8','1');
       window.location.reload(true);
     }
   }
@@ -6138,93 +6138,6 @@ function renderSaisonvergleich() {
   `;
 }
 
-  // Aktuelle Saison berechnen
-  const milchListe = Object.values(milchEintraege);
-  const milchGesamt = milchListe.reduce((s,m)=>s+(m.gesamt||0),0);
-  const kuhListe = Object.values(kuehe);
-  const behandlungenAkt = Object.values(behandlungen);
-  const alpungTage = saisonInfo?.auftriebDatum
-    ? Math.floor((heute - saisonInfo.auftriebDatum) / 86400000) + 1
-    : 0;
-  const tagesMilch = {};
-  milchListe.forEach(m => {
-    const tag = m.datum ? new Date(m.datum).toISOString().slice(0,10) : null;
-    if(tag) tagesMilch[tag] = (tagesMilch[tag]||0) + (m.gesamt||0);
-  });
-  const tagWerte = Object.values(tagesMilch);
-  const schnittMilch = tagWerte.length ? Math.round(milchGesamt/tagWerte.length) : 0;
-
-  // Archivierte Saisons
-  const archivListe = Object.entries(saisonArchiv).sort((a,b)=>b[0].localeCompare(a[0]));
-
-  // Aktuelle Saison in Archiv speichern (Button)
-  return `
-    <div class="page-header">
-      <h2>📈 Saisonvergleich</h2>
-      <button class="btn-xs" onclick="saisonArchivieren()" style="font-size:.72rem">💾 Saison archivieren</button>
-    </div>
-
-    <div class="section-title">Aktuelle Saison ${aktJahr}</div>
-    <div class="stats-grid" style="grid-template-columns:1fr 1fr">
-      <div class="stat-card"><div class="stat-icon">🥛</div><div class="stat-num">${Math.round(milchGesamt)}L</div><div class="stat-label">Milch gesamt</div></div>
-      <div class="stat-card"><div class="stat-icon">📅</div><div class="stat-num">${alpungTage}</div><div class="stat-label">Alpungstage</div></div>
-      <div class="stat-card"><div class="stat-icon">🐄</div><div class="stat-num">${kuhListe.length}</div><div class="stat-label">Kühe</div></div>
-      <div class="stat-card"><div class="stat-icon">⌀</div><div class="stat-num">${schnittMilch}L</div><div class="stat-label">Ø pro Melktag</div></div>
-      <div class="stat-card"><div class="stat-icon">⚕</div><div class="stat-num">${behandlungenAkt.length}</div><div class="stat-label">Behandlungen</div></div>
-      <div class="stat-card" onclick="navigate('aufgaben')" style="cursor:pointer">
-        <div class="stat-icon">✅</div>
-        <div class="stat-num" style="color:${aufgabenUeberfaellig&&aufgabenUeberfaellig()>0?'var(--red)':'var(--text)'}">${aufgabenOffen?aufgabenOffen():0}</div>
-        <div class="stat-label">Aufgaben${aufgabenUeberfaellig&&aufgabenUeberfaellig()>0?` <span style="color:var(--red)">⚠</span>`:''}
-        </div>
-      </div>
-      <div class="stat-card"><div class="stat-icon">🐮</div><div class="stat-num">${Object.values(besamungen).length}</div><div class="stat-label">Besamungen</div></div>
-    </div>
-
-    ${archivListe.length ? `
-    <div class="section-title">Archivierte Saisons</div>
-    <div class="card-list">
-      ${archivListe.map(([key, s]) => {
-        const diffMilch = milchGesamt && s.milchGesamt ? Math.round((milchGesamt - s.milchGesamt) / s.milchGesamt * 100) : null;
-        return `<div class="list-card" style="flex-direction:column;align-items:flex-start;gap:.4rem">
-          <div style="display:flex;justify-content:space-between;width:100%;align-items:center">
-            <div class="list-card-title">Saison ${s.jahr||key}</div>
-            <button class="btn-xs-danger" onclick="deleteSaisonArchiv('${key}')">✕</button>
-          </div>
-          <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:.4rem;width:100%">
-            <div style="text-align:center;background:var(--bg);border-radius:8px;padding:.4rem">
-              <div style="font-size:.68rem;color:var(--text3)">Milch</div>
-              <div style="font-size:.9rem;color:var(--gold);font-weight:bold">${Math.round(s.milchGesamt||0)}L</div>
-              ${diffMilch!==null?`<div style="font-size:.65rem;color:${diffMilch>=0?'var(--green)':'var(--red)'}">${diffMilch>=0?'+':''}${diffMilch}% akt.</div>`:''}
-            </div>
-            <div style="text-align:center;background:var(--bg);border-radius:8px;padding:.4rem">
-              <div style="font-size:.68rem;color:var(--text3)">Tage</div>
-              <div style="font-size:.9rem;color:var(--text);font-weight:bold">${s.alpungTage||'–'}</div>
-            </div>
-            <div style="text-align:center;background:var(--bg);border-radius:8px;padding:.4rem">
-              <div style="font-size:.68rem;color:var(--text3)">Kühe</div>
-              <div style="font-size:.9rem;color:var(--text);font-weight:bold">${s.kueheAnzahl||'–'}</div>
-            </div>
-          </div>
-          ${s.notiz?`<div style="font-size:.75rem;color:var(--text3);font-style:italic">${s.notiz}</div>`:''}
-        </div>`;
-      }).join('')}
-    </div>` : `<div class="empty-state" style="margin-top:.8rem">Noch keine archivierten Saisons.<br><small>Am Saisonende „Saison archivieren" tippen.</small></div>`}
-
-    <div id="saisonarchiv-overlay" class="form-overlay" style="display:none">
-      <div class="form-sheet">
-        <div class="form-header"><h3>Saison archivieren</h3><button class="close-btn" onclick="closeForm('saisonarchiv-overlay')">✕</button></div>
-        <div class="form-body">
-          <p style="font-size:.83rem;color:var(--text2);margin-bottom:.8rem">Aktuelle Saison ${aktJahr} mit ${Math.round(milchGesamt)}L Milch und ${kuhListe.length} Kühen archivieren?</p>
-          <textarea id="sa-notiz" class="inp" rows="2" placeholder="Saisonnotiz (z.B. Trockenheit, Seuche, außergewöhnliches Wetter)"></textarea>
-          <div class="form-actions">
-            <button class="btn-secondary" onclick="closeForm('saisonarchiv-overlay')">Abbrechen</button>
-            <button class="btn-primary" onclick="saveSaisonArchiv()">Archivieren</button>
-          </div>
-        </div>
-      </div>
-    </div>
-  `;
-}
 window.svToggleSaison = function(key) {
   var sel = window._svAusgewaehlt || [String(saisonInfo?.jahr||new Date().getFullYear())];
   var idx = sel.indexOf(key);
