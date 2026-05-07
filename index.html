@@ -19,11 +19,11 @@
 ═══════════════════════════════════════════════════════════════════════════ -->
 <script>
 // Force clear cache if version changed
-if(localStorage.getItem('hp_version') !== 'v31.5') {
+if(localStorage.getItem('hp_version') !== 'v31.6') {
   // Keep Firebase auth but clear nav/order caches
   localStorage.removeItem('mainNav');
   localStorage.removeItem('mehrOrder');
-  localStorage.setItem('hp_version','v31.5');
+  localStorage.setItem('hp_version','v31.6');
 }
 window.FIREBASE_CONFIG = {
   apiKey:            "AIzaSyB2YSWcf1Kk2QG_JcCjkgJikx-f73yj-kc",
@@ -4701,7 +4701,7 @@ window.druckeWartungsprotokoll = function(mid, hid) {
     ${checkRows?`<h2>Checkliste</h2><table><tr><th>Punkt</th><th>Ergebnis</th></tr>${checkRows}</table>`:''}
     ${h.notiz?`<h2>Notizen</h2><p>${h.notiz}</p>`:''}
     <div class="footer">HerdenPro · Engineering by LN Machinery · Erstellt: ${new Date().toLocaleDateString('de-AT')}</div>
-    <script>window.onload=function(){window.print();}<\/script>
+    ${'<scr'+'ipt>window.onload=function(){window.print();}</'+'script>'}
   </body></html>`;
 
   const w = window.open('','_blank');
@@ -6745,7 +6745,7 @@ window.exportJahresbericht = function(saisonKey) {
     '<span>HerdenPro · '+alm+' · Saison '+jahr+' · Engineering by LN Machinery</span>'+
     '<span>Erstellt: '+new Date().toLocaleDateString('de-AT')+'</span>'+
   '</div>'+
-  '<script>window.onload=function(){window.print();}<\/script>'+
+  '<scr'+'ipt>window.onload=function(){window.print();}</'+'script>'+
   '</body></html>';
 
   var w = window.open('','_blank');
