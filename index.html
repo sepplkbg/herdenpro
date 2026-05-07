@@ -19,11 +19,11 @@
 ═══════════════════════════════════════════════════════════════════════════ -->
 <script>
 // Force clear cache if version changed
-if(localStorage.getItem('hp_version') !== 'v29.1') {
+if(localStorage.getItem('hp_version') !== 'v29.8') {
   // Keep Firebase auth but clear nav/order caches
   localStorage.removeItem('mainNav');
   localStorage.removeItem('mehrOrder');
-  localStorage.setItem('hp_version','v29.1');
+  localStorage.setItem('hp_version','v29.8');
 }
 window.FIREBASE_CONFIG = {
   apiKey:            "AIzaSyB2YSWcf1Kk2QG_JcCjkgJikx-f73yj-kc",
@@ -1681,8 +1681,10 @@ function renderKuhDetail() {
           <span style="display:inline-flex;align-items:center;gap:4px;font-size:.72rem;padding:3px 9px;border-radius:12px;background:rgba(0,0,0,.25);color:${statusColor};border:1px solid ${statusColor}44">
             <span class="kd-status-dot"></span>${statusText}
           </span>
-          ${k.laktation?`<span class="tag tag-blue" style="font-size:.68rem">${{melkend:'🥛 Melkend',trocken:'💧 Trocken',tragend:'🐄 Tragend',jung:'🌱 Jungtier',trockengestellt:'⏸ Trockengestellt'}[k.laktation]||k.laktation}</span>`:''}
-          ${k.bio?'<span class="tag tag-green" style="font-size:.68rem">🌿 Bio</span>':''}
+          ${'melkend trocken tragend jung trockengestellt'.split(' ').includes(k.laktation)?`<span class="tag tag-blue" style="font-size:.68rem">${{melkend:'🥛 Melkend',trocken:'💧 Trocken',tragend:'🐄 Tragend',jung:'🌱 Jungtier',trockengestellt:'⏸ Trockengestellt'}[k.laktation]}</span>`:''}
+          ${k.bio
+            ? '<span class="tag tag-green" style="font-size:.68rem">🌿 Bio</span>'
+            : '<span style="font-size:.68rem;padding:3px 9px;border-radius:12px;background:rgba(100,100,100,.15);color:var(--text3);border:1px solid rgba(100,100,100,.25)">⚙ Konventionell</span>'}
         </div>
 
         ${wzMin!==null?`<div style="font-size:.72rem;color:var(--orange);margin-top:.35rem;display:flex;align-items:center;gap:4px"><span style="animation:kd-dot 1.2s ease-in-out infinite;display:inline-block;width:7px;height:7px;background:var(--orange);border-radius:50%"></span>⚕ WZ Milch noch ${wzMin} Tage</div>`:''}
@@ -2790,7 +2792,7 @@ function checkWartezeiten(){
       });
     } else {
       bErinnerung.forEach(e=>{
-        try{ new Notification('🐄 Trächtigkeitsprüfung',{body:`${e.kuhName} #${e.kuhNr}`}); }catch(_){}
+        try{ swNotify('🐄 Trächtigkeitsprüfung',{body:`${e.kuhName} #${e.kuhNr}`}); }catch(_){}
       });
     }
   }
@@ -3539,7 +3541,7 @@ window.checkKalenderErinnerungen = function() {
       if(diffTage===data.tage) {
         const notifKey='kalNotifSent_'+key+'_'+isoDate(new Date());
         if(localStorage.getItem(notifKey)) continue;
-        new Notification('📅 Termin in '+data.tage+' Tag'+(data.tage>1?'en':''),{body:label,icon:'./icon-192.png',tag:key});
+        swNotify('📅 Termin in '+data.tage+' Tag'+(data.tage>1?'en':''),{body:label,icon:'./icon-192.png',tag:key});
         localStorage.setItem(notifKey,'1');
       }
     } catch(e){}
@@ -4084,6 +4086,11 @@ function renderStallplan() {
   const stall = aktivStall ? stallplan[aktivStall] : null;
   const stallListe = Object.entries(stallplan);
   const heute = Date.now();
+  const aktivWerkzeug = window._spWerkzeug || 'kuh'; // aktives Toolbar-Werkzeug
+
+  // Zell-Typen: kuh | gang | tuer | fenster | pfeiler | leer
+  const zellen = stall ? (stall.zellen || {}) : {};
+  const boxen  = stall ? (stall.boxen  || {}) : {};
 
   function kuhStatus(kuhId) {
     const aktBeh = Object.values(behandlungen).filter(b=>b.kuhId===kuhId&&b.aktiv);
@@ -4094,99 +4101,133 @@ function renderStallplan() {
     return 'gruen';
   }
 
-  function boxHTML(stallId, boxIdx, kuhId) {
+  function zelleHTML(stallId, idx) {
+    const typ = zellen[idx] || 'leer';
+    const kuhId = (typ === 'kuh' || typ === 'leer') ? (boxen[idx] || '') : '';
     const k = kuhId ? kuehe[kuhId] : null;
     const status = k ? kuhStatus(kuhId) : null;
     const ampelColor = {gruen:'#4db84e',orange:'#d4844b',rot:'#d44b4b'}[status]||'transparent';
     const foto = kuhId && fotos[kuhId] ? fotos[kuhId].data : null;
-    const tuer = stall.tueren?.[boxIdx] || '';
-    const tuerPos = {
-      top:'top:-5px;left:50%;transform:translateX(-50%)',
-      bottom:'bottom:-5px;left:50%;transform:translateX(-50%)',
-      left:'left:-5px;top:50%;transform:translateY(-50%)',
-      right:'right:-5px;top:50%;transform:translateY(-50%)',
-    };
-    const clickHandler = k ? `spBoxKlick('${stallId}',${boxIdx},'${kuhId}')` : `spBoxTippen('${stallId}',${boxIdx},'')`;
+    const isEditModus = window._spBauModus;
+
+    // Spezial-Zellen
+    if(typ === 'gang') {
+      return `<div onclick="spZelleTippen('${stallId}',${idx})"
+        style="border-radius:4px;min-height:72px;display:flex;align-items:center;justify-content:center;
+          background:repeating-linear-gradient(45deg,#2a2a2a,#2a2a2a 4px,#333 4px,#333 8px);
+          border:2px dashed #555;cursor:${isEditModus?'pointer':'default'};position:relative;overflow:hidden">
+        <span style="font-size:.65rem;color:#888;font-weight:700;letter-spacing:.06em;text-transform:uppercase;
+          background:rgba(0,0,0,.6);padding:2px 6px;border-radius:4px">GANG</span>
+        ${isEditModus?`<div style="position:absolute;top:2px;right:2px;font-size:.55rem;color:#666">✕</div>`:''}
+      </div>`;
+    }
+    if(typ === 'tuer') {
+      return `<div onclick="spZelleTippen('${stallId}',${idx})"
+        style="border-radius:4px;min-height:72px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;
+          background:linear-gradient(135deg,#3d2008,#5a3010);border:2px solid #8B6914;cursor:${isEditModus?'pointer':'default'};position:relative">
+        <div style="font-size:1.6rem;line-height:1">🚪</div>
+        <div style="font-size:.58rem;color:#d4a84b;font-weight:700">TÜR</div>
+        <!-- Türbogen -->
+        <div style="position:absolute;bottom:0;left:20%;right:20%;height:60%;border:3px solid #c8860a;border-bottom:none;border-radius:50% 50% 0 0"></div>
+        ${isEditModus?`<div style="position:absolute;top:2px;right:2px;font-size:.55rem;color:#8B6914">✕</div>`:''}
+      </div>`;
+    }
+    if(typ === 'fenster') {
+      return `<div onclick="spZelleTippen('${stallId}',${idx})"
+        style="border-radius:4px;min-height:72px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;
+          background:linear-gradient(135deg,rgba(74,184,232,.15),rgba(74,184,232,.05));border:2px solid #4ab8e8;cursor:${isEditModus?'pointer':'default'};position:relative">
+        <!-- Fensterscheibe -->
+        <div style="width:36px;height:28px;border:2px solid #4ab8e8;border-radius:2px;background:rgba(74,184,232,.2);position:relative">
+          <div style="position:absolute;top:50%;left:0;right:0;height:1px;background:#4ab8e8;opacity:.5"></div>
+          <div style="position:absolute;left:50%;top:0;bottom:0;width:1px;background:#4ab8e8;opacity:.5"></div>
+        </div>
+        <div style="font-size:.58rem;color:#4ab8e8;font-weight:700">FENSTER</div>
+        ${isEditModus?`<div style="position:absolute;top:2px;right:2px;font-size:.55rem;color:#4ab8e8">✕</div>`:''}
+      </div>`;
+    }
+    if(typ === 'pfeiler') {
+      return `<div onclick="spZelleTippen('${stallId}',${idx})"
+        style="border-radius:4px;min-height:72px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;
+          background:linear-gradient(135deg,#1a1a1a,#2a2a2a);border:3px solid #444;cursor:${isEditModus?'pointer':'default'};position:relative">
+        <div style="width:28px;height:28px;background:#333;border:2px solid #555;border-radius:2px;
+          box-shadow:inset 0 0 8px rgba(0,0,0,.8)"></div>
+        <div style="font-size:.58rem;color:#666;font-weight:700">PFEILER</div>
+        ${isEditModus?`<div style="position:absolute;top:2px;right:2px;font-size:.55rem;color:#555">✕</div>`:''}
+      </div>`;
+    }
+
+    // Normal: Kuh-Box oder leer
+    const clickHandler = isEditModus
+      ? `spZelleTippen('${stallId}',${idx})`
+      : (k ? `spBoxKlick('${stallId}',${idx},'${kuhId}')` : `spBoxTippen('${stallId}',${idx},'')`);
 
     return `<div class="sp-box ${k?'sp-box-belegt':'sp-box-leer'}"
-      id="sp-box-${stallId}-${boxIdx}"
+      id="sp-box-${stallId}-${idx}"
       onclick="${clickHandler}"
-      data-stallid="${stallId}" data-boxidx="${boxIdx}" data-kuhid="${kuhId||''}"
-      style="position:relative;background:${k?'var(--bg3)':'var(--bg2)'};border:1.5px solid ${k?'rgba(212,168,75,.25)':'var(--border)'};border-radius:10px;padding:.35rem .3rem;text-align:center;cursor:pointer;transition:all .15s;min-height:72px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px"
-      onpointerdown="spBoxPointerDown(this,event)" onpointerup="spBoxPointerUp(this)" onpointerleave="spBoxPointerUp(this)">
-      <div style="position:absolute;top:3px;left:4px;font-size:.55rem;color:var(--text3);font-weight:600">${boxIdx+1}</div>
+      data-stallid="${stallId}" data-boxidx="${idx}" data-kuhid="${kuhId||''}"
+      style="position:relative;background:${k?'var(--bg3)':'var(--bg2)'};border:1.5px solid ${k?'rgba(212,168,75,.25)':'var(--border)'};border-radius:10px;padding:.35rem .3rem;text-align:center;cursor:pointer;transition:all .15s;min-height:72px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;${isEditModus&&!k?'border-style:dashed;':''}"
+      onpointerdown="${isEditModus?'':"spBoxPointerDown(this,event)"}" onpointerup="${isEditModus?'':"spBoxPointerUp(this)"}" onpointerleave="${isEditModus?'':"spBoxPointerUp(this)"}">
+      <div style="position:absolute;top:3px;left:4px;font-size:.55rem;color:var(--text3);font-weight:600">${idx+1}</div>
       ${k?`<div style="position:absolute;top:3px;right:4px;width:7px;height:7px;border-radius:50%;background:${ampelColor};box-shadow:0 0 5px ${ampelColor}"></div>`:''}
-      ${tuer?`<div style="position:absolute;${tuerPos[tuer]};background:#8B6914;width:${tuer==='left'||tuer==='right'?'5px':'12px'};height:${tuer==='top'||tuer==='bottom'?'5px':'12px'};border-radius:2px;border:1px solid var(--gold);z-index:2"><div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);font-size:8px">🚪</div></div>`:''}
-      <div class="sp-kuh-content" id="sp-content-${stallId}-${boxIdx}" style="${k?'opacity:0':''}">
+      <div class="sp-kuh-content" id="sp-content-${stallId}-${idx}" style="${k?'opacity:0':''}">
         ${foto
           ? `<img src="${foto}" style="width:32px;height:32px;border-radius:50%;object-fit:cover;border:1.5px solid ${ampelColor};margin-bottom:1px" />`
-          : k ? `<div style="font-size:1.3rem;line-height:1">🐄</div>` : `<div style="font-size:1rem;color:var(--text3)">+</div>`}
+          : k ? `<div style="font-size:1.3rem;line-height:1">🐄</div>` : isEditModus ? `<div style="font-size:1rem;color:var(--text3);opacity:.4">+</div>` : `<div style="font-size:1rem;color:var(--text3)">+</div>`}
         ${k ? `<div style="font-size:.6rem;font-weight:700;color:var(--text);line-height:1.1;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${k.name||'#'+k.nr}</div>
                <div style="font-size:.52rem;color:var(--text3)">#${k.nr}</div>` : ''}
       </div>
-      ${window._spEditModus?`<div onclick="event.stopPropagation();spTuerMenu('${stallId}',${boxIdx},this)" style="position:absolute;bottom:2px;right:2px;font-size:.6rem;background:rgba(0,0,0,.4);border-radius:4px;padding:1px 3px;cursor:pointer;color:var(--gold)">🚪</div>`:''}
     </div>`;
   }
 
-  // Belegte Boxen für die Animation sammeln
-  const belegteBoxen = stall ? Object.entries(stall.boxen||{})
+  const belegteBoxen = stall ? Object.entries(boxen)
     .filter(([,kuhId])=>kuhId && kuehe[kuhId])
     .sort((a,b)=>parseInt(a[0])-parseInt(b[0])) : [];
+
+  const WERKZEUGE = [
+    {id:'kuh',    label:'🐄 Kuh',    farbe:'var(--gold)',  desc:'Kuh zuweisen'},
+    {id:'gang',   label:'▬ Gang',    farbe:'#555',         desc:'Gang / Laufgang'},
+    {id:'tuer',   label:'🚪 Tür',    farbe:'#8B6914',      desc:'Ein-/Ausgang'},
+    {id:'fenster',label:'🪟 Fenster',farbe:'#4ab8e8',      desc:'Fenster'},
+    {id:'pfeiler',label:'◼ Pfeiler', farbe:'#444',         desc:'Stütze / Pfeiler'},
+    {id:'leer',   label:'✕ Löschen', farbe:'var(--red)',   desc:'Element löschen'},
+  ];
 
   return `
     <style>
       .sp-box:hover { border-color: rgba(212,168,75,.5) !important; }
-
-      /* ── Laufende Kuh ── */
-      @keyframes spKuhLauf {
-        0%   { transform: translateX(0) scaleX(1); }
-        45%  { transform: translateX(var(--sp-ziel-x)) translateY(-2px) scaleX(1); }
-        55%  { transform: translateX(var(--sp-ziel-x)) translateY(-2px) scaleX(1); }
-        65%  { transform: translateX(var(--sp-ziel-x)) translateY(-8px) scaleX(1); }
-        75%  { transform: translateX(var(--sp-ziel-x)) translateY(2px) scaleX(1); }
-        85%  { transform: translateX(var(--sp-ziel-x)) translateY(-3px) scaleX(1); }
-        100% { transform: translateX(var(--sp-ziel-x)) translateY(0) scaleX(1); }
-      }
-      @keyframes spKuhVerschwinde {
-        0%   { opacity:1; transform: scale(1); }
-        70%  { opacity:1; transform: scale(1); }
-        85%  { opacity:0; transform: scale(0.3); }
-        100% { opacity:0; transform: scale(0); }
-      }
-      @keyframes spBoxAuftauchen {
-        0%   { opacity:0; transform: scale(0.3); }
-        60%  { opacity:1; transform: scale(1.15); }
-        80%  { transform: scale(0.92); }
-        100% { opacity:1; transform: scale(1); }
-      }
-      .sp-kuh-einspringen {
-        animation: spBoxAuftauchen 0.4s cubic-bezier(.16,1,.3,1) forwards;
-      }
-      #sp-lauf-container {
-        position:fixed;
-        top:0; left:0; right:0; bottom:0;
-        pointer-events:none;
-        z-index:500;
-        overflow:hidden;
-      }
-      .sp-lauf-kuh {
-        position:absolute;
-        font-size:2.2rem;
-        line-height:1;
-        will-change:transform;
-        white-space:nowrap;
-      }
+      .sp-werkzeug-btn { flex:1;padding:.4rem .2rem;border:2px solid transparent;border-radius:10px;background:var(--bg3);cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:2px;transition:all .15s;min-width:0 }
+      .sp-werkzeug-btn.aktiv { border-color:var(--aktiv-farbe,var(--gold));background:rgba(212,168,75,.1); }
+      .sp-werkzeug-btn:active { transform:scale(.92); }
+      @keyframes spBoxAuftauchen { 0%{opacity:0;transform:scale(.3)} 60%{opacity:1;transform:scale(1.15)} 80%{transform:scale(.92)} 100%{opacity:1;transform:scale(1)} }
+      #sp-lauf-container { position:fixed;top:0;left:0;right:0;bottom:0;pointer-events:none;z-index:500;overflow:hidden }
+      .sp-lauf-kuh { position:absolute;font-size:2.2rem;line-height:1;will-change:transform;white-space:nowrap }
     </style>
 
     <div class="page-header">
       <h2>🏚 Stallplan</h2>
       <div style="display:flex;gap:.35rem">
-        <button class="btn-secondary ${window._spEditModus?'active':''}" onclick="window._spEditModus=!window._spEditModus;render()" title="Tür-Modus">🚪</button>
+        <button class="btn-secondary ${window._spBauModus?'active':''}"
+          onclick="window._spBauModus=!window._spBauModus;render()"
+          style="${window._spBauModus?'background:rgba(212,168,75,.2);border-color:var(--gold);color:var(--gold)':''}"
+          title="Baumodus">🔨</button>
         <button class="btn-primary" onclick="spNeuerStall()">+ Stall</button>
       </div>
     </div>
 
-    ${window._spEditModus?`<div style="background:rgba(212,168,75,.1);border:1px solid rgba(212,168,75,.3);border-radius:var(--radius-sm);padding:.4rem .8rem;margin-bottom:.5rem;font-size:.75rem;color:var(--gold)">🚪 Tür-Modus – 🚪 in der Box antippen</div>`:''}
+    ${window._spBauModus ? `
+    <div style="background:rgba(212,168,75,.08);border:1px solid rgba(212,168,75,.25);border-radius:var(--radius-sm);padding:.4rem .7rem;margin-bottom:.5rem;font-size:.75rem;color:var(--gold)">
+      🔨 Baumodus – Werkzeug wählen, dann Zelle antippen
+    </div>
+    <!-- Werkzeug-Toolbar -->
+    <div style="display:flex;gap:.25rem;margin-bottom:.6rem;overflow-x:auto;padding:.1rem 0">
+      ${WERKZEUGE.map(w=>`
+        <button class="sp-werkzeug-btn ${aktivWerkzeug===w.id?'aktiv':''}"
+          style="--aktiv-farbe:${w.farbe}"
+          onclick="window._spWerkzeug='${w.id}';render()">
+          <span style="font-size:.9rem">${w.label.split(' ')[0]}</span>
+          <span style="font-size:.58rem;color:${aktivWerkzeug===w.id?w.farbe:'var(--text3)'};white-space:nowrap">${w.label.split(' ').slice(1).join(' ')||''}</span>
+        </button>`).join('')}
+    </div>` : ''}
 
     ${stallListe.length > 0 ? `
     <div style="display:flex;gap:.3rem;flex-wrap:wrap;margin-bottom:.7rem;align-items:center">
@@ -4201,7 +4242,7 @@ function renderStallplan() {
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.5rem">
       <div>
         <div style="font-size:1rem;font-weight:700;color:var(--gold)">${stall.name}</div>
-        <div style="font-size:.72rem;color:var(--text3)">${stall.reihen} Reihen × ${stall.spalten} Spalten = ${stall.reihen*stall.spalten} Boxen</div>
+        <div style="font-size:.72rem;color:var(--text3)">${stall.reihen} × ${stall.spalten} = ${stall.reihen*stall.spalten} Zellen</div>
       </div>
       <div style="display:flex;gap:.3rem">
         <button class="btn-xs" onclick="spStallBearbeiten('${aktivStall}')">✎</button>
@@ -4209,24 +4250,23 @@ function renderStallplan() {
       </div>
     </div>
 
-    <div style="display:flex;gap:.8rem;margin-bottom:.6rem;font-size:.68rem;color:var(--text3);flex-wrap:wrap">
+    ${!window._spBauModus ? `
+    <div style="display:flex;gap:.8rem;margin-bottom:.5rem;font-size:.68rem;color:var(--text3);flex-wrap:wrap">
       <span><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#4db84e;margin-right:3px"></span>OK</span>
-      <span><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#d4844b;margin-right:3px"></span>WZ läuft</span>
-      <span><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#d44b4b;margin-right:3px"></span>WZ endet bald</span>
+      <span><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#d4844b;margin-right:3px"></span>WZ</span>
+      <span>🐄 Tippen = Profil · Lang drücken = ändern</span>
+    </div>` : ''}
+
+    <div style="display:grid;grid-template-columns:repeat(${stall.spalten},1fr);gap:.25rem">
+      ${Array.from({length:stall.reihen*stall.spalten},(_,i)=>zelleHTML(aktivStall, i)).join('')}
     </div>
 
-    <div id="sp-grid-${aktivStall}" style="display:grid;grid-template-columns:repeat(${stall.spalten},1fr);gap:.3rem">
-      ${Array.from({length:stall.reihen*stall.spalten},(_,i)=>{
-        const kuhId = stall.boxen?.[i] || '';
-        return boxHTML(aktivStall, i, kuhId);
-      }).join('')}
-    </div>
-
-    <div style="margin-top:.8rem;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);padding:.5rem .8rem">
-      <div style="display:flex;justify-content:space-between;font-size:.78rem">
-        <span style="color:var(--text2)">Belegt: <b style="color:var(--gold)">${belegteBoxen.length}</b></span>
-        <span style="color:var(--text2)">Frei: <b style="color:var(--green)">${stall.reihen*stall.spalten - belegteBoxen.length}</b></span>
-        <span style="color:var(--text2)">Gesamt: <b>${stall.reihen*stall.spalten}</b></span>
+    <div style="margin-top:.7rem;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);padding:.45rem .8rem">
+      <div style="display:flex;justify-content:space-between;font-size:.75rem;flex-wrap:wrap;gap:.3rem">
+        <span>🐄 <b style="color:var(--gold)">${belegteBoxen.length}</b> Kühe</span>
+        <span>▬ <b style="color:#888">${Object.values(zellen).filter(t=>t==='gang').length}</b> Gänge</span>
+        <span>🚪 <b style="color:#8B6914">${Object.values(zellen).filter(t=>t==='tuer').length}</b> Türen</span>
+        <span>🪟 <b style="color:#4ab8e8">${Object.values(zellen).filter(t=>t==='fenster').length}</b> Fenster</span>
       </div>
     </div>
     ` : `
@@ -4236,18 +4276,18 @@ function renderStallplan() {
       <button class="btn-primary" style="margin-top:.8rem" onclick="spNeuerStall()">+ Ersten Stall anlegen</button>
     </div>`}
 
-    <!-- Stall-Formular -->
+    <!-- Overlays -->
     <div id="sp-stall-overlay" class="form-overlay" style="display:none">
       <div class="form-sheet">
         <div class="form-header"><h3 id="sp-form-title">Stall anlegen</h3><button class="close-btn" onclick="closeForm('sp-stall-overlay')">✕</button></div>
         <div class="form-body">
           <input type="hidden" id="sp-edit-id" value="" />
-          <input id="sp-name" class="inp" placeholder="Stallname" />
+          <input id="sp-name" class="inp" placeholder="Stallname (z.B. Stall A)" />
           <label class="inp-label">Reihen</label>
           <input id="sp-reihen" class="inp" type="number" min="1" max="20" value="4" inputmode="numeric" style="width:100px" />
           <label class="inp-label">Spalten</label>
           <input id="sp-spalten" class="inp" type="number" min="1" max="20" value="5" inputmode="numeric" style="width:100px" />
-          <p style="font-size:.75rem;color:var(--text3);margin:.3rem 0">= <span id="sp-total">20</span> Boxen</p>
+          <p style="font-size:.75rem;color:var(--text3);margin:.3rem 0">= <span id="sp-total">20</span> Zellen</p>
           <div class="form-actions">
             <button class="btn-secondary" onclick="closeForm('sp-stall-overlay')">Abbrechen</button>
             <button class="btn-primary" onclick="spSaveStall()">Speichern</button>
@@ -4255,20 +4295,17 @@ function renderStallplan() {
         </div>
       </div>
     </div>
-
-    <!-- Box-Overlay -->
     <div id="sp-box-overlay" class="form-overlay" style="display:none">
       <div class="form-sheet">
-        <div class="form-header"><h3>Box belegen</h3><button class="close-btn" onclick="closeForm('sp-box-overlay')">✕</button></div>
+        <div class="form-header"><h3>Kuh zuweisen</h3><button class="close-btn" onclick="closeForm('sp-box-overlay')">✕</button></div>
         <div class="form-body">
           <input type="hidden" id="sp-box-stallid" /><input type="hidden" id="sp-box-idx" />
-          <div id="sp-box-kuh-info" style="margin-bottom:.7rem"></div>
-          <label class="inp-label">Kuh zuweisen</label>
+          <div id="sp-box-kuh-info" style="margin-bottom:.5rem"></div>
           <select id="sp-box-kuh" class="inp" style="margin-bottom:.5rem">
             <option value="">— Leer lassen —</option>
             ${Object.entries(kuehe).sort((a,b)=>(parseInt(a[1].nr)||0)-(parseInt(b[1].nr)||0)).map(([id,k])=>`<option value="${id}">#${k.nr} ${k.name||'–'} ${k.bauer?'('+k.bauer+')':''}</option>`).join('')}
           </select>
-          <div id="sp-box-kuh-preview" style="min-height:40px"></div>
+          <div id="sp-box-kuh-preview" style="min-height:30px"></div>
           <div class="form-actions">
             <button class="btn-secondary" onclick="closeForm('sp-box-overlay')">Abbrechen</button>
             <button class="btn-primary" onclick="spSaveBox()">Zuweisen</button>
@@ -4276,27 +4313,39 @@ function renderStallplan() {
         </div>
       </div>
     </div>
-
-    <!-- Tür-Overlay -->
-    <div id="sp-tuer-overlay" class="form-overlay" style="display:none">
-      <div class="form-sheet">
-        <div class="form-header"><h3>🚪 Tür setzen</h3><button class="close-btn" onclick="closeForm('sp-tuer-overlay')">✕</button></div>
-        <div class="form-body">
-          <input type="hidden" id="sp-tuer-stallid" /><input type="hidden" id="sp-tuer-boxidx" />
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:.5rem">
-            <button class="btn-secondary" onclick="spSaveTuer('top')">⬆ Oben</button>
-            <button class="btn-secondary" onclick="spSaveTuer('bottom')">⬇ Unten</button>
-            <button class="btn-secondary" onclick="spSaveTuer('left')">⬅ Links</button>
-            <button class="btn-secondary" onclick="spSaveTuer('right')">➡ Rechts</button>
-          </div>
-          <button class="btn-secondary btn-block" style="margin-top:.5rem;color:var(--red)" onclick="spSaveTuer('')">✕ Tür entfernen</button>
-        </div>
-      </div>
-    </div>
   `;
 }
 
-// ── Box Klick: belegte Box → Kuh-Profil, leere → zuweisen ──
+
+// ── Baumodus: Zelle antippen ──
+window.spZelleTippen = async function(stallId, idx) {
+  const werkzeug = window._spWerkzeug || 'kuh';
+  const stall = stallplan[stallId];
+  if(!stall) return;
+  if(werkzeug === 'kuh') {
+    const aktuellTyp = stall.zellen?.[idx] || 'leer';
+    if(aktuellTyp !== 'leer' && aktuellTyp !== 'kuh') {
+      await update(ref(db,'stallplan/'+stallId+'/zellen'), {[idx]: null});
+    }
+    spBoxTippen(stallId, idx, stall.boxen?.[idx]||'');
+    return;
+  }
+  if(werkzeug === 'leer') {
+    const updates = {};
+    updates['stallplan/'+stallId+'/zellen/'+idx] = null;
+    updates['stallplan/'+stallId+'/boxen/'+idx] = null;
+    await update(ref(db), updates);
+    if(navigator.vibrate) navigator.vibrate(20);
+    return;
+  }
+  const updates = {};
+  updates['stallplan/'+stallId+'/zellen/'+idx] = werkzeug;
+  updates['stallplan/'+stallId+'/boxen/'+idx] = null;
+  await update(ref(db), updates);
+  if(navigator.vibrate) navigator.vibrate(20);
+};
+
+
 window.spBoxKlick = function(stallId, boxIdx, kuhId) {
   if(kuhId && kuehe[kuhId]) {
     showKuhDetail(kuhId);
@@ -4891,7 +4940,7 @@ window.checkBackupErinnerung = function() {
     if('Notification' in window && Notification.permission === 'granted') {
       const notifKey = 'backupNotifSent_' + isoDate(new Date());
       if(!localStorage.getItem(notifKey)) {
-        new Notification('💾 Backup fällig', {
+        swNotify('💾 Backup fällig', {
           body: letztes === 0
             ? 'Noch kein Backup erstellt – jetzt sichern!'
             : 'Letztes Backup vor ' + tageOhneBackup + ' Tagen. Jetzt sichern!',
@@ -5178,6 +5227,43 @@ window.exportJahresbericht = function(saisonKey) {
   if(!w) { alert('Popup blockiert – bitte Popups für diese Seite erlauben'); return; }
   w.document.write(html);
   w.document.close();
+};
+
+// ── Service Worker Notification Helper ──
+// Auf Android/Chrome müssen Notifications via SW gesendet werden
+window.swNotify = async function(title, options) {
+  options = options || {};
+  options.icon = options.icon || './icon-192.png';
+  options.badge = options.badge || './icon-192.png';
+  // Versuche Service Worker
+  if('serviceWorker' in navigator) {
+    try {
+      const reg = await navigator.serviceWorker.ready;
+      if(reg && reg.showNotification) {
+        await reg.showNotification(title, options);
+        return true;
+      }
+    } catch(e) { console.warn('SW notify fail:', e); }
+  }
+  // Fallback direkt
+  try { swNotify(title, options); return true; } catch(e) { return false; }
+};
+
+window.testBenachrichtigung = async function() {
+  if(!('Notification' in window)) {
+    alert('Benachrichtigungen werden nicht unterstützt.\nTipp: App als PWA installieren und Chrome verwenden.');
+    return;
+  }
+  if(Notification.permission !== 'granted') {
+    alert('Benachrichtigungen sind nicht erlaubt. Bitte zuerst erlauben.');
+    return;
+  }
+  const ok = await swNotify('🐄 HerdenPro Test', {
+    body: 'Benachrichtigungen funktionieren! ✓',
+    tag: 'herdenpro-test',
+    vibrate: [100,50,100]
+  });
+  if(!ok) alert('Test fehlgeschlagen. Bitte App über Homescreen öffnen (PWA-Modus).');
 };
 
 window.benachrichtigungErlauben = async function() {
@@ -5800,20 +5886,40 @@ function renderBauerDetail() {
       <div class="history-title">#${k?.nr||''} ${k?.name||''} <span class="tag tag-green">Trächtig</span></div>
       ${bs.erwartetGeburt?`<div class="history-sub">Geburt erw.: ${new Date(bs.erwartetGeburt).toLocaleDateString('de-AT')}</div>`:''}
     </div>`;}).join('')}`:''}
+
+    <!-- Bauer-Bearbeiten Overlay (wird direkt hier eingebettet) -->
+    <div id="bauer-overlay" class="form-overlay" style="display:none">
+      <div class="form-sheet">
+        <div class="form-header"><h3>Bauer bearbeiten</h3><button class="close-btn" onclick="closeForm('bauer-overlay')">✕</button></div>
+        <div class="form-body">
+          <input id="ba-name" class="inp" placeholder="Name *" value="${b.name||''}" />
+          <input id="ba-betrieb" class="inp" placeholder="LFBIS-Nr / Betrieb" value="${b.betrieb||''}" />
+          <input id="ba-tel" class="inp" type="tel" placeholder="Telefon" value="${b.tel||''}" />
+          <input id="ba-email" class="inp" type="email" placeholder="E-Mail" value="${b.email||''}" />
+          <input id="ba-adresse" class="inp" placeholder="Adresse / Ort" value="${b.adresse||''}" />
+          <div class="form-actions">
+            <button class="btn-secondary" onclick="closeForm('bauer-overlay')">Abbrechen</button>
+            <button class="btn-primary" onclick="saveBauer()">Speichern</button>
+          </div>
+        </div>
+      </div>
+    </div>
   `;
 }
 
 window.editBauer = function(id) {
   const b = bauern[id];
   if(!b) return;
-  showBauerForm();
-  setTimeout(()=>{
-    ['name','betrieb','tel','email'].forEach(f=>{
-      const el=document.getElementById('ba-'+f);
-      if(el&&b[f]) el.value=b[f];
-    });
-    window._editBauerId = id;
-  }, 100);
+  window._editBauerId = id;
+  // Overlay öffnen (Werte bereits im Template vorausgefüllt)
+  const ov = document.getElementById('bauer-overlay');
+  if(ov) {
+    ov.style.display = 'flex';
+  } else {
+    // Fallback: zur Bauernliste navigieren und dort öffnen
+    navigate('bauern_menu');
+    setTimeout(()=>{ window._editBauerId=id; showBauerForm(); }, 200);
+  }
 };
 
 // Override saveBauer to support edit
@@ -8563,11 +8669,11 @@ window.checkWartezeiten = function() {
       const k = kuehe[b.kuhId];
       const name = k ? '#'+k.nr+' '+k.name : 'Kuh';
       if(b.wzMilchEnde && b.wzMilchEnde >= heute && b.wzMilchEnde <= morgen)
-        new Notification('⚕ Wartezeit Milch endet heute', {body: name+' · '+(b.medikament||b.diagnose||'Behandlung'), icon:'./icon-192.png', tag:'wz-milch-'+id});
+        swNotify('⚕ Wartezeit Milch endet heute', {body: name+' · '+(b.medikament||b.diagnose||'Behandlung'), icon:'./icon-192.png', tag:'wz-milch-'+id});
       if(b.wzFleischEnde && b.wzFleischEnde >= heute && b.wzFleischEnde <= morgen)
-        new Notification('⚕ Wartezeit Fleisch endet heute', {body: name+' · '+(b.medikament||b.diagnose||'Behandlung'), icon:'./icon-192.png', tag:'wz-fleisch-'+id});
+        swNotify('⚕ Wartezeit Fleisch endet heute', {body: name+' · '+(b.medikament||b.diagnose||'Behandlung'), icon:'./icon-192.png', tag:'wz-fleisch-'+id});
       if(b.folgeTermin && b.folgeTermin >= heute && b.folgeTermin <= morgen)
-        new Notification('📅 Tierarzt-Termin heute', {body: name+' · '+(b.tierarzt||''), icon:'./icon-192.png', tag:'termin-'+id});
+        swNotify('📅 Tierarzt-Termin heute', {body: name+' · '+(b.tierarzt||''), icon:'./icon-192.png', tag:'termin-'+id});
     });
   }
 
@@ -8577,7 +8683,7 @@ window.checkWartezeiten = function() {
       const k = kuehe[bs.kuhId];
       const diff = Math.floor((bs.erwartetGeburt - heute) / 86400000);
       if(diff === 3 || diff === 7)
-        new Notification('🐮 Geburt in '+diff+' Tagen', {body: k ? '#'+k.nr+' '+k.name : 'Kuh', icon:'./icon-192.png', tag:'geburt-'+id+'-'+diff});
+        swNotify('🐮 Geburt in '+diff+' Tagen', {body: k ? '#'+k.nr+' '+k.name : 'Kuh', icon:'./icon-192.png', tag:'geburt-'+id+'-'+diff});
     });
   }
 
@@ -8587,7 +8693,7 @@ window.checkWartezeiten = function() {
       const k = kuehe[bs.kuhId];
       const tagSeit = Math.floor((heute - bs.datum) / 86400000);
       if(tagSeit === 19)
-        new Notification('🔁 Brunst-Kontrolle', {body: '#'+(k?.nr||'')+' '+(k?.name||'Kuh')+' · Tag 19 nach Besamung', icon:'./icon-192.png', tag:'brunst-'+id});
+        swNotify('🔁 Brunst-Kontrolle', {body: '#'+(k?.nr||'')+' '+(k?.name||'Kuh')+' · Tag 19 nach Besamung', icon:'./icon-192.png', tag:'brunst-'+id});
     });
   }
 
@@ -8613,14 +8719,14 @@ window.checkWartezeiten_abend = function() {
 
       if(b.wzMilchEnde && b.wzMilchEnde >= morgenStart && b.wzMilchEnde < morgenEnde) {
         const zeit = b.behandlungZeit === 'abend' ? 'abends' : 'morgens';
-        new Notification('⚕ Morgen: WZ Milch endet ' + zeit, {body: name+' · '+(b.medikament||b.diagnose||'Behandlung'), icon:'./icon-192.png', tag:'wz-milch-abend-'+id});
+        swNotify('⚕ Morgen: WZ Milch endet ' + zeit, {body: name+' · '+(b.medikament||b.diagnose||'Behandlung'), icon:'./icon-192.png', tag:'wz-milch-abend-'+id});
       }
       if(b.wzFleischEnde && b.wzFleischEnde >= morgenStart && b.wzFleischEnde < morgenEnde) {
         const zeit = b.behandlungZeit === 'abend' ? 'abends' : 'morgens';
-        new Notification('⚕ Morgen: WZ Fleisch endet ' + zeit, {body: name+' · '+(b.medikament||b.diagnose||'Behandlung'), icon:'./icon-192.png', tag:'wz-fleisch-abend-'+id});
+        swNotify('⚕ Morgen: WZ Fleisch endet ' + zeit, {body: name+' · '+(b.medikament||b.diagnose||'Behandlung'), icon:'./icon-192.png', tag:'wz-fleisch-abend-'+id});
       }
       if(b.folgeTermin && b.folgeTermin >= morgenStart && b.folgeTermin < morgenEnde)
-        new Notification('📅 Morgen: Tierarzt-Termin', {body: name+' · '+(b.tierarzt||''), icon:'./icon-192.png', tag:'termin-abend-'+id});
+        swNotify('📅 Morgen: Tierarzt-Termin', {body: name+' · '+(b.tierarzt||''), icon:'./icon-192.png', tag:'termin-abend-'+id});
     });
   }
 
@@ -8630,7 +8736,7 @@ window.checkWartezeiten_abend = function() {
       const k = kuehe[bs.kuhId];
       const diff = Math.floor((bs.erwartetGeburt - heute) / 86400000);
       if(diff === 1)
-        new Notification('🐮 Morgen: Geburt erwartet', {body: k ? '#'+k.nr+' '+k.name : 'Kuh', icon:'./icon-192.png', tag:'geburt-abend-'+id});
+        swNotify('🐮 Morgen: Geburt erwartet', {body: k ? '#'+k.nr+' '+k.name : 'Kuh', icon:'./icon-192.png', tag:'geburt-abend-'+id});
     });
   }
 };
