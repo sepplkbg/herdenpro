@@ -19,10 +19,10 @@
 ═══════════════════════════════════════════════════════════════════════════ -->
 <script>
 // Force clear cache if version changed
-if(localStorage.getItem('hp_version') !== 'v32.0') {
+if(localStorage.getItem('hp_version') !== 'v32.1') {
   localStorage.removeItem('mainNav');
   localStorage.removeItem('mehrOrder');
-  localStorage.setItem('hp_version','v32.0');
+  localStorage.setItem('hp_version','v32.1');
   // Force SW update
   if('serviceWorker' in navigator) {
     navigator.serviceWorker.getRegistrations().then(function(regs) {
@@ -38,8 +38,8 @@ if(localStorage.getItem('hp_version') !== 'v32.0') {
       });
     }
     // Reload once after clearing
-    if(!sessionStorage.getItem('reloaded_v32_0')) {
-      sessionStorage.setItem('reloaded_v32_0','1');
+    if(!sessionStorage.getItem('reloaded_v32_1')) {
+      sessionStorage.setItem('reloaded_v32_1','1');
       window.location.reload(true);
     }
   }
@@ -833,6 +833,12 @@ textarea.inp{resize:vertical;min-height:64px}
 <style id="kaese-css">
 /* Käse module styles */
 .kp-toolbar { display:flex;gap:.5rem;align-items:center;flex-wrap:wrap;padding:.5rem .6rem;border-bottom:1px solid var(--border);background:var(--bg2); }
+/* Stallplan Canvas */
+#sp-canvas-wrap{position:relative;overflow:hidden;background:#1a1a1a;border-radius:12px;border:1px solid var(--border);touch-action:none;user-select:none;width:100%;aspect-ratio:4/3}
+#sp-canvas{display:block;width:100%;height:100%}
+.sp-tool-btn{display:flex;flex-direction:column;align-items:center;gap:2px;padding:.4rem .3rem;border-radius:10px;border:2px solid transparent;background:var(--bg3);cursor:pointer;flex:1;min-width:0;font-size:.6rem;color:var(--text3);transition:all .15s}
+.sp-tool-btn.aktiv{border-color:var(--gold);background:rgba(212,168,75,.15);color:var(--gold)}
+.sp-tool-btn:active{transform:scale(.9)}
 .kp-row { display:flex;align-items:center;border-bottom:1px solid var(--border);height:68px; }
 .kp-row-label { width:180px;flex-shrink:0;font-size:.74rem;font-weight:600;padding-right:4px;color:var(--text);display:flex;align-items:center;gap:3px; }
 .kp-dot { width:9px;height:9px;border-radius:50%;flex-shrink:0; }
@@ -5278,27 +5284,7 @@ function renderStallplan() {
 
   const stallListe = Object.entries(window._spStaelle || {});
 
-  return `
-<style>
-#sp-canvas-wrap {
-  position:relative;overflow:hidden;
-  background:#1a1a1a;border-radius:12px;
-  border:1px solid var(--border);
-  touch-action:none;user-select:none;
-  width:100%;aspect-ratio:4/3;
-}
-#sp-canvas { display:block;width:100%;height:100%; }
-.sp-tool-btn {
-  display:flex;flex-direction:column;align-items:center;gap:2px;
-  padding:.4rem .3rem;border-radius:10px;border:2px solid transparent;
-  background:var(--bg3);cursor:pointer;flex:1;min-width:0;
-  font-size:.6rem;color:var(--text3);transition:all .15s;
-}
-.sp-tool-btn.aktiv { border-color:var(--gold);background:rgba(212,168,75,.15);color:var(--gold); }
-.sp-tool-btn:active { transform:scale(.9); }
-</style>
-
-<div class="page-header">
+  return `<div class="page-header">
   <h2>🏚 Stallplan</h2>
   <div style="display:flex;gap:.3rem">
     <button class="btn-xs" onclick="spNeuerStall()">+ Stall</button>
