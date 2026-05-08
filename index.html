@@ -19,11 +19,11 @@
 ═══════════════════════════════════════════════════════════════════════════ -->
 <script>
 // Force clear cache if version changed
-if(localStorage.getItem('hp_version') !== 'v33.3') {
+if(localStorage.getItem('hp_version') !== 'v33.4') {
   localStorage.removeItem('mainNav');
   localStorage.removeItem('mehrOrder');
   localStorage.removeItem('mehrOrder');
-  localStorage.setItem('hp_version','v33.3');
+  localStorage.setItem('hp_version','v33.4');
   // Force SW update
   if('serviceWorker' in navigator) {
     navigator.serviceWorker.getRegistrations().then(function(regs) {
@@ -39,8 +39,8 @@ if(localStorage.getItem('hp_version') !== 'v33.3') {
       });
     }
     // Reload once after clearing
-    if(!sessionStorage.getItem('reloaded_v33_3')) {
-      sessionStorage.setItem('reloaded_v33_3','1');
+    if(!sessionStorage.getItem('reloaded_v33_4')) {
+      sessionStorage.setItem('reloaded_v33_4','1');
       window.location.reload(true);
     }
   }
@@ -49,6 +49,39 @@ if(localStorage.getItem('hp_version') !== 'v33.3') {
 window.toggleFab = function() {
   var fab = document.getElementById('fab-menu');
   if(fab) fab.style.display = fab.style.display==='none'?'flex':'none';
+};
+
+// Vollständige toggleMehrMenu - funktioniert auch vor renderNav
+window.toggleMehrMenu = function(e) {
+  if(e && e.stopPropagation) e.stopPropagation();
+  var m = document.getElementById('mehr-menu');
+  if(!m) return;
+  var isOpen = m.style.display === 'block';
+  m.style.display = isOpen ? 'none' : 'block';
+  if(!isOpen) {
+    var grid = document.getElementById('mehr-grid');
+    if(grid) {
+      var mainNav = window._mainNav || ['dashboard','herde','saison','milch'];
+      var allMods = (window.ALLE_MODULE && window.ALLE_MODULE.length > 4) ? window.ALLE_MODULE : [
+        {id:'zaehlung',icon:'✓',label:'Zählung'},{id:'weide',icon:'🌿',label:'Weide'},
+        {id:'behandlung',icon:'⚕',label:'Behandlung'},{id:'besamung',icon:'🐮',label:'Besamung'},
+        {id:'bestandsbuch',icon:'📋',label:'Bestandsbuch'},{id:'einstellungen',icon:'⚙',label:'Einstellungen'},
+        {id:'journal',icon:'📓',label:'Journal'},{id:'alpung',icon:'📊',label:'Alpungstage'},
+        {id:'kontakte',icon:'📞',label:'Kontakte'},{id:'gruppen',icon:'🏷',label:'Gruppen'},
+        {id:'kontrolle',icon:'🔍',label:'Kontrolle'},{id:'kalender',icon:'📅',label:'Kalender'},
+        {id:'statistik',icon:'📊',label:'Statistik'},{id:'backup',icon:'💾',label:'Backup'},
+        {id:'suche',icon:'🔎',label:'Suche'},{id:'chat',icon:'💬',label:'Chat'},
+        {id:'kraftfutter',icon:'🌾',label:'Kraftfutter'},{id:'wetter',icon:'⛅',label:'Wetter'},
+        {id:'kaese',icon:'🧀',label:'Käse'},{id:'bauern_menu',icon:'👥',label:'Bauern'},
+        {id:'wartung',icon:'🔧',label:'Wartung'},{id:'lager',icon:'📦',label:'Lager'},
+        {id:'aufgaben',icon:'✅',label:'Aufgaben'},
+      ];
+      var imMenu = allMods.filter(function(mod){ return !mainNav.includes(mod.id) && mod.id !== '__drucken__'; });
+      grid.innerHTML = imMenu.map(function(mod){
+        return '<button onclick="(window.navigate&&window.navigate(\''+mod.id+'\'));document.getElementById(\'mehr-menu\').style.display=\'none\'" style="display:flex;flex-direction:column;align-items:center;gap:3px;background:var(--bg3);border:1px solid var(--border);border-radius:10px;padding:.6rem .3rem;font-size:.72rem;color:var(--text2);cursor:pointer;font-family:inherit;width:100%"><span style="font-size:1.3rem">'+mod.icon+'</span>'+mod.label+'</button>';
+      }).join('');
+    }
+  }
 };
 // Fallbacks für Funktionen die vor dem Hauptscript aufgerufen werden könnten
 ['showMilchForm','showKuhForm','showBehandlungForm','showKlauenForm','showKraftfutterForm',
@@ -1126,7 +1159,7 @@ textarea.inp{resize:vertical;min-height:64px}
     <button class="nav-item"        data-view="herde"        onclick="navigate('herde')"><span class="nav-icon">🐄</span>Herde</button>
     <button class="nav-item"        data-view="saison"       onclick="navigate('saison')"><span class="nav-icon">⛰</span>Saison</button>
     <button class="nav-item"        data-view="milch"        onclick="navigate('milch')"><span class="nav-icon">🥛</span>Milch</button>
-    <button class="nav-item"        data-view="mehr"         id="nav-mehr"><span class="nav-icon">⋯</span>Mehr</button>
+    <button class="nav-item"        data-view="mehr"         id="nav-mehr" onclick="window.toggleMehrMenu&&window.toggleMehrMenu(event)"><span class="nav-icon">⋯</span>Mehr</button>
   </nav>
 
   <!-- Mehr-Menü -->
