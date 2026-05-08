@@ -4093,32 +4093,16 @@ window.deleteBenutzer = async function(uid, email) {
     setTimeout(function() { if(firebase.auth) initAuth(); else initApp(); }, 500);
   });
 
-  // Alle verfügbaren Module
-  window.ALLE_MODULE = [
-    {id:'saison',    icon:'▲',   label:'Saison'},
-    {id:'zaehlung',  icon:'✓',   label:'Zählung'},
-    {id:'weide',     icon:'🌿',  label:'Weide'},
-    {id:'behandlung',icon:'⚕',   label:'Behandlung'},
-    {id:'besamung',  icon:'🐮',  label:'Besamung'},
-    {id:'bestandsbuch',icon:'📋',label:'Bestandsbuch'},
-    {id:'einstellungen',icon:'⚙',label:'Einstellungen'},
-    {id:'benutzer',    icon:'👤', label:'Benutzer'},
-    {id:'journal',   icon:'📓',  label:'Journal'},
-    {id:'alpung',    icon:'📊',  label:'Alpungstage'},
-    {id:'kontakte',  icon:'📞',  label:'Kontakte'},
-    {id:'gruppen',   icon:'🏷',  label:'Gruppen'},
-    {id:'kontrolle', icon:'🔍',  label:'Kontrolle'},
-    {id:'kalender',  icon:'📅',  label:'Kalender'},
-    {id:'statistik', icon:'📊',  label:'Statistik'},
-    {id:'backup',    icon:'💾',  label:'Backup'},
-    {id:'suche',     icon:'🔎',  label:'Suche'},
-    {id:'chat',       icon:'💬',  label:'Chat'},
-    {id:'kraftfutter',icon:'🌾',  label:'Kraftfutter'},
-    {id:'wetter',    icon:'⛅',  label:'Wetter'},
-    {id:'kaese',     icon:'🧀',  label:'Käse'},
-    {id:'bauern_menu',icon:'👥',  label:'Bauern'},
-    {id:'__drucken__',icon:'🖨',  label:'Drucken'},
-  ];
+  // ALLE_MODULE wird in index.html (Inline-Script vor app-core.js) gesetzt –
+  // dort ist die kanonische, vollständige Liste mit allen Modulen.
+  // Hier KEINE zweite Zuweisung, sonst wird die Liste überschrieben.
+  if(!window.ALLE_MODULE || !window.ALLE_MODULE.length) {
+    console.warn('ALLE_MODULE nicht aus index.html geladen – Fallback aktiv');
+    window.ALLE_MODULE = [
+      {id:'herde',icon:'🐄',label:'Herde'},{id:'milch',icon:'🥛',label:'Milch'},
+      {id:'saison',icon:'▲',label:'Saison'},{id:'__drucken__',icon:'🖨',label:'Drucken'},
+    ];
+  }
 
   // Standard-Hauptnav (anpassbar)
   var DEFAULT_MAIN_NAV = ['dashboard','herde','saison','milch'];
