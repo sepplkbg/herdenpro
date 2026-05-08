@@ -19,10 +19,10 @@
 ═══════════════════════════════════════════════════════════════════════════ -->
 <script>
 // Force clear cache if version changed
-if(localStorage.getItem('hp_version') !== 'v32.6') {
+if(localStorage.getItem('hp_version') !== 'v32.7') {
   localStorage.removeItem('mainNav');
   localStorage.removeItem('mehrOrder');
-  localStorage.setItem('hp_version','v32.6');
+  localStorage.setItem('hp_version','v32.7');
   // Force SW update
   if('serviceWorker' in navigator) {
     navigator.serviceWorker.getRegistrations().then(function(regs) {
@@ -38,13 +38,17 @@ if(localStorage.getItem('hp_version') !== 'v32.6') {
       });
     }
     // Reload once after clearing
-    if(!sessionStorage.getItem('reloaded_v32_6')) {
-      sessionStorage.setItem('reloaded_v32_6','1');
+    if(!sessionStorage.getItem('reloaded_v32_7')) {
+      sessionStorage.setItem('reloaded_v32_7','1');
       window.location.reload(true);
     }
   }
 }
 // Early doLogin – funktioniert auch wenn Hauptscript noch lädt
+window.toggleFab = function() {
+  var fab = document.getElementById('fab-menu');
+  if(fab) fab.style.display = fab.style.display==='none'?'flex':'none';
+};
 window.doLogin = async function() {
   try {
     if(typeof firebase === 'undefined') {
@@ -12287,6 +12291,51 @@ window.deleteBenutzer = async function(uid, email) {
   var _mainNav = JSON.parse(localStorage.getItem('mainNav')||'null') || DEFAULT_MAIN_NAV.slice();
   var _mehrAnpassen = false;
 
+  // ── Funktionen die von Nav-Buttons aufgerufen werden ──
+  // Müssen VOR renderNav definiert sein
+  window._longPressTimer = null;
+  window.startNavLongPress = function(id, btn, e) {
+    window._longPressTimer = setTimeout(function() {
+      if(navigator.vibrate) navigator.vibrate([30,20,30]);
+      var hint = document.getElementById('nav-drag-hint');
+      if(!hint) {
+        hint = document.createElement('div');
+        hint.id = 'nav-drag-hint';
+        hint.style.cssText = 'position:fixed;bottom:calc(var(--nav-h) + var(--safe-b) + 10px);left:50%;transform:translateX(-50%);background:rgba(212,168,75,.95);color:#0a0800;border-radius:20px;padding:.4rem 1.2rem;font-size:.78rem;font-weight:bold;z-index:150;white-space:nowrap;box-shadow:0 4px 16px rgba(0,0,0,.4)';
+        hint.textContent = '↔ Ziehen zum Verschieben';
+        document.body.appendChild(hint);
+      }
+      hint.style.display = '';
+      document.querySelectorAll('.nav-item[draggable]').forEach(function(b){b.style.outline='1px dashed var(--gold2)';b.style.borderRadius='8px';});
+      setTimeout(function(){
+        if(hint)hint.style.display='none';
+        document.querySelectorAll('.nav-item').forEach(function(b){b.style.outline='';b.style.borderRadius='';});
+      }, 2500);
+    }, 600);
+  };
+  window.cancelNavLongPress = function() { clearTimeout(window._longPressTimer); };
+  window.toggleMehrAnpassen = function() {
+    window._mehrAnpassen = !window._mehrAnpassen;
+    var el = document.getElementById('mehr-anpassen');
+    if(el) el.style.display = window._mehrAnpassen ? '' : 'none';
+    if(typeof window.renderMehrGrid==='function') window.renderMehrGrid();
+  };
+  window.toggleMainNav = function(id) {
+    var nav = window._mainNav || _mainNav || [];
+    if(nav.includes(id)) {
+      if(nav.length<=2){if(window.showSaveToast)showSaveToast('Mindestens 2 Einträge');return;}
+      if(id==='dashboard'){if(window.showSaveToast)showSaveToast('Start ist fixiert');return;}
+      nav = nav.filter(function(m){return m!==id;});
+    } else {
+      if(nav.length>=4) nav=nav.slice(0,-1);
+      nav.push(id);
+    }
+    window._mainNav = nav;
+    localStorage.setItem('mainNav', JSON.stringify(nav));
+    renderNav();
+    if(typeof window.renderMehrGrid==='function') window.renderMehrGrid();
+  };
+
   function renderNav() {
     try {
     var nav = document.getElementById('bottom-nav');
@@ -12328,28 +12377,6 @@ window.deleteBenutzer = async function(uid, email) {
     setTimeout(setupNavMehrDrag, 50);
   } catch(e) { console.warn('renderNav:',e); }
   }
-
-  window._longPressTimer = null;
-  window.startNavLongPress = function(id, btn, e) {
-    window._longPressTimer = setTimeout(function() {
-      if(navigator.vibrate) navigator.vibrate([30,20,30]);
-      var hint = document.getElementById('nav-drag-hint');
-      if(!hint) {
-        hint = document.createElement('div');
-        hint.id = 'nav-drag-hint';
-        hint.style.cssText = 'position:fixed;bottom:calc(var(--nav-h) + var(--safe-b) + 10px);left:50%;transform:translateX(-50%);background:rgba(212,168,75,.95);color:#0a0800;border-radius:20px;padding:.4rem 1.2rem;font-size:.78rem;font-weight:bold;z-index:150;white-space:nowrap;box-shadow:0 4px 16px rgba(0,0,0,.4)';
-        hint.textContent = '↔ Ziehen zum Verschieben';
-        document.body.appendChild(hint);
-      }
-      hint.style.display = '';
-      document.querySelectorAll('.nav-item[draggable]').forEach(function(b){b.style.outline='1px dashed var(--gold2)';b.style.borderRadius='8px';});
-      setTimeout(function(){
-        if(hint)hint.style.display='none';
-        document.querySelectorAll('.nav-item').forEach(function(b){b.style.outline='';b.style.borderRadius='';});
-      }, 2500);
-    }, 600);
-  };
-  window.cancelNavLongPress = function() { clearTimeout(window._longPressTimer); };
 
   function setupNavDrag(nav) {
     if(!nav) return;
@@ -12788,27 +12815,6 @@ window.deleteBenutzer = async function(uid, email) {
     window._mehrSelected = null;
     var hint = document.getElementById('mehr-edit-hint');
     if(hint) hint.style.display = window._mehrEditMode ? '' : 'none';
-    renderMehrGrid();
-  };
-
-  window.toggleMainNav = function(id) {
-    if(_mainNav.includes(id)) {
-      if(_mainNav.length<=2){alert('Mindestens 2 Einträge in der Hauptnavigation');return;}
-      if(['dashboard'].includes(id)){showSaveToast&&showSaveToast('Start ist fixiert');return;}
-      _mainNav = _mainNav.filter(m=>m!==id);
-    } else {
-      if(_mainNav.length>=4){_mainNav=_mainNav.slice(0,-1);}  // max 4
-      _mainNav.push(id);
-    }
-    localStorage.setItem('mainNav', JSON.stringify(_mainNav));
-    renderNav();
-    renderMehrGrid();
-  };
-
-  window.toggleMehrAnpassen = function() {
-    window._mehrAnpassen = !window._mehrAnpassen;
-    const el = document.getElementById('mehr-anpassen');
-    if(el) el.style.display = window._mehrAnpassen ? '' : 'none';
     renderMehrGrid();
   };
 
