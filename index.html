@@ -19,10 +19,10 @@
 ═══════════════════════════════════════════════════════════════════════════ -->
 <script>
 // Force clear cache if version changed
-if(localStorage.getItem('hp_version') !== 'v32.7') {
+if(localStorage.getItem('hp_version') !== 'v32.8') {
   localStorage.removeItem('mainNav');
   localStorage.removeItem('mehrOrder');
-  localStorage.setItem('hp_version','v32.7');
+  localStorage.setItem('hp_version','v32.8');
   // Force SW update
   if('serviceWorker' in navigator) {
     navigator.serviceWorker.getRegistrations().then(function(regs) {
@@ -38,8 +38,8 @@ if(localStorage.getItem('hp_version') !== 'v32.7') {
       });
     }
     // Reload once after clearing
-    if(!sessionStorage.getItem('reloaded_v32_7')) {
-      sessionStorage.setItem('reloaded_v32_7','1');
+    if(!sessionStorage.getItem('reloaded_v32_8')) {
+      sessionStorage.setItem('reloaded_v32_8','1');
       window.location.reload(true);
     }
   }
@@ -12260,7 +12260,7 @@ window.deleteBenutzer = async function(uid, email) {
   });
 
   // Alle verfügbaren Module
-  const ALLE_MODULE = [
+  window.ALLE_MODULE = [
     {id:'saison',    icon:'▲',   label:'Saison'},
     {id:'zaehlung',  icon:'✓',   label:'Zählung'},
     {id:'weide',     icon:'🌿',  label:'Weide'},
@@ -12355,7 +12355,7 @@ window.deleteBenutzer = async function(uid, email) {
       return '<button class="nav-item '+(isActive?'active':'')+'" data-view="'+id+'" data-navid="'+(isDraggable?id:'')+'" style="'+navStyle+'" '+
         (isDraggable?'draggable="true"':'')+
         ' onclick="'+onclick+'"'+
-        (isDraggable?' onpointerdown="startNavLongPress(\''+id+'\',this,event)" onpointerup="cancelNavLongPress()" onpointerleave="cancelNavLongPress()"':'')+'>'+
+        (isDraggable?' onpointerdown="window.startNavLongPress&&window.startNavLongPress(\''+id+'\',this,event)" onpointerup="window.cancelNavLongPress&&window.cancelNavLongPress()" onpointerleave="window.cancelNavLongPress&&window.cancelNavLongPress()"':'')+'>'+
         '<span class="nav-icon">'+info.icon+'</span>'+info.label+
       '</button>';
     }).join('');
