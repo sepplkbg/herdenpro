@@ -19,10 +19,10 @@
 ═══════════════════════════════════════════════════════════════════════════ -->
 <script>
 // Force clear cache if version changed
-if(localStorage.getItem('hp_version') !== 'v32.5') {
+if(localStorage.getItem('hp_version') !== 'v32.6') {
   localStorage.removeItem('mainNav');
   localStorage.removeItem('mehrOrder');
-  localStorage.setItem('hp_version','v32.5');
+  localStorage.setItem('hp_version','v32.6');
   // Force SW update
   if('serviceWorker' in navigator) {
     navigator.serviceWorker.getRegistrations().then(function(regs) {
@@ -38,8 +38,8 @@ if(localStorage.getItem('hp_version') !== 'v32.5') {
       });
     }
     // Reload once after clearing
-    if(!sessionStorage.getItem('reloaded_v32_5')) {
-      sessionStorage.setItem('reloaded_v32_5','1');
+    if(!sessionStorage.getItem('reloaded_v32_6')) {
+      sessionStorage.setItem('reloaded_v32_6','1');
       window.location.reload(true);
     }
   }
@@ -12329,9 +12329,9 @@ window.deleteBenutzer = async function(uid, email) {
   } catch(e) { console.warn('renderNav:',e); }
   }
 
-  var _longPressTimer = null;
+  window._longPressTimer = null;
   window.startNavLongPress = function(id, btn, e) {
-    _longPressTimer = setTimeout(function() {
+    window._longPressTimer = setTimeout(function() {
       if(navigator.vibrate) navigator.vibrate([30,20,30]);
       var hint = document.getElementById('nav-drag-hint');
       if(!hint) {
@@ -12349,7 +12349,7 @@ window.deleteBenutzer = async function(uid, email) {
       }, 2500);
     }, 600);
   };
-  window.cancelNavLongPress = function() { clearTimeout(_longPressTimer); };
+  window.cancelNavLongPress = function() { clearTimeout(window._longPressTimer); };
 
   function setupNavDrag(nav) {
     if(!nav) return;
@@ -12816,12 +12816,13 @@ window.deleteBenutzer = async function(uid, email) {
     const m = document.getElementById('mehr-menu');
     if(!m) return;
     const isOpen = m.style.display !== 'none';
-    m.style.display = isOpen ? 'none' : '';
+    m.style.display = isOpen ? 'none' : 'block';
     if(!isOpen) { 
       window._mehrAnpassen=false; 
       const a=document.getElementById('mehr-anpassen');
       if(a)a.style.display='none'; 
-      if(typeof renderMehrGrid==='function') renderMehrGrid(); 
+      if(typeof window.renderMehrGrid==='function') window.renderMehrGrid(); 
+      else if(typeof renderMehrGrid==='function') renderMehrGrid();
     }
   };
   window.closeMehr = function() {
