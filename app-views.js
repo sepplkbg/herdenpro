@@ -3972,6 +3972,34 @@ ${modus==='kuehe' ? `
   🐄 Box antippen = Kuh zuweisen · Lang drücken = Kuh-Profil öffnen
 </div>` : ''}
 
+${modus==='ansicht' ? (function(){
+  // Filter-Chips (Phase 7)
+  var aktivFilter = window._spFilter || 'alle';
+  // Bauern aus aktuellem Stall ermitteln (nur die, deren Kühe in Boxen stehen)
+  var stallElems = (ställe[aktivId] && ställe[aktivId].elemente) || [];
+  var bauernSet = {};
+  stallElems.forEach(function(e){
+    if(e.typ==='box' && e.kuhId && kuehe[e.kuhId] && kuehe[e.kuhId].bauer){
+      bauernSet[kuehe[e.kuhId].bauer] = true;
+    }
+  });
+  var bauernListe = Object.keys(bauernSet).sort();
+  var gruppenListe = Object.entries(gruppen||{});
+
+  function chip(id, label, icon){
+    var aktiv = aktivFilter === id;
+    return '<button class="filter-chip '+(aktiv?'active':'')+'" style="font-size:.72rem;white-space:nowrap" onclick="spSetFilter(\''+id.replace(/'/g,"\\'")+'\')">'+(icon?icon+' ':'')+label+'</button>';
+  }
+  var html = '<div style="display:flex;gap:.3rem;overflow-x:auto;margin-bottom:.5rem;padding:.2rem 0">';
+  html += chip('alle', 'Alle', '🐄');
+  html += chip('wz', 'Mit WZ', '⚕');
+  html += chip('trocken', 'Trockensteher', '🌾');
+  bauernListe.forEach(function(b){ html += chip('bauer:'+b, b, '👤'); });
+  gruppenListe.forEach(function(g){ html += chip('gruppe:'+g[0], (g[1].name||'Gruppe'), '🏷'); });
+  html += '</div>';
+  return html;
+})() : ''}
+
 ` : `
 <div class="empty-state" style="margin-top:1rem">
   <div style="font-size:2.5rem;margin-bottom:.5rem">🏚</div>
@@ -4207,43 +4235,109 @@ window.spDrawElement = function(ctx, el, ei) {
     case 'box':
       var bw=el.w||50, bh=el.h||40;
       var k = el.kuhId ? kuehe[el.kuhId] : null;
+      // Filter-Opacity (Phase 7) – wenn Filter aktiv und Box nicht passt, abblenden
+      var filterPasst = (typeof window.spBoxFilterPasst==='function')
+        ? window.spBoxFilterPasst(el, k)
+        : true;
+      var globalAlpha = filterPasst ? 1 : 0.3;
+      ctx.save(); ctx.globalAlpha = globalAlpha;
+
+      // ── WZ-Status ermitteln ─────────────────────────────────────
+      var wzStatus = 'none';      // 'none' | 'aktiv' | 'kritisch'
+      var wzResttage = null;
+      if(k) {
+        var heute=Date.now();
+        var aktBeh=Object.values(behandlungen).filter(function(b){return b.kuhId===el.kuhId&&b.aktiv;});
+        var alleEnden = [];
+        aktBeh.forEach(function(b){
+          if(b.wzMilchEnde && b.wzMilchEnde>heute) alleEnden.push(b.wzMilchEnde);
+          if(b.wzFleischEnde && b.wzFleischEnde>heute) alleEnden.push(b.wzFleischEnde);
+        });
+        if(alleEnden.length){
+          var minEnde = Math.min.apply(null, alleEnden);
+          var endeTag = new Date(minEnde); endeTag.setHours(0,0,0,0);
+          var heuteTag = new Date(heute);  heuteTag.setHours(0,0,0,0);
+          wzResttage = Math.max(0, Math.round((endeTag.getTime()-heuteTag.getTime())/86400000));
+          wzStatus = (wzResttage<=1) ? 'kritisch' : 'aktiv';
+        }
+      }
       // Ampelfarbe
       var boxFarbe='rgba(212,168,75,.15)';
       var borderFarbe='rgba(212,168,75,.5)';
       if(k) {
-        var heute=Date.now();
-        var aktBeh=Object.values(behandlungen).filter(function(b){return b.kuhId===el.kuhId&&b.aktiv;});
-        var hatWZ=aktBeh.some(function(b){return (b.wzMilchEnde&&b.wzMilchEnde>heute)||(b.wzFleischEnde&&b.wzFleischEnde>heute);});
-        var hatProblem=aktBeh.some(function(b){var e=new Date(b.wzMilchEnde||0);e.setHours(0,0,0,0);var h=new Date(heute);h.setHours(0,0,0,0);return b.wzMilchEnde&&Math.round((e-h)/86400000)<=1;});
-        if(hatProblem){boxFarbe='rgba(212,60,60,.2)';borderFarbe='#d44b4b';}
-        else if(hatWZ){boxFarbe='rgba(212,132,75,.2)';borderFarbe='#d4844b';}
+        if(wzStatus==='kritisch'){boxFarbe='rgba(212,60,60,.2)';borderFarbe='#d44b4b';}
+        else if(wzStatus==='aktiv'){boxFarbe='rgba(212,132,75,.2)';borderFarbe='#d4844b';}
         else{boxFarbe='rgba(77,184,78,.12)';borderFarbe='#4db84e';}
       }
+
+      // ── Pulse-Ring bei kritischer WZ ──────────────────────────
+      if(wzStatus==='kritisch' && filterPasst) {
+        var phase = (Math.sin(Date.now()/450) + 1) / 2; // 0..1
+        var ringGrow = 1 + phase*3;            // 1..4 px
+        var ringAlpha = 0.55 - phase*0.35;     // 0.55..0.20
+        ctx.strokeStyle = 'rgba(212,60,60,'+ringAlpha+')';
+        ctx.lineWidth = 2/z;
+        ctx.beginPath();
+        if(ctx.roundRect) ctx.roundRect(el.x-ringGrow/z, el.y-ringGrow/z, bw+2*ringGrow/z, bh+2*ringGrow/z, 5/z);
+        else ctx.rect(el.x-ringGrow/z, el.y-ringGrow/z, bw+2*ringGrow/z, bh+2*ringGrow/z);
+        ctx.stroke();
+        // Animation-Loop anstoßen
+        if(typeof window.spRequestAnimation==='function') window.spRequestAnimation();
+      }
+
+      // ── Box-Hintergrund ──────────────────────────────────────
       ctx.fillStyle=boxFarbe; ctx.strokeStyle=borderFarbe; ctx.lineWidth=1.5/z;
       ctx.beginPath();
       if(ctx.roundRect)ctx.roundRect(el.x,el.y,bw,bh,4/z);else ctx.rect(el.x,el.y,bw,bh);
       ctx.fill(); ctx.stroke();
-      // Box-Nummer
+
+      // Box-Nummer (oben links)
       var boxNr = (stall.elemente||[]).filter(function(e){return e.typ==='box';}).indexOf(el)+1;
       ctx.fillStyle='rgba(255,255,255,.3)'; ctx.font=(8/z)+'px sans-serif';
       ctx.textAlign='left'; ctx.textBaseline='top';
       ctx.fillText(boxNr, el.x+3/z, el.y+2/z);
+
+      // ── WZ-Symbol + Resttage (oben rechts) ────────────────────
+      if(wzStatus !== 'none') {
+        var sym = (wzStatus==='kritisch') ? '⚕' : '⏱';
+        var symColor = (wzStatus==='kritisch') ? '#d44b4b' : '#d4844b';
+        ctx.fillStyle = symColor;
+        ctx.font = 'bold '+(9/z)+'px sans-serif';
+        ctx.textAlign='right'; ctx.textBaseline='top';
+        ctx.fillText(sym, el.x+bw-3/z, el.y+1/z);
+        if(wzResttage !== null) {
+          ctx.fillStyle = 'rgba(255,255,255,.85)';
+          ctx.font = 'bold '+(7/z)+'px sans-serif';
+          ctx.fillText(wzResttage+'T', el.x+bw-3/z, el.y+10/z);
+        }
+      }
+
       if(k) {
-        // Foto oder Emoji
+        // Foto oder Emoji (Mitte)
         var foto=fotos[el.kuhId];
         ctx.fillStyle='rgba(255,255,255,.9)'; ctx.font='bold '+(10/z)+'px sans-serif';
         ctx.textAlign='center'; ctx.textBaseline='middle';
-        ctx.fillText(foto?'📷':'🐄',el.x+bw/2,el.y+bh*0.4);
-        ctx.font=(9/z)+'px sans-serif';
-        ctx.fillStyle='rgba(255,255,255,.8)';
+        ctx.fillText(foto?'📷':'🐄',el.x+bw/2,el.y+bh*0.35);
+        // Kuh-Name
+        ctx.font='bold '+(9/z)+'px sans-serif';
+        ctx.fillStyle='rgba(255,255,255,.85)';
         var nm=(k.name||'#'+k.nr);
-        if(nm.length>7)nm=nm.slice(0,6)+'…';
-        ctx.fillText(nm,el.x+bw/2,el.y+bh*0.75);
+        if(nm.length>8)nm=nm.slice(0,7)+'…';
+        ctx.fillText(nm,el.x+bw/2,el.y+bh*0.65);
+        // Bauer-Name (klein, gedimmt)
+        if(k.bauer) {
+          var bauerNm = String(k.bauer);
+          if(bauerNm.length>9) bauerNm = bauerNm.slice(0,8)+'…';
+          ctx.font=(7/z)+'px sans-serif';
+          ctx.fillStyle='rgba(212,168,75,.75)';
+          ctx.fillText(bauerNm, el.x+bw/2, el.y+bh*0.86);
+        }
       } else {
         ctx.fillStyle='rgba(255,255,255,.2)'; ctx.font=(14/z)+'px sans-serif';
         ctx.textAlign='center'; ctx.textBaseline='middle';
         ctx.fillText('+',el.x+bw/2,el.y+bh/2);
       }
+      ctx.restore();
       break;
   }
   // Resize-Handle im Element-Modus
@@ -4252,6 +4346,140 @@ window.spDrawElement = function(ctx, el, ei) {
     ctx.fillStyle='rgba(212,168,75,.6)';
     ctx.beginPath();ctx.arc(el.x+ew,el.y+eh,5/z,0,Math.PI*2);ctx.fill();
   }
+};
+
+// ── Pulse-Animation-Loop ───────────────────────────────────────
+// Wird angefragt sobald eine Box mit kritischer WZ gezeichnet wird.
+// Stoppt automatisch wenn Stallplan-View verlassen wird oder keine
+// kritische WZ mehr vorliegt (dann ruft niemand mehr spRequestAnimation auf).
+window._spAnimReq = null;
+window._spAnimLastDraw = 0;
+window.spRequestAnimation = function() {
+  if(window._spAnimReq) return; // läuft bereits
+  // Throttle: max alle 50ms neu zeichnen, sonst saugt es Akku
+  window._spAnimReq = requestAnimationFrame(function tick() {
+    window._spAnimReq = null;
+    if(currentView !== 'stallplan') return;
+    var canvas = spGetCanvas();
+    if(!canvas) return;
+    var now = Date.now();
+    if(now - window._spAnimLastDraw < 50) {
+      // re-arm without redraw
+      window._spAnimReq = requestAnimationFrame(tick);
+      return;
+    }
+    window._spAnimLastDraw = now;
+    spDraw();
+  });
+};
+
+// ── Filter-Logik (Phase 7) ─────────────────────────────────────
+// State: 'alle' | 'wz' | 'trocken' | 'bauer:<name>' | 'gruppe:<id>'
+window._spFilter = 'alle';
+window.spSetFilter = function(filterId) {
+  window._spFilter = filterId || 'alle';
+  spDraw();
+};
+// Prüft ob eine Box durch den aktuellen Filter passt.
+// Leere Boxen passen immer (damit man Plätze sieht).
+window.spBoxFilterPasst = function(el, k) {
+  if(!el || el.typ !== 'box') return true;
+  var f = window._spFilter || 'alle';
+  if(f === 'alle') return true;
+  if(!k) return true; // leere Box immer zeigen
+  if(f === 'wz') {
+    var heute = Date.now();
+    return Object.values(behandlungen).some(function(b){
+      return b.kuhId === el.kuhId && b.aktiv &&
+             ((b.wzMilchEnde && b.wzMilchEnde > heute) ||
+              (b.wzFleischEnde && b.wzFleischEnde > heute));
+    });
+  }
+  if(f === 'trocken') {
+    return k.trocken === true || k.trockenstellen === true || k.status === 'trocken';
+  }
+  if(f.indexOf('bauer:') === 0) {
+    return String(k.bauer||'') === f.slice(6);
+  }
+  if(f.indexOf('gruppe:') === 0) {
+    var gid = f.slice(7);
+    var g = gruppen[gid];
+    if(!g || !g.kuhIds) return false;
+    return g.kuhIds.indexOf(el.kuhId) >= 0;
+  }
+  return true;
+};
+
+// ── Schnellansicht-Popup (Phase 1b) ─────────────────────────────
+window.spShowQuickView = function(kuhId) {
+  var k = kuehe[kuhId];
+  if(!k) { closePopup&&closePopup(); return; }
+
+  var heute = Date.now();
+
+  // Aktive Behandlungen + Wartezeiten
+  var aktBeh = Object.values(behandlungen).filter(function(b){
+    return b.kuhId===kuhId && b.aktiv;
+  });
+  var wzMilchEnden = aktBeh.map(function(b){return b.wzMilchEnde;}).filter(function(t){return t&&t>heute;});
+  var wzFleischEnden = aktBeh.map(function(b){return b.wzFleischEnde;}).filter(function(t){return t&&t>heute;});
+  var wzInfo = '';
+  function tageBis(ts){
+    var e=new Date(ts); e.setHours(0,0,0,0);
+    var h=new Date(heute); h.setHours(0,0,0,0);
+    return Math.max(0, Math.round((e.getTime()-h.getTime())/86400000));
+  }
+  if(wzMilchEnden.length || wzFleischEnden.length) {
+    var parts=[];
+    if(wzMilchEnden.length) parts.push('🥛 '+tageBis(Math.min.apply(null,wzMilchEnden))+' Tage Milch');
+    if(wzFleischEnden.length) parts.push('🥩 '+tageBis(Math.min.apply(null,wzFleischEnden))+' Tage Fleisch');
+    var krit = (wzMilchEnden.concat(wzFleischEnden)).some(function(t){return tageBis(t)<=1;});
+    wzInfo = '<div style="margin:.5rem 0;padding:.45rem .6rem;background:'+(krit?'rgba(212,60,60,.15)':'rgba(212,132,75,.12)')+';border:1px solid '+(krit?'#d44b4b':'#d4844b')+';border-radius:8px;font-size:.78rem;color:'+(krit?'#ff8080':'#ffb280')+'"><b>'+(krit?'⚕ Wartezeit kritisch':'⏱ Wartezeit aktiv')+'</b><br>'+parts.join(' · ')+'</div>';
+  }
+
+  // Letzte Behandlung
+  var alleBeh = Object.values(behandlungen).filter(function(b){return b.kuhId===kuhId;}).sort(function(a,b){return (b.datum||0)-(a.datum||0);});
+  var letzteBeh = alleBeh[0];
+  var behInfo = letzteBeh
+    ? '<div style="font-size:.75rem;color:var(--text2);margin:.3rem 0">⚕ Letzte Behandlung: <b>'+new Date(letzteBeh.datum).toLocaleDateString('de-AT',{day:'numeric',month:'short',year:'2-digit'})+'</b>'+(letzteBeh.diagnose?' – '+letzteBeh.diagnose:'')+'</div>'
+    : '<div style="font-size:.75rem;color:var(--text3);margin:.3rem 0">⚕ Keine Behandlungen</div>';
+
+  // Letzte Milch
+  var alleMilch = Object.entries(milchEintraege).filter(function(e){return e[1].prokuh && e[1].prokuh[kuhId];}).sort(function(a,b){return (b[1].datum||0)-(a[1].datum||0);});
+  var letzteMilch = alleMilch[0];
+  var milchInfo = letzteMilch
+    ? '<div style="font-size:.75rem;color:var(--text2);margin:.3rem 0">🥛 Letzte Milch: <b>'+new Date(letzteMilch[1].datum).toLocaleDateString('de-AT',{day:'numeric',month:'short'})+'</b> – '+(parseFloat(letzteMilch[1].prokuh[kuhId])||0)+'L '+(letzteMilch[1].zeit==='morgen'?'morgens':'abends')+'</div>'
+    : '<div style="font-size:.75rem;color:var(--text3);margin:.3rem 0">🥛 Keine Milcheinträge</div>';
+
+  // Foto/Emoji
+  var foto = fotos[kuhId];
+  var fotoHTML = foto
+    ? '<img src="'+foto+'" style="width:60px;height:60px;border-radius:30px;object-fit:cover;border:2px solid var(--gold)">'
+    : '<div style="width:60px;height:60px;border-radius:30px;background:var(--bg3);border:2px solid var(--gold);display:flex;align-items:center;justify-content:center;font-size:2rem">🐄</div>';
+
+  // Bauer
+  var bauerHTML = k.bauer
+    ? '<div style="font-size:.7rem;color:var(--gold)">👤 '+k.bauer+'</div>'
+    : '';
+
+  showPopupHTML(
+    '<div style="display:flex;gap:.7rem;align-items:center;margin-bottom:.4rem">'+
+      fotoHTML +
+      '<div style="flex:1;min-width:0">'+
+        '<div style="font-size:1.1rem;font-weight:700;color:var(--gold)">#'+k.nr+' '+(k.name||'–')+'</div>'+
+        bauerHTML +
+        (k.gebDatum?'<div style="font-size:.7rem;color:var(--text3)">🎂 '+new Date(k.gebDatum).toLocaleDateString('de-AT')+'</div>':'')+
+      '</div>'+
+    '</div>'+
+    wzInfo +
+    behInfo +
+    milchInfo +
+    '<div style="display:flex;gap:.4rem;margin-top:.7rem;flex-wrap:wrap">'+
+      '<button class="btn-primary" style="flex:1;min-width:120px" onclick="closePopup();showKuhDetail(\''+kuhId+'\')">Vollprofil →</button>'+
+      '<button class="btn-secondary" style="flex:1;min-width:120px" onclick="closePopup();showBehandlungForm(\''+kuhId+'\')">⚕ Behandlung +</button>'+
+      '<button class="btn-secondary" style="flex:0 0 auto" onclick="closePopup()">Schließen</button>'+
+    '</div>'
+  );
 };
 
 // ── Event-Binding ──
@@ -4355,7 +4583,18 @@ window.spBindEvents = function(canvas,W,H) {
       return;
     }
 
-    // Ansicht: panning
+    // Ansicht: erst hit-test auf Box → Schnellansicht; sonst panning
+    if(modus==='ansicht'){
+      var hiV = hitTest(w[0],w[1]);
+      if(hiV>=0) {
+        var elV = spGetStall().elemente[hiV];
+        if(elV && elV.typ==='box' && elV.kuhId) {
+          // Tap auf belegte Kuh-Box → Schnellansicht öffnen
+          if(typeof window.spShowQuickView === 'function') window.spShowQuickView(elV.kuhId);
+          return;
+        }
+      }
+    }
     isPanning=true;
     panStart={x:pos.x,y:pos.y};
     panOrigin={x:window._spPanX,y:window._spPanY};
