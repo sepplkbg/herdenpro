@@ -19,10 +19,10 @@
 ═══════════════════════════════════════════════════════════════════════════ -->
 <script>
 // Force clear cache if version changed
-if(localStorage.getItem('hp_version') !== 'v32.2') {
+if(localStorage.getItem('hp_version') !== 'v32.3') {
   localStorage.removeItem('mainNav');
   localStorage.removeItem('mehrOrder');
-  localStorage.setItem('hp_version','v32.2');
+  localStorage.setItem('hp_version','v32.3');
   // Force SW update
   if('serviceWorker' in navigator) {
     navigator.serviceWorker.getRegistrations().then(function(regs) {
@@ -38,12 +38,50 @@ if(localStorage.getItem('hp_version') !== 'v32.2') {
       });
     }
     // Reload once after clearing
-    if(!sessionStorage.getItem('reloaded_v32_2')) {
-      sessionStorage.setItem('reloaded_v32_2','1');
+    if(!sessionStorage.getItem('reloaded_v32_3')) {
+      sessionStorage.setItem('reloaded_v32_3','1');
       window.location.reload(true);
     }
   }
 }
+// Early doLogin – funktioniert auch wenn Hauptscript noch lädt
+window.doLogin = async function() {
+  try {
+    if(typeof firebase === 'undefined') {
+      var errEl = document.getElementById('login-error');
+      if(errEl){errEl.textContent='Firebase lädt noch, bitte kurz warten…';errEl.style.display='';}
+      return;
+    }
+    if(!firebase.apps.length) firebase.initializeApp(window.FIREBASE_CONFIG);
+    var email = document.getElementById('login-email')?.value.trim();
+    var pw = document.getElementById('login-pw')?.value;
+    if(!email||!pw){
+      var errEl=document.getElementById('login-error');
+      if(errEl){errEl.textContent='Bitte E-Mail und Passwort eingeben.';errEl.style.display='';}
+      return;
+    }
+    var btn = document.querySelector('#login-form button');
+    if(btn){btn.textContent='⏳ Anmelden…';btn.disabled=true;}
+    try {
+      await firebase.auth().signInWithEmailAndPassword(email, pw);
+      // onAuthStateChanged übernimmt den Rest
+    } catch(e) {
+      var msgs = {
+        'auth/user-not-found':'E-Mail nicht gefunden.',
+        'auth/wrong-password':'Falsches Passwort.',
+        'auth/invalid-email':'Ungültige E-Mail.',
+        'auth/too-many-requests':'Zu viele Versuche. Bitte warte kurz.',
+        'auth/invalid-credential':'E-Mail oder Passwort falsch.'
+      };
+      var errEl=document.getElementById('login-error');
+      if(errEl){errEl.textContent=msgs[e.code]||'Fehler: '+e.message;errEl.style.display='';}
+    } finally {
+      if(btn){btn.textContent='Anmelden';btn.disabled=false;}
+    }
+  } catch(err) {
+    console.error('doLogin error:', err);
+  }
+};
 window.FIREBASE_CONFIG = {
   apiKey:            "AIzaSyB2YSWcf1Kk2QG_JcCjkgJikx-f73yj-kc",
   authDomain:        "herdenmanagement-33ff5.firebaseapp.com",
@@ -11983,6 +12021,9 @@ window.doLogout = async function() {
   window._currentRole = null;
   window._appInitialized = false;
 };
+
+// Register for early fallback
+window._doLoginMain = window.doLogin;
 
 window.showPwReset = async function() {
   const email = document.getElementById('login-email')?.value.trim() || 
