@@ -339,6 +339,11 @@ function renderKuhDetail() {
   // Canvas chart data encoded as JSON for JS
   const chartJson = JSON.stringify(chartDaten.slice(-30));
 
+  // ⚠ WICHTIG: Chart-Daten und Draw-Trigger MÜSSEN vor dem return stehen,
+  // sonst sind sie unreachable code und der Chart bleibt leer.
+  window._kdChartData = chartDaten.slice(-30);
+  setTimeout(function(){ window.kdDrawWithRetry && window.kdDrawWithRetry(0); }, 50);
+
   return `
 
   <!-- Header -->
@@ -672,10 +677,6 @@ function renderKuhDetail() {
 
   ${behandlungFormHTML(id)}${besamungFormHTML(id)}${kalbungFormHTML()}
   `;
-  // Set chart data immediately so it's available when tab is clicked
-  window._kdChartData = chartDaten.slice(-30);
-  // Start retry draw - handles direct milch-tab opening
-  setTimeout(function() { window.kdDrawWithRetry && window.kdDrawWithRetry(0); }, 50);
 }
 
 // ══════════════════════════════════════════════════════════
