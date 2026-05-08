@@ -19,11 +19,11 @@
 ═══════════════════════════════════════════════════════════════════════════ -->
 <script>
 // Force clear cache if version changed
-if(localStorage.getItem('hp_version') !== 'v32.9') {
+if(localStorage.getItem('hp_version') !== 'v33.0') {
   localStorage.removeItem('mainNav');
   localStorage.removeItem('mehrOrder');
   localStorage.removeItem('mehrOrder');
-  localStorage.setItem('hp_version','v32.9');
+  localStorage.setItem('hp_version','v33.0');
   // Force SW update
   if('serviceWorker' in navigator) {
     navigator.serviceWorker.getRegistrations().then(function(regs) {
@@ -39,8 +39,8 @@ if(localStorage.getItem('hp_version') !== 'v32.9') {
       });
     }
     // Reload once after clearing
-    if(!sessionStorage.getItem('reloaded_v32_9')) {
-      sessionStorage.setItem('reloaded_v32_9','1');
+    if(!sessionStorage.getItem('reloaded_v33_0')) {
+      sessionStorage.setItem('reloaded_v33_0','1');
       window.location.reload(true);
     }
   }
@@ -12529,9 +12529,26 @@ window.deleteBenutzer = async function(uid, email) {
   window.renderMehrGrid = function renderMehrGrid() {
     var grid = document.getElementById('mehr-grid');
     if(!grid) return;
-    var mainNavIds = window._mainNav || [];
-    var allMods = window.ALLE_MODULE || [];
-    // Alle Module die NICHT in der Hauptnavigation sind
+    var mainNavIds = window._mainNav || ['dashboard','herde','saison','milch'];
+
+    // Fallback: wenn ALLE_MODULE noch nicht befüllt, direkt aus der Konstante
+    var allMods = (window.ALLE_MODULE && window.ALLE_MODULE.length > 0)
+      ? window.ALLE_MODULE
+      : [
+          {id:'zaehlung',icon:'✓',label:'Zählung'},{id:'weide',icon:'🌿',label:'Weide'},
+          {id:'behandlung',icon:'⚕',label:'Behandlung'},{id:'besamung',icon:'🐮',label:'Besamung'},
+          {id:'bestandsbuch',icon:'📋',label:'Bestandsbuch'},{id:'einstellungen',icon:'⚙',label:'Einstellungen'},
+          {id:'journal',icon:'📓',label:'Journal'},{id:'alpung',icon:'📊',label:'Alpungstage'},
+          {id:'kontakte',icon:'📞',label:'Kontakte'},{id:'gruppen',icon:'🏷',label:'Gruppen'},
+          {id:'kontrolle',icon:'🔍',label:'Kontrolle'},{id:'kalender',icon:'📅',label:'Kalender'},
+          {id:'statistik',icon:'📊',label:'Statistik'},{id:'backup',icon:'💾',label:'Backup'},
+          {id:'suche',icon:'🔎',label:'Suche'},{id:'chat',icon:'💬',label:'Chat'},
+          {id:'kraftfutter',icon:'🌾',label:'Kraftfutter'},{id:'wetter',icon:'⛅',label:'Wetter'},
+          {id:'kaese',icon:'🧀',label:'Käse'},{id:'bauern_menu',icon:'👥',label:'Bauern'},
+          {id:'wartung',icon:'🔧',label:'Wartung'},{id:'lager',icon:'📦',label:'Lager'},
+          {id:'aufgaben',icon:'✅',label:'Aufgaben'},
+        ];
+
     var imMenu = allMods.filter(function(m){ 
       return !mainNavIds.includes(m.id) && m.id !== '__drucken__'; 
     });
