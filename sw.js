@@ -1,7 +1,11 @@
-const CACHE = 'herdenpro-v82';
+const CACHE = 'herdenpro-v83';
 const SHELL = [
   '/herdenpro/',
   '/herdenpro/index.html',
+  '/herdenpro/app-core.js',
+  '/herdenpro/app-views.js',
+  '/herdenpro/app-features.js',
+  '/herdenpro/styles.css',
   '/herdenpro/manifest.json'
 ];
 
