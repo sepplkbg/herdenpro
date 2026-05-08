@@ -19,10 +19,10 @@
 ═══════════════════════════════════════════════════════════════════════════ -->
 <script>
 // Force clear cache if version changed
-if(localStorage.getItem('hp_version') !== 'v32.3') {
+if(localStorage.getItem('hp_version') !== 'v32.4') {
   localStorage.removeItem('mainNav');
   localStorage.removeItem('mehrOrder');
-  localStorage.setItem('hp_version','v32.3');
+  localStorage.setItem('hp_version','v32.4');
   // Force SW update
   if('serviceWorker' in navigator) {
     navigator.serviceWorker.getRegistrations().then(function(regs) {
@@ -38,8 +38,8 @@ if(localStorage.getItem('hp_version') !== 'v32.3') {
       });
     }
     // Reload once after clearing
-    if(!sessionStorage.getItem('reloaded_v32_3')) {
-      sessionStorage.setItem('reloaded_v32_3','1');
+    if(!sessionStorage.getItem('reloaded_v32_4')) {
+      sessionStorage.setItem('reloaded_v32_4','1');
       window.location.reload(true);
     }
   }
@@ -1270,41 +1270,41 @@ function render() {
   main.style.transform='translateY(4px)';
   
   const map = {
-    dashboard:    renderDashboard,
-    herde:        renderHerde,
-    'kuh-detail': renderKuhDetail,
-    zaehlung:     renderZaehlung,
-    behandlung:   renderBehandlung,
-    reproduktion: renderBesamungModule,
-    besamung:     renderBesamungModule,
-    milch:        renderMilch,
-    weide:        renderWeide,
-    saison:       renderSaison,
-    bestandsbuch: renderBestandsbuch,
-    einstellungen:renderEinstellungen,
-    benutzer:     renderBenutzer,
-    journal:      renderJournal,
-    alpung:       renderAlpung,
-    kontakte:     renderKontakte,
-    gruppen:      renderGruppen,
-    kontrolle:    renderKontrolle,
-    kalender:     renderKalender,
-    statistik:    renderStatistik,
-    backup:       renderBackup,
-    suche:        renderSuche,
-    chat:         renderChatPage,
-    kraftfutter:  renderKraftfutter,
-    wetter:       renderWetter,
-    kaese:        (window.renderKaese || function(){return '<div>Käse wird geladen...</div>'}),
-    bauern_menu:  renderBauernMenu,
-    bauer_detail: renderBauerDetail,
-    saisonvergleich: renderSaisonvergleich,
-    traenke:      renderTraenke,
-    stallplan:    renderStallplan,
-    qrscanner:    renderQRScanner,
-    wartung:      renderWartung,
-    lager:        renderLager,
-    aufgaben:     renderAufgaben,
+    dashboard:    function(){return renderDashboard();},
+    herde:        function(){return renderHerde();},
+    'kuh-detail': function(){return renderKuhDetail();},
+    zaehlung:     function(){return renderZaehlung();},
+    behandlung:   function(){return renderBehandlung();},
+    reproduktion: function(){return renderBesamungModule();},
+    besamung:     function(){return renderBesamungModule();},
+    milch:        function(){return renderMilch();},
+    weide:        function(){return renderWeide();},
+    saison:       function(){return renderSaison();},
+    bestandsbuch: function(){return renderBestandsbuch();},
+    einstellungen:function(){return renderEinstellungen();},
+    benutzer:     function(){return (window.renderBenutzer||renderDashboard)();},
+    journal:      function(){return renderJournal();},
+    alpung:       function(){return renderAlpung();},
+    kontakte:     function(){return renderKontakte();},
+    gruppen:      function(){return renderGruppen();},
+    kontrolle:    function(){return renderKontrolle();},
+    kalender:     function(){return renderKalender();},
+    statistik:    function(){return renderStatistik();},
+    backup:       function(){return renderBackup();},
+    suche:        function(){return renderSuche();},
+    chat:         function(){return renderChatPage();},
+    kraftfutter:  function(){return renderKraftfutter();},
+    wetter:       function(){return renderWetter();},
+    kaese:        function(){return (window.renderKaese||function(){return '<div class="empty-state">Käse-Modul lädt…</div>';})();},
+    bauern_menu:  function(){return renderBauernMenu();},
+    bauer_detail: function(){return renderBauerDetail();},
+    saisonvergleich: function(){return renderSaisonvergleich();},
+    traenke:      function(){return renderTraenke();},
+    stallplan:    function(){return renderStallplan();},
+    qrscanner:    function(){return renderQRScanner();},
+    wartung:      function(){return renderWartung();},
+    lager:        function(){return renderLager();},
+    aufgaben:     function(){return renderAufgaben();},
   };
   main.innerHTML = (map[currentView]||renderDashboard)();
   attachListeners();
@@ -11155,7 +11155,7 @@ const ROLE_PERMISSIONS = {
 };
 
 // Hidden modules per role
-const ROLE_HIDDEN_MODULES = {
+var ROLE_HIDDEN_MODULES = {
   milchmesser: ['zaehlung','weide','behandlung','besamung','bestandsbuch','einstellungen','journal','alpung','kontakte','gruppen','kontrolle','kalender','statistik','backup','suche','chat','kraftfutter','wetter','bauern_menu','saison','__drucken__'],
   molkerei:    ['behandlung','besamung','bestandsbuch','einstellungen','journal','alpung','kontakte','gruppen','kontrolle','chat','kraftfutter','wetter','bauern_menu','zaehlung','__drucken__'],
   hirte:       ['einstellungen','benutzer'],
