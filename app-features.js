@@ -3923,20 +3923,18 @@ function applyRoleToModules() {
 // ══════════════════════════════════════════════════════════════
 window.renderBenutzer = function() {
   if(!hasPermission('benutzer')) return '<div class="empty-state">Kein Zugriff</div>';
-  
-  const alleModule = [
-    {id:'dashboard',label:'Dashboard'},{id:'herde',label:'Herde'},
-    {id:'saison',label:'Saison'},{id:'milch',label:'Milch'},
-    {id:'behandlung',label:'Behandlung'},{id:'besamung',label:'Besamung'},
-    {id:'zaehlung',label:'Zählung'},{id:'weide',label:'Weide'},
-    {id:'kraftfutter',label:'Kraftfutter'},{id:'journal',label:'Journal'},
-    {id:'bauern_menu',label:'Bauern'},{id:'gruppen',label:'Gruppen'},
-    {id:'kontakte',label:'Kontakte'},{id:'alpung',label:'Alpungstage'},
-    {id:'statistik',label:'Statistik'},{id:'kalender',label:'Kalender'},
-    {id:'kontrolle',label:'Kontrolle'},{id:'wetter',label:'Wetter'},
-    {id:'backup',label:'Backup'},{id:'suche',label:'Suche'},
-    {id:'chat',label:'Chat'},{id:'einstellungen',label:'Einstellungen'},
-  ];
+
+  // Modul-Liste dynamisch aus ALLE_MODULE – damit neue Module (Stallplan, Tränke, …)
+  // automatisch in der Berechtigungs-Auswahl auftauchen.
+  // Dashboard wird automatisch ergänzt (immer erlaubt), __drucken__ und mehr ausgefiltert.
+  const _src = (window._origAlleModule && window._origAlleModule.length)
+    ? window._origAlleModule
+    : (window.ALLE_MODULE || []);
+  const alleModule = [{id:'dashboard',label:'Dashboard'}].concat(
+    _src
+      .filter(m => m.id && m.id !== '__drucken__' && m.id !== 'mehr' && m.id !== 'dashboard')
+      .map(m => ({ id: m.id, label: m.label }))
+  );
   
   const modulCheckboxes = alleModule.map(m =>
     '<label style="display:flex;align-items:center;gap:.4rem;font-size:.82rem;cursor:pointer;padding:.25rem 0">' +
