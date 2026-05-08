@@ -19,11 +19,11 @@
 ═══════════════════════════════════════════════════════════════════════════ -->
 <script>
 // Force clear cache if version changed
-if(localStorage.getItem('hp_version') !== 'v33.2') {
+if(localStorage.getItem('hp_version') !== 'v33.3') {
   localStorage.removeItem('mainNav');
   localStorage.removeItem('mehrOrder');
   localStorage.removeItem('mehrOrder');
-  localStorage.setItem('hp_version','v33.2');
+  localStorage.setItem('hp_version','v33.3');
   // Force SW update
   if('serviceWorker' in navigator) {
     navigator.serviceWorker.getRegistrations().then(function(regs) {
@@ -39,8 +39,8 @@ if(localStorage.getItem('hp_version') !== 'v33.2') {
       });
     }
     // Reload once after clearing
-    if(!sessionStorage.getItem('reloaded_v33_2')) {
-      sessionStorage.setItem('reloaded_v33_2','1');
+    if(!sessionStorage.getItem('reloaded_v33_3')) {
+      sessionStorage.setItem('reloaded_v33_3','1');
       window.location.reload(true);
     }
   }
@@ -12353,7 +12353,7 @@ window.deleteBenutzer = async function(uid, email) {
       var isActive = currentView===id;
       var isEditSelected = window._mehrEditMode && window._mehrSelected===id;
       var isDraggable = id!=='dashboard' && id!=='mehr';
-      var onclick = id==='mehr' ? "window.toggleMehrMenu&&window.toggleMehrMenu()" : "window.navigate&&window.navigate(\'"+id+"\')";
+      var onclick = id==='mehr' ? "window.toggleMehrMenu&&window.toggleMehrMenu(event)" : "window.navigate&&window.navigate(\'"+id+"\')";
       var navStyle = isEditSelected ? 'outline:2px solid var(--gold);border-radius:8px;' : '';
       return '<button class="nav-item '+(isActive?'active':'')+'" data-view="'+id+'" data-navid="'+(isDraggable?id:'')+'" style="'+navStyle+'" '+
         (isDraggable?'draggable="true"':'')+
@@ -12841,7 +12841,8 @@ window.deleteBenutzer = async function(uid, email) {
     renderMehrGrid();
   };
 
-  window.toggleMehrMenu = function() {
+  window.toggleMehrMenu = function(e) {
+    if(e) e.stopPropagation();
     var m = document.getElementById('mehr-menu');
     if(!m) return;
     var isOpen = m.style.display === 'block';
@@ -12913,8 +12914,8 @@ window.deleteBenutzer = async function(uid, email) {
 <script>
 document.addEventListener('DOMContentLoaded', function() {
   var mb = document.getElementById('nav-mehr');
-  if(mb) mb.onclick = function() {
-    window.toggleMehrMenu && window.toggleMehrMenu();
+  if(mb) mb.onclick = function(e) {
+    window.toggleMehrMenu && window.toggleMehrMenu(e);
   };
   // Initialize Firebase
   try {
