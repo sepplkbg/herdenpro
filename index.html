@@ -19,10 +19,11 @@
 ═══════════════════════════════════════════════════════════════════════════ -->
 <script>
 // Force clear cache if version changed
-if(localStorage.getItem('hp_version') !== 'v32.8') {
+if(localStorage.getItem('hp_version') !== 'v32.9') {
   localStorage.removeItem('mainNav');
   localStorage.removeItem('mehrOrder');
-  localStorage.setItem('hp_version','v32.8');
+  localStorage.removeItem('mehrOrder');
+  localStorage.setItem('hp_version','v32.9');
   // Force SW update
   if('serviceWorker' in navigator) {
     navigator.serviceWorker.getRegistrations().then(function(regs) {
@@ -38,8 +39,8 @@ if(localStorage.getItem('hp_version') !== 'v32.8') {
       });
     }
     // Reload once after clearing
-    if(!sessionStorage.getItem('reloaded_v32_8')) {
-      sessionStorage.setItem('reloaded_v32_8','1');
+    if(!sessionStorage.getItem('reloaded_v32_9')) {
+      sessionStorage.setItem('reloaded_v32_9','1');
       window.location.reload(true);
     }
   }
@@ -49,6 +50,11 @@ window.toggleFab = function() {
   var fab = document.getElementById('fab-menu');
   if(fab) fab.style.display = fab.style.display==='none'?'flex':'none';
 };
+// Fallbacks für Funktionen die vor dem Hauptscript aufgerufen werden könnten
+['showMilchForm','showKuhForm','showBehandlungForm','showKlauenForm','showKraftfutterForm',
+ 'showAufgabeForm','showWartungMaschineForm','showLagerArtikelForm'].forEach(function(fn){
+  if(!window[fn]) window[fn] = function(){ setTimeout(function(){ if(window[fn+'_real'])window[fn+'_real'](); }, 500); };
+});
 window.doLogin = async function() {
   try {
     if(typeof firebase === 'undefined') {
@@ -12525,7 +12531,10 @@ window.deleteBenutzer = async function(uid, email) {
     if(!grid) return;
     var mainNavIds = window._mainNav || [];
     var allMods = window.ALLE_MODULE || [];
-    var imMenu = allMods.filter(function(m){ return !mainNavIds.includes(m.id); });
+    // Alle Module die NICHT in der Hauptnavigation sind
+    var imMenu = allMods.filter(function(m){ 
+      return !mainNavIds.includes(m.id) && m.id !== '__drucken__'; 
+    });
 
     // Apply saved order
     var savedOrder = JSON.parse(localStorage.getItem('mehrOrder')||'null');
