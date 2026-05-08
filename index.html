@@ -19,10 +19,10 @@
 ═══════════════════════════════════════════════════════════════════════════ -->
 <script>
 // Force clear cache if version changed
-if(localStorage.getItem('hp_version') !== 'v32.4') {
+if(localStorage.getItem('hp_version') !== 'v32.5') {
   localStorage.removeItem('mainNav');
   localStorage.removeItem('mehrOrder');
-  localStorage.setItem('hp_version','v32.4');
+  localStorage.setItem('hp_version','v32.5');
   // Force SW update
   if('serviceWorker' in navigator) {
     navigator.serviceWorker.getRegistrations().then(function(regs) {
@@ -38,8 +38,8 @@ if(localStorage.getItem('hp_version') !== 'v32.4') {
       });
     }
     // Reload once after clearing
-    if(!sessionStorage.getItem('reloaded_v32_4')) {
-      sessionStorage.setItem('reloaded_v32_4','1');
+    if(!sessionStorage.getItem('reloaded_v32_5')) {
+      sessionStorage.setItem('reloaded_v32_5','1');
       window.location.reload(true);
     }
   }
@@ -1209,11 +1209,15 @@ function initApp() {
   applyRoleToModules();
   // Sofort rendern ohne Firebase
   render();
-  try {
-    window._fbConfig = window.FIREBASE_CONFIG;
-  } catch(e) { 
-    document.getElementById('main-content').innerHTML = '<div class="empty-state" style="color:#e06040">Firebase-Fehler: '+e.message+'<br><small>Bitte Internetverbindung prüfen</small></div>';
-    return; 
+  
+  // Firebase muss initialisiert sein
+  if(!db && typeof firebase !== 'undefined' && firebase.apps.length) {
+    try { db = firebase.database(); db_instance = db; } catch(e) {}
+  }
+  if(!db) {
+    console.warn('initApp: db not ready, retrying in 500ms');
+    setTimeout(initApp, 500);
+    return;
   }
 
   onValue(ref(db,'kuehe'),        s=>{ kuehe=s.val()||{};          render(); checkWartezeiten(); });
@@ -7082,8 +7086,8 @@ function renderChat() {
   }
 }
 
-let _lastSeenChat = parseInt(localStorage.getItem('lastSeenChat')||'0');
-let _chatUnread = 0;
+var _lastSeenChat = parseInt(localStorage.getItem('lastSeenChat')||'0');
+var _chatUnread = 0;
 
 function updateChatBadge() {
   const nachrichten = Object.values(chatNachrichten);
@@ -12051,6 +12055,7 @@ window.hasPermission = function(perm) {
 // ── Filter modules by role ──
 window._origAlleModule = null;
 function applyRoleToModules() {
+  if(!window.ALLE_MODULE || !window.ALLE_MODULE.length) return;
   if(!window._origAlleModule) window._origAlleModule = window.ALLE_MODULE.slice();
   const role = window._currentRole || 'hirte';
   const user = window._currentUser || {};
@@ -12064,7 +12069,7 @@ function applyRoleToModules() {
       localStorage.setItem('mainNav', JSON.stringify(window._mainNav));
     }
   } else {
-    const hidden = ROLE_HIDDEN_MODULES[role] || [];
+    const hidden = (ROLE_HIDDEN_MODULES && ROLE_HIDDEN_MODULES[role]) || [];
     window.ALLE_MODULE = window._origAlleModule.filter(m => !hidden.includes(m.id));
     if(role === 'milchmesser') {
       window._mainNav = ['dashboard','milch'];
@@ -12488,7 +12493,7 @@ window.deleteBenutzer = async function(uid, email) {
   }
 
 
-  function renderMehrGrid() {
+  window.renderMehrGrid = function renderMehrGrid() {
     var grid = document.getElementById('mehr-grid');
     if(!grid) return;
     var mainNavIds = window._mainNav || [];
