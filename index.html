@@ -19,11 +19,11 @@
 ═══════════════════════════════════════════════════════════════════════════ -->
 <script>
 // Force clear cache if version changed
-if(localStorage.getItem('hp_version') !== 'v33.0') {
+if(localStorage.getItem('hp_version') !== 'v33.1') {
   localStorage.removeItem('mainNav');
   localStorage.removeItem('mehrOrder');
   localStorage.removeItem('mehrOrder');
-  localStorage.setItem('hp_version','v33.0');
+  localStorage.setItem('hp_version','v33.1');
   // Force SW update
   if('serviceWorker' in navigator) {
     navigator.serviceWorker.getRegistrations().then(function(regs) {
@@ -39,8 +39,8 @@ if(localStorage.getItem('hp_version') !== 'v33.0') {
       });
     }
     // Reload once after clearing
-    if(!sessionStorage.getItem('reloaded_v33_0')) {
-      sessionStorage.setItem('reloaded_v33_0','1');
+    if(!sessionStorage.getItem('reloaded_v33_1')) {
+      sessionStorage.setItem('reloaded_v33_1','1');
       window.location.reload(true);
     }
   }
@@ -12845,16 +12845,39 @@ window.deleteBenutzer = async function(uid, email) {
   };
 
   window.toggleMehrMenu = function() {
-    const m = document.getElementById('mehr-menu');
+    var m = document.getElementById('mehr-menu');
     if(!m) return;
-    const isOpen = m.style.display !== 'none';
+    var isOpen = m.style.display === 'block';
     m.style.display = isOpen ? 'none' : 'block';
-    if(!isOpen) { 
-      window._mehrAnpassen=false; 
-      const a=document.getElementById('mehr-anpassen');
-      if(a)a.style.display='none'; 
-      if(typeof window.renderMehrGrid==='function') window.renderMehrGrid(); 
-      else if(typeof renderMehrGrid==='function') renderMehrGrid();
+    if(!isOpen) {
+      window._mehrAnpassen = false;
+      var a = document.getElementById('mehr-anpassen');
+      if(a) a.style.display = 'none';
+      // Direkt Grid befüllen
+      var grid = document.getElementById('mehr-grid');
+      if(grid) {
+        var mainNav = window._mainNav || ['dashboard','herde','saison','milch'];
+        var allMods = (window.ALLE_MODULE && window.ALLE_MODULE.length > 4)
+          ? window.ALLE_MODULE
+          : [
+              {id:'zaehlung',icon:'✓',label:'Zählung'},{id:'weide',icon:'🌿',label:'Weide'},
+              {id:'behandlung',icon:'⚕',label:'Behandlung'},{id:'besamung',icon:'🐮',label:'Besamung'},
+              {id:'bestandsbuch',icon:'📋',label:'Bestandsbuch'},{id:'einstellungen',icon:'⚙',label:'Einstellungen'},
+              {id:'journal',icon:'📓',label:'Journal'},{id:'alpung',icon:'📊',label:'Alpungstage'},
+              {id:'kontakte',icon:'📞',label:'Kontakte'},{id:'gruppen',icon:'🏷',label:'Gruppen'},
+              {id:'kontrolle',icon:'🔍',label:'Kontrolle'},{id:'kalender',icon:'📅',label:'Kalender'},
+              {id:'statistik',icon:'📊',label:'Statistik'},{id:'backup',icon:'💾',label:'Backup'},
+              {id:'suche',icon:'🔎',label:'Suche'},{id:'chat',icon:'💬',label:'Chat'},
+              {id:'kraftfutter',icon:'🌾',label:'Kraftfutter'},{id:'wetter',icon:'⛅',label:'Wetter'},
+              {id:'kaese',icon:'🧀',label:'Käse'},{id:'bauern_menu',icon:'👥',label:'Bauern'},
+              {id:'wartung',icon:'🔧',label:'Wartung'},{id:'lager',icon:'📦',label:'Lager'},
+              {id:'aufgaben',icon:'✅',label:'Aufgaben'},
+            ];
+        var imMenu = allMods.filter(function(mod){ return !mainNav.includes(mod.id) && mod.id !== '__drucken__'; });
+        grid.innerHTML = imMenu.map(function(mod){
+          return '<button class="mehr-btn" onclick="window.navigate&&window.navigate(\''+mod.id+'\');document.getElementById(\'mehr-menu\').style.display=\'none\'" style="display:flex;flex-direction:column;align-items:center;gap:3px;background:var(--bg3);border:1px solid var(--border);border-radius:10px;padding:.6rem .3rem;font-size:.72rem;color:var(--text2);cursor:pointer;font-family:inherit"><span style="font-size:1.3rem">'+mod.icon+'</span>'+mod.label+'</button>';
+        }).join('');
+      }
     }
   };
   window.closeMehr = function() {
