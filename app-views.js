@@ -4111,6 +4111,18 @@ function renderStallplan() {
         <div id="sp-wiz-reihen" style="display:flex;flex-direction:column;gap:.5rem"></div>
         <button class="btn-xs" onclick="spWizAddReihe()">+ Reihe hinzufügen</button>
 
+        <label class="inp-label" style="margin-top:.6rem">Türen am Mistgang (Anbindestall mit 2 Reihen)</label>
+        <div style="display:flex;gap:.5rem;flex-wrap:wrap">
+          <div style="flex:1;min-width:9rem">
+            <label class="inp-label" style="font-size:.85rem">🚪 Links</label>
+            <input id="sp-wiz-gang-links" class="inp" placeholder="z. B. Eingang (leer = keine)" />
+          </div>
+          <div style="flex:1;min-width:9rem">
+            <label class="inp-label" style="font-size:.85rem">🚪 Rechts</label>
+            <input id="sp-wiz-gang-rechts" class="inp" placeholder="z. B. Ausgang (leer = keine)" />
+          </div>
+        </div>
+
         <details style="margin-top:1rem;padding:.5rem .8rem;background:var(--bg3);border-radius:8px">
           <summary style="cursor:pointer;color:var(--gold);font-weight:600">📋 Per Text-Beschreibung anlegen</summary>
           <div style="font-size:.85rem;color:var(--text3);margin:.5rem 0">
@@ -4196,7 +4208,14 @@ window.spRenderReihe = function(reihe, rIdx, stall) {
   var stallTyp = (stall.tableConfig && stall.tableConfig.typ) || 'anbindestall';
   var anzahlReihen = (stall.tableConfig && stall.tableConfig.reihen) ? stall.tableConfig.reihen.length : 0;
   if(rIdx > 0 && stallTyp === 'anbindestall' && anzahlReihen === 2) {
+    var gangT = (stall.tableConfig && stall.tableConfig.gangTueren) || {};
+    var linksT = gangT.links;   // {label}
+    var rechtsT = gangT.rechts; // {label}
+    html += '<div class="sp-mistgang-zeile">';
+    html += '<div class="sp-mistgang-tuer-links">'+(linksT?'<span class="sp-mistgang-tuer">🚪 '+(linksT.label||'Tür')+'</span>':'')+'</div>';
     html += '<div class="sp-mistgang">━ Mistgang ━</div>';
+    html += '<div class="sp-mistgang-tuer-rechts">'+(rechtsT?'<span class="sp-mistgang-tuer">🚪 '+(rechtsT.label||'Tür')+'</span>':'')+'</div>';
+    html += '</div>';
   } else if(rIdx > 0) {
     html += '<div class="sp-reihe-trenner"></div>';
   }
@@ -4365,16 +4384,29 @@ window.spPlatzLongPress = function(platzId) {
   document.addEventListener('mouseleave', cancelPress);
 })();
 
-// Zuweisung speichern
+// Zuweisung speichern – mit Optimistic-Update
+// (lokale Änderung sofort sichtbar, Firebase-Sync läuft parallel)
 window.spSavePlatzZuweisung = async function() {
   var platzId = document.getElementById('sp-kuh-platzid').value;
   var kuhId = document.getElementById('sp-kuh-select').value;
   if(!platzId) return;
-  var path = 'stallplanV2/'+window._spAktivId+'/plaetze/'+platzId;
-  if(kuhId) await update(ref(db,'stallplanV2/'+window._spAktivId+'/plaetze'), {[platzId]: kuhId});
-  else await remove(ref(db, path));
+  // Lokal sofort updaten
+  var stall = window._spStaelle && window._spStaelle[window._spAktivId];
+  if(stall) {
+    stall.plaetze = stall.plaetze || {};
+    if(kuhId) stall.plaetze[platzId] = kuhId;
+    else delete stall.plaetze[platzId];
+  }
+  // Sheet zu + sofortiger Re-Render
   closeForm('sp-kuh-overlay');
+  if(typeof render === 'function') render();
   if(window.haptic) window.haptic('save');
+  // Firebase-Sync im Hintergrund
+  try {
+    var path = 'stallplanV2/'+window._spAktivId+'/plaetze/'+platzId;
+    if(kuhId) await update(ref(db,'stallplanV2/'+window._spAktivId+'/plaetze'), {[platzId]: kuhId});
+    else await remove(ref(db, path));
+  } catch(e) { console.warn('Platz-Zuweisung Firebase-Fehler:', e); }
 };
 
 // ── Wizard ─────────────────────────────────────────────────────
@@ -4392,6 +4424,12 @@ window.spOpenWizard = function(stallId) {
   var layout = (stall && stall.tableConfig && stall.tableConfig.layout) || 'horizontal';
   var layoutSel = document.getElementById('sp-wiz-layout');
   if(layoutSel) layoutSel.value = layout;
+  // Mistgang-Türen
+  var gangT = (stall && stall.tableConfig && stall.tableConfig.gangTueren) || {};
+  var inpL = document.getElementById('sp-wiz-gang-links');
+  var inpR = document.getElementById('sp-wiz-gang-rechts');
+  if(inpL) inpL.value = (gangT.links && gangT.links.label) || '';
+  if(inpR) inpR.value = (gangT.rechts && gangT.rechts.label) || '';
   // Reihen aus Stall oder Default
   if(stall && stall.tableConfig && stall.tableConfig.reihen) {
     window._spWizReihen = JSON.parse(JSON.stringify(stall.tableConfig.reihen));
@@ -4550,8 +4588,13 @@ window.spSaveWizard = async function() {
   if(!window._spWizReihen.length){alert('Mindestens eine Reihe');return;}
 
   var layout = (document.getElementById('sp-wiz-layout')?.value) || 'horizontal';
+  var gangLinks = (document.getElementById('sp-wiz-gang-links')?.value || '').trim();
+  var gangRechts = (document.getElementById('sp-wiz-gang-rechts')?.value || '').trim();
+  var gangTueren = {};
+  if(gangLinks) gangTueren.links = { label: gangLinks };
+  if(gangRechts) gangTueren.rechts = { label: gangRechts };
   // Stalltyp ist immer 'anbindestall' — kein Wahl-UI mehr
-  var tableConfig = { typ:'anbindestall', layout:layout, reihen: window._spWizReihen };
+  var tableConfig = { typ:'anbindestall', layout:layout, reihen: window._spWizReihen, gangTueren: gangTueren };
   if(stallId) {
     await update(ref(db,'stallplanV2/'+stallId), {name:name, tableConfig:tableConfig});
   } else {
@@ -7464,7 +7507,6 @@ window.drawFieberChart = function() {
     ctx.fillStyle=p.t>39.5?'#d44b4b':p.t>38.5?'#d4844b':'#4db84e'; ctx.fill();
   });
 };
-
 window.selectMedikament = function(nameOrEl) {
   const name = (typeof nameOrEl === 'string') ? nameOrEl : nameOrEl?.dataset?.med || '';
   if(!name) return;
