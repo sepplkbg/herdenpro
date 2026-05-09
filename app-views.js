@@ -313,15 +313,17 @@ function renderDashboard() {
           ${last7Trend>=0?'↗':'↘'} ${last7Trend>=0?'+':''}${Math.round(last7Trend)}L
         </div>
       </div>
-      <div style="display:flex;align-items:flex-end;gap:4px;height:42px">
+      <div style="display:flex;align-items:flex-end;gap:.25rem;height:5rem;padding-top:.4rem">
         ${last7.map((d,i) => {
-          const pct = last7Max ? Math.max(4, Math.round(d.l/last7Max*100)) : 4;
+          const pct = last7Max ? Math.max(8, Math.round(d.l/last7Max*100)) : 8;
           const istHeute = i===6;
+          const hatWert = d.l>0;
           const datum = new Date(d.ts);
           const tag = ['So','Mo','Di','Mi','Do','Fr','Sa'][datum.getDay()];
-          return `<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:3px">
-            <div style="width:100%;background:linear-gradient(180deg,${istHeute?'#7acbff':'#4a88b8'},rgba(74,184,232,.2));height:${pct}%;border-radius:3px 3px 0 0;${istHeute?'box-shadow:0 0 8px rgba(122,203,255,.5)':''}" title="${d.l}L"></div>
-            <div style="font-size:.6rem;color:${istHeute?'var(--gold)':'var(--text3)'};font-weight:${istHeute?'700':'400'}">${tag}</div>
+          return `<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:.2rem;height:100%;justify-content:flex-end">
+            <div style="font-size:.55rem;color:${istHeute?'#7acbff':'var(--text3)'};font-weight:${istHeute?'700':'500'};line-height:1;min-height:.7rem">${hatWert?Math.round(d.l):''}</div>
+            <div style="width:100%;min-height:6px;background:linear-gradient(180deg,${istHeute?'#7acbff':'#4a88b8'} 0%,${istHeute?'#4a88b8':'#2d5a7a'} 100%);height:${pct}%;border-radius:3px 3px 0 0;${istHeute?'box-shadow:0 0 8px rgba(122,203,255,.5)':''};${hatWert?'':'opacity:.25'}" title="${d.l}L"></div>
+            <div style="font-size:.6rem;color:${istHeute?'var(--gold)':'var(--text3)'};font-weight:${istHeute?'700':'400'};line-height:1">${tag}</div>
           </div>`;
         }).join('')}
       </div>
@@ -1267,10 +1269,14 @@ function besamungCard(bsid,bs){
 
 function behandlungFormHTML(vorId, editId, editData) {
   const d = editData || {};
-  const opts = Object.entries(kuehe).sort((a,b)=>parseInt(a[1].nr)-parseInt(b[1].nr))
-    .map(([id,k])=>`<option value="${id}" ${(d.kuhId?d.kuhId===id:id===vorId)?'selected':''}>#${k.nr} ${k.name||''}</option>`).join('');
+  const initialKuhId = d.kuhId || vorId || '';
+  const initialKuh = initialKuhId && kuehe[initialKuhId];
+  const initialKuhLabel = initialKuh ? `#${initialKuh.nr} ${initialKuh.name||''}` : '';
   const bDatum = d.datum ? isoDate(new Date(d.datum)) : isoDate(new Date());
   const bZeit = d.behandlungZeit || 'morgen';
+  const behandler = d.behandler || 'personal';
+  const isPersonal = behandler === 'personal';
+  const isTierarzt = behandler === 'tierarzt';
   return `<div id="behandlung-form-overlay" class="form-overlay" style="display:none">
     <div class="form-sheet">
       <div class="form-header">
@@ -1279,8 +1285,13 @@ function behandlungFormHTML(vorId, editId, editData) {
       </div>
       <div class="form-body">
         <input type="hidden" id="b-edit-id" value="${editId||''}" />
-        <label class="inp-label">Kuh * (nach oben scrollen zum Auswählen)</label>
-        <select id="b-kuh" class="inp" size="1" onfocus="this.scrollIntoView({behavior:'smooth',block:'start'})">${opts.replace('<option value="">','<option value="" selected>')}</select>
+        <input type="hidden" id="b-kuh" value="${initialKuhId}" />
+        <label class="inp-label">Kuh *</label>
+        <button type="button" id="b-kuh-btn" class="inp" onclick="openKuhPicker('b-kuh','b-kuh-btn')"
+          style="text-align:left;display:flex;align-items:center;justify-content:space-between;gap:.5rem;cursor:pointer;width:100%">
+          <span id="b-kuh-label" style="${initialKuhLabel?'':'color:var(--text3)'}">${initialKuhLabel||'Kuh wählen…'}</span>
+          <span style="color:var(--text3);font-size:1.2rem">▾</span>
+        </button>
         <label class="inp-label">Behandelt am</label>
         <div style="display:grid;grid-template-columns:1fr auto;gap:.5rem;align-items:center">
           <input id="b-datum" class="inp" type="date" value="${bDatum}" oninput="berechneWartezeiten()" />
@@ -1296,8 +1307,9 @@ function behandlungFormHTML(vorId, editId, editData) {
         <label class="inp-label">🌡 Körpertemperatur</label>
         <div style="display:flex;gap:.4rem;align-items:center;margin-bottom:.4rem;flex-wrap:wrap">
           <div style="position:relative;flex-shrink:0">
-            <input id="b-temperatur" class="inp" type="number" step="0.1" min="35" max="42" inputmode="decimal"
-              placeholder="z.B. 38.5" value="${d.temperatur||''}"
+            <input id="b-temperatur" class="inp" type="text" inputmode="decimal"
+              pattern="[0-9]+([,.][0-9]+)?"
+              placeholder="z.B. 38,5" value="${d.temperatur ? String(d.temperatur).replace('.',',') : ''}"
               style="width:7rem;padding-right:28px"
               oninput="checkFieber(this.value)" />
             <span style="position:absolute;right:8px;top:50%;transform:translateY(-50%);font-size:.75rem;color:var(--text3);pointer-events:none">°C</span>
@@ -1327,16 +1339,16 @@ function behandlungFormHTML(vorId, editId, editData) {
             </div>`).join('')}
         </div>` : ''}
         <div style="display:flex;gap:.4rem;margin-bottom:.4rem">
-          <button id="b-btn-personal" onclick="setBehBehandler('personal',this)"
-            style="flex:1;padding:.45rem;border-radius:var(--radius-sm);border:2px solid var(--green);background:var(--green);color:#fff;font-weight:bold;font-family:inherit;font-size:.82rem;cursor:pointer">
+          <button type="button" id="b-btn-personal" onclick="setBehBehandler('personal',this)"
+            style="flex:1;padding:.45rem;border-radius:var(--radius-sm);border:${isPersonal?'2px solid var(--green)':'1px solid var(--border)'};background:${isPersonal?'var(--green)':'transparent'};color:${isPersonal?'#fff':'var(--text3)'};font-weight:${isPersonal?'bold':'normal'};font-family:inherit;font-size:.82rem;cursor:pointer">
             🌿 Almpersonal
           </button>
-          <button id="b-btn-tierarzt" onclick="setBehBehandler('tierarzt',this)"
-            style="flex:1;padding:.45rem;border-radius:var(--radius-sm);border:1px solid var(--border);background:transparent;color:var(--text3);font-family:inherit;font-size:.82rem;cursor:pointer">
+          <button type="button" id="b-btn-tierarzt" onclick="setBehBehandler('tierarzt',this)"
+            style="flex:1;padding:.45rem;border-radius:var(--radius-sm);border:${isTierarzt?'2px solid #3a8fd4':'1px solid var(--border)'};background:${isTierarzt?'#3a8fd4':'transparent'};color:${isTierarzt?'#fff':'var(--text3)'};font-weight:${isTierarzt?'bold':'normal'};font-family:inherit;font-size:.82rem;cursor:pointer">
             🩺 Tierarzt
           </button>
         </div>
-        <input type="hidden" id="b-behandler" value="${d.behandler||'personal'}" />
+        <input type="hidden" id="b-behandler" value="${behandler}" />
         <!-- Medikament Autocomplete -->
         <div style="position:relative">
           <label class="inp-label">Medikament</label>
@@ -1404,7 +1416,7 @@ function behandlungFormHTML(vorId, editId, editData) {
           </div>
         </div>
         <!-- Foto Tierarztzettel (nur bei Tierarzt) -->
-        <div id="b-tazettel-block" style="display:none">
+        <div id="b-tazettel-block" style="display:${isTierarzt?'':'none'}">
           <label class="inp-label">📋 Foto Tierarztzettel</label>
           <div style="display:flex;gap:.5rem;align-items:center">
             <label style="cursor:pointer;flex:1">
