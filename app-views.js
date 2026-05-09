@@ -4003,177 +4003,447 @@ window.navigate = function(view) {
   if(view !== 'qrscanner' && window._qrStream) qrStop();
   _origNavQR(view);
 };
+// ══════════════════════════════════════════════════════════════
+//  STALLPLAN – Tabellen-Renderer (Hauptansicht, ersetzt Canvas)
+// ══════════════════════════════════════════════════════════════
 function renderStallplan() {
-  const stall = window._wartungData?.stallplan || {};
   const ställe = window._spStaelle || {};
   const aktivId = window._spAktivId || null;
-  const modus = window._spModus || 'ansicht'; // 'zeichnen' | 'elemente' | 'kuehe' | 'ansicht'
+  const stallListe = Object.entries(ställe);
 
-  setTimeout(function() { spInitCanvas(); }, 100);
+  // Auto-select erstes Stall wenn keiner aktiv
+  if(!aktivId && stallListe.length > 0) {
+    window._spAktivId = stallListe[0][0];
+    setTimeout(render, 10);
+  }
 
-  const stallListe = Object.entries(window._spStaelle || {});
+  const stall = window._spAktivId ? ställe[window._spAktivId] : null;
+
+  // Auto-Migration Legacy → Tabelle (Boxen aus elemente in tableConfig+plaetze überführen)
+  if(stall && !stall.tableConfig && stall.elemente && stall.elemente.length > 0) {
+    spAutoMigrate(window._spAktivId, stall);
+  }
+
+  // Filter-Chip Daten
+  const aktivFilter = window._spFilter || 'alle';
+  const bauernSet = {};
+  if(stall && stall.plaetze) {
+    Object.values(stall.plaetze).forEach(kuhId => {
+      const k = kuhId && kuehe[kuhId];
+      if(k && k.bauer) bauernSet[k.bauer] = true;
+    });
+  }
+  const bauernListe = Object.keys(bauernSet).sort();
+  const gruppenListe = Object.entries(gruppen || {});
+
+  function chipBtn(id, label, icon){
+    const aktiv = aktivFilter === id;
+    return '<button class="filter-chip '+(aktiv?'active':'')+'" onclick="spSetFilter(\''+id.replace(/\'/g,"\\\\'")+'\')">'+(icon?icon+' ':'')+label+'</button>';
+  }
+
+  // Reihen-HTML rendern
+  let reihenHTML = '';
+  if(stall && stall.tableConfig && Array.isArray(stall.tableConfig.reihen)) {
+    reihenHTML = stall.tableConfig.reihen.map((reihe, rIdx) =>
+      spRenderReihe(reihe, rIdx, stall)
+    ).join('');
+  } else if(stall) {
+    reihenHTML = '<div class="empty-state" style="margin:1rem 0"><div style="font-size:2rem;margin-bottom:.5rem">📐</div><div>Noch kein Layout gesetzt</div><button class="btn-primary" style="margin-top:.6rem" onclick="spOpenWizard(\''+window._spAktivId+'\')">📋 Layout anlegen</button></div>';
+  }
 
   return `<div class="page-header">
-  <h2>🏚 Stallplan</h2>
-  <div style="display:flex;gap:.3rem">
-    <button class="btn-xs" onclick="spNeuerStall()">+ Stall</button>
+    <h2>🏚 Stallplan</h2>
+    <button class="btn-primary" onclick="spOpenWizard()">+ Stall</button>
   </div>
-</div>
 
-<!-- Stall-Tabs -->
-${stallListe.length ? `
-<div style="display:flex;gap:.3rem;flex-wrap:wrap;margin-bottom:.5rem">
-  ${stallListe.map(([sid,s])=>`
-    <button class="filter-chip ${aktivId===sid?'active':''}"
-      onclick="window._spAktivId='${sid}';window._spModus='ansicht';render()">
-      ${s.name}
-    </button>`).join('')}
-  <button class="btn-xs" onclick="spNeuerStall()">+</button>
-</div>` : ''}
+  ${stallListe.length > 1 ? `
+  <div style="display:flex;gap:.3rem;flex-wrap:wrap;margin-bottom:.7rem;padding:.2rem 0">
+    ${stallListe.map(([sid, s]) => `
+      <button class="filter-chip ${window._spAktivId===sid?'active':''}"
+        onclick="window._spAktivId='${sid}';render()">${s.name||'Stall'}</button>
+    `).join('')}
+  </div>` : ''}
 
-${aktivId && ställe[aktivId] ? `
-<!-- Modus-Leiste -->
-<div style="display:flex;gap:.25rem;margin-bottom:.5rem;background:var(--bg3);border-radius:10px;padding:.3rem">
-  ${[
-    {id:'ansicht',  icon:'👁',  label:'Ansicht'},
-    {id:'zeichnen', icon:'✏️',  label:'Grundriss'},
-    {id:'elemente', icon:'🔧', label:'Elemente'},
-    {id:'kuehe',    icon:'🐄',  label:'Kühe'},
-  ].map(m=>`
-    <button class="sp-tool-btn ${modus===m.id?'aktiv':''}"
-      onclick="window._spModus='${m.id}';render()">
-      <span style="font-size:1rem">${m.icon}</span>${m.label}
-    </button>`).join('')}
-</div>
-
-${modus==='zeichnen' ? `
-<div style="background:rgba(212,168,75,.08);border:1px solid rgba(212,168,75,.2);border-radius:8px;padding:.4rem .7rem;margin-bottom:.5rem;font-size:.73rem;color:var(--gold)">
-  ✏️ Tippen = Punkt setzen · Doppeltippen = Polygon schließen · Letzter Punkt: ← zurück
-  <button class="btn-xs" style="margin-left:.5rem" onclick="spUndoPunkt()">← Zurück</button>
-  <button class="btn-xs" style="margin-left:.3rem;color:var(--red)" onclick="spResetPolygon()">✕ Reset</button>
-</div>` : ''}
-
-${modus==='elemente' ? `
-<!-- Element-Toolbar -->
-<div style="display:flex;gap:.25rem;overflow-x:auto;margin-bottom:.5rem;padding:.2rem 0">
-  ${[
-    {id:'gang_h',  icon:'━', label:'Gang H',   farbe:'#555'},
-    {id:'gang_v',  icon:'┃', label:'Gang V',   farbe:'#555'},
-    {id:'tuer',    icon:'🚪', label:'Tür',      farbe:'#8B6914'},
-    {id:'fenster', icon:'🪟', label:'Fenster',  farbe:'#4ab8e8'},
-    {id:'pfeiler', icon:'◼', label:'Pfeiler',  farbe:'#333'},
-    {id:'box',     icon:'🐄', label:'Box',      farbe:'var(--gold)'},
-    {id:'delete',  icon:'✕',  label:'Löschen',  farbe:'var(--red)'},
-  ].map(t=>`
-    <button class="sp-tool-btn ${window._spWerkzeug===t.id?'aktiv':''}"
-      style="flex:0 0 56px;${window._spWerkzeug===t.id?'border-color:'+t.farbe+';color:'+t.farbe:''}"
-      onclick="window._spWerkzeug='${t.id}';render()">
-      <span style="font-size:1.1rem">${t.icon}</span>
-      <span style="font-size:.58rem">${t.label}</span>
-    </button>`).join('')}
-</div>
-<div style="font-size:.7rem;color:var(--text3);margin-bottom:.4rem">
-  Werkzeug wählen → auf Canvas tippen = platzieren · Element antippen = verschieben/löschen
-</div>` : ''}
-
-${modus==='kuehe' ? `
-<div style="font-size:.7rem;color:var(--text3);margin-bottom:.4rem">
-  🐄 Box antippen = Kuh zuweisen · Lang drücken = Kuh-Profil öffnen
-</div>` : ''}
-
-${modus==='ansicht' ? (function(){
-  // Filter-Chips (Phase 7)
-  var aktivFilter = window._spFilter || 'alle';
-  // Bauern aus aktuellem Stall ermitteln (nur die, deren Kühe in Boxen stehen)
-  var stallElems = (ställe[aktivId] && ställe[aktivId].elemente) || [];
-  var bauernSet = {};
-  stallElems.forEach(function(e){
-    if(e.typ==='box' && e.kuhId && kuehe[e.kuhId] && kuehe[e.kuhId].bauer){
-      bauernSet[kuehe[e.kuhId].bauer] = true;
-    }
-  });
-  var bauernListe = Object.keys(bauernSet).sort();
-  var gruppenListe = Object.entries(gruppen||{});
-
-  function chip(id, label, icon){
-    var aktiv = aktivFilter === id;
-    return '<button class="filter-chip '+(aktiv?'active':'')+'" style="font-size:.72rem;white-space:nowrap" onclick="spSetFilter(\''+id.replace(/'/g,"\\'")+'\')">'+(icon?icon+' ':'')+label+'</button>';
-  }
-  var html = '<div style="display:flex;gap:.3rem;overflow-x:auto;margin-bottom:.5rem;padding:.2rem 0">';
-  html += chip('alle', 'Alle', '🐄');
-  html += chip('wz', 'Mit WZ', '⚕');
-  html += chip('trocken', 'Trockensteher', '🌾');
-  bauernListe.forEach(function(b){ html += chip('bauer:'+b, b, '👤'); });
-  gruppenListe.forEach(function(g){ html += chip('gruppe:'+g[0], (g[1].name||'Gruppe'), '🏷'); });
-  html += '</div>';
-  return html;
-})() : ''}
-
-` : `
-<div class="empty-state" style="margin-top:1rem">
-  <div style="font-size:2.5rem;margin-bottom:.5rem">🏚</div>
-  <div>Noch kein Stall angelegt</div>
-  <button class="btn-primary" style="margin-top:.8rem" onclick="spNeuerStall()">+ Stall anlegen</button>
-</div>`}
-
-<!-- Canvas -->
-<div id="sp-canvas-wrap">
-  <canvas id="sp-canvas"></canvas>
-  <!-- Zoom-Controls -->
-  <div style="position:absolute;bottom:8px;right:8px;display:flex;flex-direction:column;gap:4px">
-    <button onclick="spZoom(1.2)" style="width:32px;height:32px;border-radius:8px;background:rgba(0,0,0,.6);border:1px solid rgba(255,255,255,.2);color:#fff;font-size:1.1rem;cursor:pointer">+</button>
-    <button onclick="spZoom(1/1.2)" style="width:32px;height:32px;border-radius:8px;background:rgba(0,0,0,.6);border:1px solid rgba(255,255,255,.2);color:#fff;font-size:1.1rem;cursor:pointer">−</button>
-    <button onclick="spResetView()" style="width:32px;height:32px;border-radius:8px;background:rgba(0,0,0,.6);border:1px solid rgba(255,255,255,.2);color:#fff;font-size:.6rem;cursor:pointer">⊡</button>
+  ${stall ? `
+  <!-- Filter-Chips -->
+  <div style="display:flex;gap:.3rem;overflow-x:auto;margin-bottom:.7rem;padding:.2rem 0">
+    ${chipBtn('alle', 'Alle', '🐄')}
+    ${chipBtn('wz', 'Mit WZ', '⚕')}
+    ${chipBtn('trocken', 'Trockensteher', '🌾')}
+    ${bauernListe.map(b => chipBtn('bauer:'+b, b, '👤')).join('')}
+    ${gruppenListe.map(([gid, g]) => chipBtn('gruppe:'+gid, g.name||'Gruppe', '🏷')).join('')}
   </div>
-</div>
 
-${aktivId && ställe[aktivId] ? `
-<!-- Aktionen unten -->
-<div style="display:flex;gap:.4rem;margin-top:.5rem;flex-wrap:wrap">
-  <button class="btn-xs" onclick="spSpeichern()">💾 Speichern</button>
-  <button class="btn-xs" onclick="spStallUmbenennen('${aktivId}')">✎ Umbenennen</button>
-  <button class="btn-xs-danger" onclick="spStallLoeschen('${aktivId}')">🗑 Löschen</button>
-</div>` : ''}
+  <!-- Reihen-Tabelle -->
+  <div class="sp-stall-tabelle">${reihenHTML}</div>
 
-<!-- Stall-Formular -->
-<div id="sp-stall-overlay" class="form-overlay" style="display:none">
-  <div class="form-sheet">
-    <div class="form-header"><h3>Stall anlegen</h3><button class="close-btn" onclick="closeForm('sp-stall-overlay')">✕</button></div>
-    <div class="form-body">
-      <input id="sp-stall-name" class="inp" placeholder="Stallname *" />
-      <div class="form-actions">
-        <button class="btn-secondary" onclick="closeForm('sp-stall-overlay')">Abbrechen</button>
-        <button class="btn-primary" onclick="spSaveNeuerStall()">Anlegen</button>
+  <!-- Aktionen -->
+  <div style="display:flex;gap:.5rem;margin-top:1.2rem;flex-wrap:wrap">
+    <button class="btn-xs" onclick="spOpenWizard('${window._spAktivId}')">✎ Layout bearbeiten</button>
+    <button class="btn-xs" onclick="spStallUmbenennen('${window._spAktivId}')">📝 Umbenennen</button>
+    <button class="btn-xs-danger" onclick="spStallLoeschen('${window._spAktivId}')">🗑 Stall löschen</button>
+  </div>
+  ` : `
+  <div class="empty-state" style="margin-top:2rem;text-align:center">
+    <div style="font-size:3rem;margin-bottom:.8rem">🏚</div>
+    <div style="font-size:1.1rem;margin-bottom:1rem">Noch kein Stall angelegt</div>
+    <button class="btn-primary" onclick="spOpenWizard()">+ Stall anlegen</button>
+  </div>`}
+
+  <!-- Wizard-Overlay -->
+  <div id="sp-wizard-overlay" class="form-overlay" style="display:none">
+    <div class="form-sheet">
+      <div class="form-header"><h3>🏚 Stall einrichten</h3><button class="close-btn" onclick="closeForm('sp-wizard-overlay')">✕</button></div>
+      <div class="form-body">
+        <input type="hidden" id="sp-wiz-id" />
+        <label class="inp-label">Stallname *</label>
+        <input id="sp-wiz-name" class="inp" placeholder="z. B. Nasereinalm" />
+
+        <label class="inp-label" style="margin-top:.6rem">Reihen</label>
+        <div id="sp-wiz-reihen" style="display:flex;flex-direction:column;gap:.5rem"></div>
+        <button class="btn-xs" onclick="spWizAddReihe()">+ Reihe hinzufügen</button>
+
+        <details style="margin-top:1rem;padding:.5rem .8rem;background:var(--bg3);border-radius:8px">
+          <summary style="cursor:pointer;color:var(--gold);font-weight:600">📋 Per Text-Beschreibung anlegen</summary>
+          <div style="font-size:.85rem;color:var(--text3);margin:.5rem 0">
+            Vorlage:<br>
+            <code style="display:block;background:var(--bg);padding:.5rem;border-radius:6px;margin-top:.3rem;white-space:pre-wrap;font-size:.8rem">Bergseite: 28 Plätze, Säule alle 4
+Talseite: 4 Plätze, Säule, 4 Plätze, Säule, 3 Plätze, Tür "Eingangstür", 16 Plätze, Säule alle 4</code>
+          </div>
+          <textarea id="sp-wiz-text" class="inp" rows="5" placeholder="Stall-Beschreibung eingeben…"></textarea>
+          <button class="btn-xs" style="margin-top:.4rem" onclick="spWizParseText()">📋 Aus Text füllen</button>
+          <div id="sp-wiz-text-err" style="color:var(--red);font-size:.85rem;margin-top:.3rem"></div>
+        </details>
+
+        <div class="form-actions" style="margin-top:1rem">
+          <button class="btn-secondary" onclick="closeForm('sp-wizard-overlay')">Abbrechen</button>
+          <button class="btn-primary" onclick="spSaveWizard()">Speichern</button>
+        </div>
       </div>
     </div>
   </div>
-</div>
 
-<!-- Kuh-Zuweisung Overlay -->
-<div id="sp-kuh-overlay" class="form-overlay" style="display:none">
-  <div class="form-sheet">
-    <div class="form-header"><h3>🐄 Kuh zuweisen</h3><button class="close-btn" onclick="closeForm('sp-kuh-overlay')">✕</button></div>
-    <div class="form-body">
-      <input type="hidden" id="sp-kuh-elem-id" />
-      <select id="sp-kuh-select" class="inp">
-        <option value="">— Leer lassen —</option>
-        ${Object.entries(kuehe).sort((a,b)=>(parseInt(a[1].nr)||0)-(parseInt(b[1].nr)||0))
-          .map(([id,k])=>`<option value="${id}">#${k.nr} ${k.name||'–'} ${k.bauer?'('+k.bauer+')':''}</option>`).join('')}
-      </select>
-      <div id="sp-kuh-preview" style="min-height:30px;margin-top:.4rem"></div>
-      <div class="form-actions">
-        <button class="btn-secondary" onclick="closeForm('sp-kuh-overlay')">Abbrechen</button>
-        <button class="btn-primary" onclick="spKuhZuweisen()">Zuweisen</button>
+  <!-- Kuh-Zuweisung-Overlay -->
+  <div id="sp-kuh-overlay" class="form-overlay" style="display:none">
+    <div class="form-sheet">
+      <div class="form-header"><h3>🐄 Kuh dem Platz zuweisen</h3><button class="close-btn" onclick="closeForm('sp-kuh-overlay')">✕</button></div>
+      <div class="form-body">
+        <input type="hidden" id="sp-kuh-platzid" />
+        <div id="sp-kuh-platzlbl" style="font-size:1rem;color:var(--text2);margin-bottom:.5rem"></div>
+        <select id="sp-kuh-select" class="inp">
+          <option value="">— Leer lassen —</option>
+          ${Object.entries(kuehe).sort((a,b)=>(parseInt(a[1].nr)||0)-(parseInt(b[1].nr)||0))
+            .map(([id,k])=>`<option value="${id}">#${k.nr} ${k.name||'–'} ${k.bauer?'('+k.bauer+')':''}</option>`).join('')}
+        </select>
+        <div class="form-actions">
+          <button class="btn-secondary" onclick="closeForm('sp-kuh-overlay')">Abbrechen</button>
+          <button class="btn-primary" onclick="spSavePlatzZuweisung()">Zuweisen</button>
+        </div>
       </div>
     </div>
   </div>
-</div>
+
   `;
 }
 
 
 // ══════════════════════════════════════════════════════════════
-//  STALLPLAN – Canvas Engine
+//  STALLPLAN – Tabellen-Helfer (Wizard, Render-Reihe, Migration)
+// ══════════════════════════════════════════════════════════════
+
+// Sektoren-Liste aus einer Reihe in Render-Items expandieren
+window.spExpandReihe = function(reihe) {
+  var items = []; var platzNr = 0;
+  (reihe.sektoren||[]).forEach(function(sek){
+    if(sek.typ === 'plaetze') {
+      var n = sek.anzahl || 0;
+      for(var i = 0; i < n; i++) {
+        platzNr++;
+        items.push({typ:'platz', nr:platzNr});
+        if(sek.saeuleAlle && (i+1) % sek.saeuleAlle === 0 && i < n-1) {
+          items.push({typ:'saeule'});
+        }
+      }
+    } else if(sek.typ === 'saeule') {
+      items.push({typ:'saeule'});
+    } else if(sek.typ === 'tuer') {
+      items.push({typ:'tuer', label: sek.label || 'Tür'});
+    } else if(sek.typ === 'fenster') {
+      items.push({typ:'fenster', label: sek.label || 'Fenster'});
+    }
+  });
+  return items;
+};
+
+// Eine Reihe rendern (HTML-String)
+window.spRenderReihe = function(reihe, rIdx, stall) {
+  var items = window.spExpandReihe(reihe);
+  var plaetze = stall.plaetze || {};
+  var platzNamen = stall.platzNamen || {};
+  var rname = reihe.name || ('Reihe '+(rIdx+1));
+  var prefix = (rname[0] || 'R').toUpperCase();
+  var aktivFilter = window._spFilter || 'alle';
+
+  var html = '<div class="sp-reihe">';
+  html += '<div class="sp-reihe-name">'+rname+'</div>';
+  html += '<div class="sp-platz-liste">';
+  items.forEach(function(it){
+    if(it.typ === 'saeule') {
+      html += '<div class="sp-saeule"><span>▬</span> Säule <span>▬</span></div>';
+    } else if(it.typ === 'tuer') {
+      html += '<div class="sp-tuer">🚪 '+(it.label||'Tür')+'</div>';
+    } else if(it.typ === 'fenster') {
+      html += '<div class="sp-fenster">🪟 '+(it.label||'Fenster')+'</div>';
+    } else if(it.typ === 'platz') {
+      var platzId = rIdx + '-' + it.nr;
+      var kuhId = plaetze[platzId];
+      var customName = platzNamen[platzId];
+      var label = customName || (prefix + '-' + it.nr);
+      var k = kuhId && kuehe[kuhId];
+
+      // WZ-Status
+      var wzStatus = 'none', wzResttage = null;
+      if(k) {
+        var heute = Date.now();
+        var aktBeh = Object.values(behandlungen).filter(function(b){return b.kuhId===kuhId&&b.aktiv;});
+        var enden = [];
+        aktBeh.forEach(function(b){
+          if(b.wzMilchEnde && b.wzMilchEnde>heute) enden.push(b.wzMilchEnde);
+          if(b.wzFleischEnde && b.wzFleischEnde>heute) enden.push(b.wzFleischEnde);
+        });
+        if(enden.length){
+          var minEnde = Math.min.apply(null,enden);
+          var endeTag = new Date(minEnde); endeTag.setHours(0,0,0,0);
+          var heuteTag = new Date(heute); heuteTag.setHours(0,0,0,0);
+          wzResttage = Math.max(0, Math.round((endeTag-heuteTag)/86400000));
+          wzStatus = wzResttage<=1 ? 'kritisch' : 'aktiv';
+        }
+      }
+
+      // Filter prüfen
+      var filterPasst = true;
+      if(typeof window.spBoxFilterPasst === 'function') {
+        filterPasst = window.spBoxFilterPasst({typ:'box',kuhId:kuhId}, k);
+      }
+
+      var classes = 'sp-platz';
+      if(!k) classes += ' sp-platz-leer';
+      if(wzStatus === 'kritisch') classes += ' sp-platz-wz-krit';
+      else if(wzStatus === 'aktiv') classes += ' sp-platz-wz-aktiv';
+      else if(k) classes += ' sp-platz-belegt';
+      if(!filterPasst) classes += ' sp-platz-faded';
+
+      html += '<button class="'+classes+'" data-platzid="'+platzId+'"'+(kuhId?' data-kuhid="'+kuhId+'"':'')+' onclick="spPlatzClicked(\''+platzId+'\')">';
+      html += '<span class="sp-platz-nr">'+label+'</span>';
+      if(k) {
+        html += '<span class="sp-platz-kuh"><b>#'+k.nr+'</b> '+(k.name||'–')+'</span>';
+        html += '<span class="sp-platz-bauer">'+(k.bauer?'👤 '+k.bauer:'')+'</span>';
+        if(wzStatus !== 'none') {
+          var sym = wzStatus==='kritisch' ? '⚕' : '⏱';
+          html += '<span class="sp-platz-wz">'+sym+' '+wzResttage+'T</span>';
+        }
+      } else {
+        html += '<span class="sp-platz-leer-text">+ leer</span>';
+      }
+      html += '</button>';
+    }
+  });
+  html += '</div></div>';
+  return html;
+};
+
+// Tap auf Platz: bei belegtem Platz → Schnellansicht; bei leerem → Zuweisung
+window.spPlatzClicked = function(platzId) {
+  var stall = window._spStaelle[window._spAktivId];
+  if(!stall) return;
+  var kuhId = (stall.plaetze||{})[platzId];
+  if(kuhId && kuehe[kuhId] && typeof window.spShowQuickView === 'function') {
+    window.spShowQuickView(kuhId);
+  } else {
+    // Zuweisung öffnen
+    var ov = document.getElementById('sp-kuh-overlay');
+    if(!ov) return;
+    document.getElementById('sp-kuh-platzid').value = platzId;
+    var lbl = document.getElementById('sp-kuh-platzlbl');
+    if(lbl) {
+      var rIdx = parseInt(platzId.split('-')[0]);
+      var pNr = platzId.split('-')[1];
+      var rname = stall.tableConfig.reihen[rIdx]?.name || ('Reihe '+(rIdx+1));
+      lbl.textContent = rname+' · Platz '+pNr;
+    }
+    var sel = document.getElementById('sp-kuh-select');
+    if(sel) sel.value = '';
+    ov.style.display = 'flex';
+  }
+};
+
+// Zuweisung speichern
+window.spSavePlatzZuweisung = async function() {
+  var platzId = document.getElementById('sp-kuh-platzid').value;
+  var kuhId = document.getElementById('sp-kuh-select').value;
+  if(!platzId) return;
+  var path = 'stallplanV2/'+window._spAktivId+'/plaetze/'+platzId;
+  if(kuhId) await update(ref(db,'stallplanV2/'+window._spAktivId+'/plaetze'), {[platzId]: kuhId});
+  else await remove(ref(db, path));
+  closeForm('sp-kuh-overlay');
+  if(window.haptic) window.haptic('save');
+};
+
+// ── Wizard ─────────────────────────────────────────────────────
+window._spWizReihen = []; // editierbare Reihen während Wizard
+
+window.spOpenWizard = function(stallId) {
+  var ov = document.getElementById('sp-wizard-overlay');
+  if(!ov){navigate('stallplan');setTimeout(function(){spOpenWizard(stallId);},200);return;}
+  var stall = stallId && window._spStaelle ? window._spStaelle[stallId] : null;
+  document.getElementById('sp-wiz-id').value = stallId || '';
+  document.getElementById('sp-wiz-name').value = stall ? (stall.name||'') : '';
+  document.getElementById('sp-wiz-text').value = '';
+  document.getElementById('sp-wiz-text-err').textContent = '';
+  // Reihen aus Stall oder Default
+  if(stall && stall.tableConfig && stall.tableConfig.reihen) {
+    window._spWizReihen = JSON.parse(JSON.stringify(stall.tableConfig.reihen));
+  } else {
+    window._spWizReihen = [
+      { name: 'Bergseite', sektoren: [{typ:'plaetze', anzahl:10, saeuleAlle:0}] },
+      { name: 'Talseite',  sektoren: [{typ:'plaetze', anzahl:10, saeuleAlle:0}] }
+    ];
+  }
+  spWizRender();
+  ov.style.display = 'flex';
+};
+
+window.spWizAddReihe = function() {
+  window._spWizReihen.push({name:'Reihe '+(window._spWizReihen.length+1), sektoren:[{typ:'plaetze',anzahl:10,saeuleAlle:0}]});
+  spWizRender();
+};
+window.spWizDelReihe = function(idx) {
+  window._spWizReihen.splice(idx,1);
+  spWizRender();
+};
+window.spWizSetReihe = function(idx, field, val) {
+  if(field === 'name') window._spWizReihen[idx].name = val;
+  else if(field === 'anzahl') window._spWizReihen[idx].sektoren[0].anzahl = parseInt(val)||0;
+  else if(field === 'saeule') window._spWizReihen[idx].sektoren[0].saeuleAlle = parseInt(val)||0;
+};
+window.spWizRender = function() {
+  var box = document.getElementById('sp-wiz-reihen');
+  if(!box) return;
+  box.innerHTML = window._spWizReihen.map(function(r, idx){
+    var ersterSektor = (r.sektoren && r.sektoren[0]) || {typ:'plaetze',anzahl:0,saeuleAlle:0};
+    var hatKomplexeSektoren = r.sektoren && r.sektoren.length > 1;
+    return '<div style="background:var(--bg3);border:1px solid var(--border);border-radius:10px;padding:.7rem">'+
+      '<div style="display:flex;gap:.5rem;align-items:center;margin-bottom:.5rem">'+
+        '<input class="inp" placeholder="Reihen-Name" value="'+(r.name||'').replace(/"/g,'&quot;')+'" oninput="spWizSetReihe('+idx+',\'name\',this.value)" style="flex:1" />'+
+        '<button class="btn-xs-danger" onclick="spWizDelReihe('+idx+')">🗑</button>'+
+      '</div>'+
+      (hatKomplexeSektoren
+        ? '<div style="font-size:.85rem;color:var(--text3);padding:.4rem;background:var(--bg);border-radius:6px">📋 Komplexes Layout — über Text-Eingabe änderbar</div>'
+        : '<div style="display:flex;gap:.5rem">'+
+            '<div style="flex:1"><label class="inp-label">Anzahl Plätze</label><input class="inp" type="number" min="1" value="'+(ersterSektor.anzahl||0)+'" oninput="spWizSetReihe('+idx+',\'anzahl\',this.value)" /></div>'+
+            '<div style="flex:1"><label class="inp-label">Säule alle (0=keine)</label><input class="inp" type="number" min="0" value="'+(ersterSektor.saeuleAlle||0)+'" oninput="spWizSetReihe('+idx+',\'saeule\',this.value)" /></div>'+
+          '</div>'
+      )+
+    '</div>';
+  }).join('');
+};
+
+window.spSaveWizard = async function() {
+  var stallId = document.getElementById('sp-wiz-id').value;
+  var name = document.getElementById('sp-wiz-name').value.trim();
+  if(!name){alert('Stallname Pflicht');return;}
+  if(!window._spWizReihen.length){alert('Mindestens eine Reihe');return;}
+
+  var tableConfig = { reihen: window._spWizReihen };
+  if(stallId) {
+    await update(ref(db,'stallplanV2/'+stallId), {name:name, tableConfig:tableConfig});
+  } else {
+    var nr = await push(ref(db,'stallplanV2'), {name:name, tableConfig:tableConfig, plaetze:{}});
+    window._spAktivId = nr.key;
+  }
+  closeForm('sp-wizard-overlay');
+  if(window.haptic) window.haptic('save');
+  showSaveToast && showSaveToast('Stall gespeichert');
+};
+
+// Text-Parser: parsed strikte Syntax und füllt _spWizReihen
+window.spWizParseText = function() {
+  var text = document.getElementById('sp-wiz-text').value;
+  var errEl = document.getElementById('sp-wiz-text-err');
+  errEl.textContent = '';
+  if(!text.trim()){errEl.textContent='Kein Text eingegeben';return;}
+  try {
+    var lines = text.split(/\n+/).map(function(s){return s.trim();}).filter(Boolean);
+    var reihen = [];
+    lines.forEach(function(line){
+      // Format: "ReihenName: <sektoren>"
+      var m = line.match(/^([^:]+):\s*(.+)$/);
+      if(!m) return; // Zeile ignorieren
+      var rname = m[1].trim();
+      var rest = m[2].trim();
+      // Spezial-Zeilen "Gang", "Tür" außerhalb von Reihen ignorieren wir vorerst
+      if(/^(gang|tür|tuer|fenster)/i.test(rname)) return;
+
+      var sektoren = [];
+      // Sektoren komma-getrennt
+      var teile = rest.split(/,\s*/);
+      teile.forEach(function(t){
+        // "28 Plätze" oder "28 Plätze, Säule alle 4" – die "alle 4" Variante steht aber separat
+        var mPlaetze = t.match(/^(\d+)\s*(?:plätze|plaetze|stellplätze|stellplaetze|plätzen|stellplatz|stellplätzen)/i);
+        if(mPlaetze) {
+          var anzahl = parseInt(mPlaetze[1]);
+          // "Säule alle N" prüfen ob gleicher Token
+          var mSAlle = t.match(/säule\s+alle\s+(\d+)|saeule\s+alle\s+(\d+)/i);
+          var saeuleAlle = mSAlle ? parseInt(mSAlle[1]||mSAlle[2]) : 0;
+          sektoren.push({typ:'plaetze', anzahl:anzahl, saeuleAlle:saeuleAlle});
+          return;
+        }
+        if(/^(säule|saeule)$/i.test(t)) { sektoren.push({typ:'saeule'}); return; }
+        var mTuer = t.match(/^(tür|tuer|eingangstür|eingangstuer)\b\s*"?([^"]*)"?/i);
+        if(mTuer) { sektoren.push({typ:'tuer', label:(mTuer[2]||'Tür').trim()}); return; }
+        var mFen = t.match(/^fenster\b\s*"?([^"]*)"?/i);
+        if(mFen) { sektoren.push({typ:'fenster', label:(mFen[1]||'Fenster').trim()}); return; }
+      });
+      if(sektoren.length) reihen.push({name:rname, sektoren:sektoren});
+    });
+    if(!reihen.length) {errEl.textContent='Keine gültigen Reihen erkannt'; return;}
+    window._spWizReihen = reihen;
+    spWizRender();
+    errEl.style.color = 'var(--green)';
+    errEl.textContent = '✓ '+reihen.length+' Reihen erkannt';
+    setTimeout(function(){errEl.textContent='';errEl.style.color='var(--red)';}, 3000);
+  } catch(e) {
+    errEl.textContent = 'Fehler beim Parsen: '+e.message;
+  }
+};
+
+// Auto-Migration: wenn Stall nur Legacy-elemente hat, daraus tableConfig+plaetze ableiten
+window.spAutoMigrate = function(stallId, stall) {
+  if(stall.tableConfig) return;
+  var boxen = (stall.elemente||[]).filter(function(e){return e.typ==='box';});
+  if(!boxen.length) return;
+  // Sortierung: nach y, dann x → grobe Reihen-Annäherung
+  boxen.sort(function(a,b){return (a.y-b.y)||(a.x-b.x);});
+  // Default: alle in eine Reihe stecken
+  var tableConfig = {
+    reihen: [{
+      name: 'Reihe 1',
+      sektoren: [{typ:'plaetze', anzahl:boxen.length, saeuleAlle:0}]
+    }]
+  };
+  var plaetze = {};
+  boxen.forEach(function(b, i){
+    if(b.kuhId) plaetze['0-'+(i+1)] = b.kuhId;
+  });
+  // Lokal direkt setzen damit der Render sofort klappt
+  stall.tableConfig = tableConfig;
+  stall.plaetze = plaetze;
+  // In Firebase persistieren
+  update(ref(db,'stallplanV2/'+stallId), {tableConfig:tableConfig, plaetze:plaetze}).catch(function(e){console.warn('Migrate fail:',e);});
+};
+
+// ══════════════════════════════════════════════════════════════
+//  STALLPLAN – Canvas Engine (LEGACY, nicht mehr aufgerufen)
 // ══════════════════════════════════════════════════════════════
 
 // State
