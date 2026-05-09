@@ -38,16 +38,16 @@
   --glow-green:0 0 20px rgba(77,184,78,.2);
 }
 
-/* Basis-Schriftgröße – Mobile bleibt immer 28px.
-   Desktop-Erkennung kombiniert: nur wenn ALLE Bedingungen zutreffen.
-   Damit fällt das Phone (auch mit hoher CSS-Auflösung wegen DPR=1) zuverlässig
-   in die Mobile-Größe, weil ihm zumindest die Maus oder das Hover fehlt. */
+/* Basis-Schriftgröße:
+   Mobile (User-Phone hat CSS-Width ~945px): 32px – größer für Stall-Lesbarkeit
+   Desktop (≥1024px Browser-Fenster): 16px – Standard-Größe.
+   Width-only Detection weil pointer:fine/hover:hover auf User-Setup unzuverlässig ist. */
 html{
-  font-size:28px;
+  font-size:32px;
   -webkit-text-size-adjust:100%;
   height:100%;
 }
-@media (min-width: 1024px) and (pointer: fine) and (hover: hover) {
+@media (min-width: 1024px) {
   html { font-size:16px; }
 }
 body{
@@ -674,7 +674,7 @@ textarea.inp{resize:vertical;min-height:64px}
   gap:.4rem !important;
   width:100%;
 }
-@media (min-width: 1024px) and (pointer: fine) and (hover: hover) {
+@media (min-width: 1024px) {
   #mehr-grid, #alle-module-grid { grid-template-columns: repeat(6, minmax(0, 1fr)) !important; }
 }
 
