@@ -19,11 +19,11 @@
 ═══════════════════════════════════════════════════════════════════════════ -->
 <script>
 // Force clear cache if version changed
-if(localStorage.getItem('hp_version') !== 'v34.4') {
+if(localStorage.getItem('hp_version') !== 'v34.5') {
   localStorage.removeItem('mainNav');
   localStorage.removeItem('mehrOrder');
   localStorage.removeItem('mehrOrder');
-  localStorage.setItem('hp_version','v34.4');
+  localStorage.setItem('hp_version','v34.5');
   // Force SW update
   if('serviceWorker' in navigator) {
     navigator.serviceWorker.getRegistrations().then(function(regs) {
@@ -39,8 +39,8 @@ if(localStorage.getItem('hp_version') !== 'v34.4') {
       });
     }
     // Reload once after clearing
-    if(!sessionStorage.getItem('reloaded_v34_4')) {
-      sessionStorage.setItem('reloaded_v34_4','1');
+    if(!sessionStorage.getItem('reloaded_v34_5')) {
+      sessionStorage.setItem('reloaded_v34_5','1');
       window.location.reload(true);
     }
   }
