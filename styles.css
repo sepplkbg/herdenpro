@@ -38,16 +38,18 @@
   --glow-green:0 0 20px rgba(77,184,78,.2);
 }
 
-/* Basis-Schriftgröße – Mobile/Desktop unabhängig (width-basiert, zuverlässiger). */
+/* Basis-Schriftgröße – Mobile bleibt immer 28px.
+   Desktop-Erkennung kombiniert: nur wenn ALLE Bedingungen zutreffen.
+   Damit fällt das Phone (auch mit hoher CSS-Auflösung wegen DPR=1) zuverlässig
+   in die Mobile-Größe, weil ihm zumindest die Maus oder das Hover fehlt. */
 html{
   font-size:28px;
   -webkit-text-size-adjust:100%;
   height:100%;
 }
-/* Tablets/große Screens: 20px */
-@media (min-width: 768px) { html { font-size:20px; } }
-/* Desktop: 16px */
-@media (min-width: 1024px) { html { font-size:16px; } }
+@media (min-width: 1024px) and (pointer: fine) and (hover: hover) {
+  html { font-size:16px; }
+}
 body{
   height:100%;
   height:100vh;
@@ -665,22 +667,15 @@ textarea.inp{resize:vertical;min-height:64px}
   animation:slideUp .2s ease;
   box-shadow:0 -8px 30px rgba(0,0,0,.4);
 }
-/* Mehr-Menü Grid: responsiv 4-7 Spalten je nach Bildschirm-Breite.
-   !important damit etwaige Inline-styles aus alten JS-Stellen das nicht aushebeln. */
+/* Mehr-Menü Grid: 4 Spalten auf Mobile, 6 auf Desktop. */
 #mehr-grid, #alle-module-grid {
   display:grid !important;
   grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
   gap:.4rem !important;
   width:100%;
 }
-@media (min-width: 500px) {
-  #mehr-grid, #alle-module-grid { grid-template-columns: repeat(5, minmax(0, 1fr)) !important; }
-}
-@media (min-width: 768px) {
+@media (min-width: 1024px) and (pointer: fine) and (hover: hover) {
   #mehr-grid, #alle-module-grid { grid-template-columns: repeat(6, minmax(0, 1fr)) !important; }
-}
-@media (min-width: 1024px) {
-  #mehr-grid, #alle-module-grid { grid-template-columns: repeat(7, minmax(0, 1fr)) !important; }
 }
 
 .mehr-btn{
