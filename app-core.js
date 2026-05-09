@@ -21,6 +21,185 @@ function remove(refObj) { return refObj.remove(); }
 function push(refObj, val) { return refObj.push(val); }
 function serverTimestamp() { return firebase.database.ServerValue.TIMESTAMP; }
 
+// ── Bottom-Sheet-System (Phase B4) ────────────────────────────────────────────
+// markBottomSheet(overlayId) markiert ein vorhandenes form-overlay als Bottom-Sheet.
+// Wird einmal pro Overlay aufgerufen. Drag-Handler wird automatisch aktiviert.
+window.markBottomSheet = function(overlayId) {
+  var ov = document.getElementById(overlayId);
+  if(!ov || ov.classList.contains('bottom-sheet')) return;
+  ov.classList.add('bottom-sheet');
+
+  // Swipe-down-dismiss am Header
+  var sheet = ov.querySelector('.form-sheet');
+  if(!sheet) return;
+  var header = sheet.querySelector('.form-header') || sheet;
+  var startY = 0, dy = 0, dragging = false;
+
+  function onStart(e) {
+    if(sheet.scrollTop > 2) return; // nur am oberen Rand erlauben
+    var t = e.touches ? e.touches[0] : e;
+    startY = t.clientY; dy = 0; dragging = true;
+    ov.classList.add('dragging');
+  }
+  function onMove(e) {
+    if(!dragging) return;
+    var t = e.touches ? e.touches[0] : e;
+    dy = Math.max(0, t.clientY - startY);
+    sheet.style.transform = 'translateY('+dy+'px)';
+  }
+  function onEnd() {
+    if(!dragging) return;
+    dragging = false;
+    ov.classList.remove('dragging');
+    if(dy > 80) {
+      // dismiss
+      sheet.style.transform = 'translateY(100%)';
+      setTimeout(function(){
+        ov.style.display = 'none';
+        sheet.style.transform = '';
+      }, 220);
+    } else {
+      sheet.style.transform = '';
+    }
+    dy = 0;
+  }
+  header.addEventListener('touchstart', onStart, {passive:true});
+  header.addEventListener('touchmove',  onMove,  {passive:true});
+  header.addEventListener('touchend',   onEnd,   {passive:true});
+
+  // Tap auf Backdrop schließt
+  ov.addEventListener('click', function(e){
+    if(e.target === ov) {
+      ov.style.display = 'none';
+    }
+  });
+};
+// Bei jedem render() automatisch alle markierten Overlays aktivieren.
+// Liste der "kurzen" Forms die als Bottom-Sheet erscheinen (≤5 Felder).
+// Lange Forms (Behandlung, Besamung, Kuh, Saisonstart, Wartung-Maschine,
+// Lager-Artikel etc.) bleiben Fullscreen.
+window._bottomSheetIds = [
+  'milch-form-overlay',
+  'sp-stall-overlay',
+  'sp-kuh-overlay',
+  'traenke-overlay',
+  'klauen-overlay',
+  'kf-vorrat-overlay',
+  'kf-lieferung-overlay',
+  'gruppe-overlay',
+  'kalender-overlay',
+  'aufgabe-overlay',
+  'abtrieb-overlay',
+  'lager-verbrauch-overlay',
+  'lager-zugang-overlay',
+  'kontakt-overlay'
+];
+window.applyBottomSheets = function() {
+  (window._bottomSheetIds || []).forEach(function(id){
+    if(document.getElementById(id)) window.markBottomSheet(id);
+  });
+};
+
+// ── Pull-to-Refresh (Phase B6) ────────────────────────────────────────────────
+// Auf bestimmten Views: bei scrollTop=0 + finger pull-down zeigt sich ein
+// Refresh-Indikator. Wenn weit genug gezogen → render() wird neu gefeuert.
+window._ptrEnabledViews = ['dashboard','herde','behandlung','bestandsbuch','wetter'];
+(function setupPullToRefresh(){
+  if(window._ptrInstalled) return;
+  window._ptrInstalled = true;
+  var startY = 0, currentY = 0, pulling = false, fired = false;
+  var THRESHOLD = 70; // px
+
+  // Indikator-Element on demand erzeugen
+  function getIndicator() {
+    var ind = document.getElementById('ptr-indicator');
+    if(!ind) {
+      ind = document.createElement('div');
+      ind.id = 'ptr-indicator';
+      ind.style.cssText = 'position:absolute;top:0;left:50%;transform:translate(-50%,-100%);background:var(--gold);color:#000;font-size:.78rem;font-weight:bold;padding:6px 14px;border-radius:0 0 14px 14px;z-index:60;transition:transform .2s ease,opacity .2s ease;pointer-events:none;opacity:0;box-shadow:0 4px 14px rgba(0,0,0,.4)';
+      ind.textContent = '↓ Ziehen zum Aktualisieren';
+      document.body.appendChild(ind);
+    }
+    return ind;
+  }
+
+  function activeView() { return window.currentView || (document.body && document.body.getAttribute('data-view')); }
+  function isAllowed() {
+    var v = activeView();
+    return window._ptrEnabledViews.indexOf(v) >= 0;
+  }
+
+  document.addEventListener('touchstart', function(e){
+    if(!isAllowed()) return;
+    var main = document.getElementById('main-content');
+    if(!main || main.scrollTop > 2) return;
+    if(e.touches.length !== 1) return;
+    startY = e.touches[0].clientY;
+    pulling = true; fired = false;
+  }, {passive:true});
+
+  document.addEventListener('touchmove', function(e){
+    if(!pulling) return;
+    currentY = e.touches[0].clientY;
+    var dy = currentY - startY;
+    if(dy <= 0) return;
+    var ind = getIndicator();
+    var prog = Math.min(1, dy / THRESHOLD);
+    ind.style.opacity = String(prog);
+    ind.style.transform = 'translate(-50%,'+(Math.min(dy*0.6, 50))+'px)';
+    if(dy >= THRESHOLD && !fired) {
+      ind.textContent = '↻ Loslassen…';
+      ind.style.background = 'var(--green)';
+    } else if(dy < THRESHOLD) {
+      ind.textContent = '↓ Ziehen zum Aktualisieren';
+      ind.style.background = 'var(--gold)';
+    }
+  }, {passive:true});
+
+  document.addEventListener('touchend', function(){
+    if(!pulling) return;
+    var dy = currentY - startY;
+    var ind = getIndicator();
+    if(dy >= THRESHOLD && !fired) {
+      fired = true;
+      ind.textContent = '✓ Aktualisiert';
+      ind.style.background = 'var(--green)';
+      if(typeof window.haptic==='function') window.haptic('save');
+      try { if(typeof render==='function') render(); } catch(e){ console.warn(e); }
+      setTimeout(function(){
+        ind.style.opacity='0';
+        ind.style.transform='translate(-50%,-100%)';
+      }, 600);
+    } else {
+      ind.style.opacity='0';
+      ind.style.transform='translate(-50%,-100%)';
+    }
+    pulling = false;
+    startY = 0; currentY = 0;
+  }, {passive:true});
+})();
+
+// ── Haptic-Feedback (Phase B7) ───────────────────────────────────────────────
+// Aufruf z.B. window.haptic('save') – führt navigator.vibrate aus, wenn vorhanden.
+// Settings können mit localStorage 'hapticOff'='1' deaktiviert werden.
+window.haptic = function(typ) {
+  try {
+    if(localStorage.getItem('hapticOff') === '1') return;
+    if(!navigator.vibrate) return;
+    var pattern;
+    switch(typ) {
+      case 'tap':    pattern = 5;          break;  // ganz leichter Touch
+      case 'save':   pattern = 12;         break;  // erfolgreiches Speichern
+      case 'success':pattern = [10,60,30]; break;  // mehrfacher Erfolg/Abschluss
+      case 'delete': pattern = [15,40,15]; break;  // Doppel-Tick
+      case 'warn':   pattern = 50;         break;  // einmaliger Warnungs-Buzz
+      case 'alarm':  pattern = [200,80,200];break; // Wartezeit-Alarm
+      default:       pattern = 8;
+    }
+    navigator.vibrate(pattern);
+  } catch(e) { /* iOS Safari etc. – ignore */ }
+};
+
 
 // ── app.js – HerdenPro v2 · Alm-Edition ──────────────────────────────────────
 
@@ -115,13 +294,44 @@ window.navigate = function(view) {
 // ══════════════════════════════════════════════════════════════════════════════
 //  RENDER ROUTER
 // ══════════════════════════════════════════════════════════════════════════════
+// Navigation-Richtung tracken (Phase B2)
+window._lastView = null;
+window._navStack = window._navStack || [];
+
 function render() {
   const main=document.getElementById('main-content');
   if(!main) return;
-  // Smooth transition
+
+  // Richtung der Animation bestimmen
+  // Forward = neue View auf Stack legen → slide-up + fade-in
+  // Backward = wenn neue currentView eine Stufe vorher im Stack war → slide-down + fade-in
+  var prev = window._lastView;
+  var cur = currentView;
+  var isBack = false;
+  if(prev) {
+    var idx = window._navStack.indexOf(cur);
+    if(idx >= 0 && idx < window._navStack.length - 1) {
+      // currentView ist im Stack vor der prev → wir gehen zurück
+      isBack = true;
+      window._navStack = window._navStack.slice(0, idx + 1);
+    } else if(prev !== cur) {
+      window._navStack.push(cur);
+      // Stack-Begrenzung
+      if(window._navStack.length > 20) window._navStack.shift();
+    }
+  } else {
+    window._navStack = [cur];
+  }
+  window._lastView = cur;
+
+  // body[data-view] setzen (Phase B3: FAB sichtbar nur auf dashboard via CSS)
+  if(document.body) document.body.setAttribute('data-view', cur);
+
+  // Out-Animation (kurz)
+  main.style.transition='opacity .12s ease-out,transform .12s ease-out';
   main.style.opacity='0';
-  main.style.transform='translateY(4px)';
-  
+  main.style.transform = isBack ? 'translateY(-6px)' : 'translateY(10px)';
+
   const map = {
     dashboard:    function(){return renderDashboard();},
     herde:        function(){return renderHerde();},
@@ -149,7 +359,6 @@ function render() {
     kraftfutter:  function(){return renderKraftfutter();},
     wetter:       function(){return renderWetter();},
     kaese:        function(){return (window.renderKaese||function(){return '<div class="empty-state">Käse-Modul lädt…</div>';})();},
-    bauern_menu:  function(){return renderBauernMenu();},
     bauer_detail: function(){return renderBauerDetail();},
     saisonvergleich: function(){return renderSaisonvergleich();},
     traenke:      function(){return renderTraenke();},
@@ -161,7 +370,10 @@ function render() {
   };
   main.innerHTML = (map[currentView]||renderDashboard)();
   attachListeners();
-  
+
+  // Bottom-Sheets nach jedem Render markieren (Phase B4)
+  if(typeof window.applyBottomSheets === 'function') window.applyBottomSheets();
+
   // After-render hooks
   requestAnimationFrame(function(){
     // Milch Saison Chart
@@ -184,12 +396,14 @@ function render() {
     }
   });
   
-  // Animate in
-  requestAnimationFrame(()=>{
-    main.style.transition='opacity .18s ease,transform .18s ease';
-    main.style.opacity='1';
-    main.style.transform='translateY(0)';
-    setTimeout(()=>{main.style.transition='';},200);
+  // In-Animation: doppelter rAF damit der Browser den Initial-State garantiert anwendet (Phase B2)
+  requestAnimationFrame(function(){
+    requestAnimationFrame(function(){
+      main.style.transition='opacity .22s cubic-bezier(.2,.8,.2,1),transform .22s cubic-bezier(.2,.8,.2,1)';
+      main.style.opacity='1';
+      main.style.transform='translateY(0)';
+      setTimeout(function(){ main.style.transition=''; }, 250);
+    });
   });
 }
 
@@ -334,9 +548,9 @@ window.drawMilchSaisonChart = function(canvas) {
       if(ctx.roundRect)ctx.roundRect(tx2,closest.y-th-8,tw,th,5);else ctx.rect(tx2,closest.y-th-8,tw,th);
       ctx.fill();
       ctx.fillStyle='#060e05'; ctx.font='bold 10px sans-serif'; ctx.textAlign='center';
-      var label=new Date(closest.d).toLocaleDateString('de-AT',{day:'numeric',month:'short'});
       ctx.fillText((closest.istPrognose?'~':'')+closest.l+'L · '+label, tx2+tw/2, closest.y-th/2-4);
     },{passive:false});
   }
 };
 
+// ══════════════════════════════════════════════════════════════════════════════

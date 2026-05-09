@@ -1419,7 +1419,7 @@ window.showVerbindungsInfo = function() {
 
 // ── Speichern-Feedback (Vibration + Toast) ──
 window.showSaveToast = function(msg) {
-  if(navigator.vibrate) navigator.vibrate(30);
+  if(typeof window.haptic === 'function') window.haptic('save');
   let toast = document.getElementById('save-toast');
   if(!toast) {
     toast = document.createElement('div');
