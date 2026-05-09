@@ -1298,11 +1298,11 @@ function behandlungFormHTML(vorId, editId, editData) {
           <div style="position:relative;flex-shrink:0">
             <input id="b-temperatur" class="inp" type="number" step="0.1" min="35" max="42" inputmode="decimal"
               placeholder="z.B. 38.5" value="${d.temperatur||''}"
-              style="width:120px;padding-right:28px"
+              style="width:7rem;padding-right:28px"
               oninput="checkFieber(this.value)" />
             <span style="position:absolute;right:8px;top:50%;transform:translateY(-50%);font-size:.75rem;color:var(--text3);pointer-events:none">°C</span>
           </div>
-          <input id="b-temp-uhrzeit" class="inp" type="time" value="${d.tempUhrzeit||''}" style="width:110px" />
+          <input id="b-temp-uhrzeit" class="inp" type="time" value="${d.tempUhrzeit||''}" style="width:6.5rem" />
           <div id="b-fieber-indikator" style="font-size:.78rem;font-weight:700;display:none"></div>
         </div>
         <!-- Fieberkurve (wenn Verlauf vorhanden) -->
@@ -1683,7 +1683,7 @@ window.kp_onDrop = function(ev, toIdx) {
   }
 };
 window.deleteBehandlung=async id=>{if(confirm('Löschen?'))await remove(ref(db,'behandlungen/'+id));};
-window.wartezeitAbschliessen=async id=>update(ref(db,'behandlungen/'+id),{warteAbgeschlossen:true,aktiv:false});
+window.wartezeitAbschliessen=async id=>{await update(ref(db,'behandlungen/'+id),{warteAbgeschlossen:true,aktiv:false});};
 window.showBesamungForm=function(kuhId, editBsId, editData){
   // editBsId=true means "2. Versuch" (new entry, same cow, keep techniker)
   const zweitversuch = editBsId === true;
@@ -3201,13 +3201,13 @@ function renderWartung() {
           <input id="wm-typ" class="inp" placeholder="Typ (z.B. DeLaval, John Deere 6110M)" />
           <input id="wm-serien-nr" class="inp" placeholder="Seriennummer / Kennzeichen" />
           <label class="inp-label">Wartungsintervall (Tage)</label>
-          <input id="wm-interval" class="inp" type="number" inputmode="numeric" placeholder="z.B. 365" style="width:120px" />
+          <input id="wm-interval" class="inp" type="number" inputmode="numeric" placeholder="z.B. 365" style="width:7rem" />
           <label class="inp-label">Nächstes fixes Datum (optional)</label>
           <input id="wm-datum" class="inp" type="date" />
           <label class="inp-label">Aktuelle Betriebsstunden</label>
-          <input id="wm-stunden" class="inp" type="number" inputmode="decimal" placeholder="z.B. 1250" style="width:150px" />
+          <input id="wm-stunden" class="inp" type="number" inputmode="decimal" placeholder="z.B. 1250" style="width:9rem" />
           <label class="inp-label">KM-Stand</label>
-          <input id="wm-km" class="inp" type="number" inputmode="decimal" placeholder="z.B. 45000" style="width:150px" />
+          <input id="wm-km" class="inp" type="number" inputmode="decimal" placeholder="z.B. 45000" style="width:9rem" />
           <div class="form-actions">
             <button class="btn-secondary" onclick="closeForm('wartung-maschine-overlay')">Abbrechen</button>
             <button class="btn-primary" onclick="saveMaschine()">Speichern</button>
@@ -3251,9 +3251,9 @@ function renderWartung() {
           <input id="ws-datum" class="inp" type="date" value="${isoHeute}" />
           <input id="ws-techniker" class="inp" placeholder="Techniker / Durchgeführt von" />
           <label class="inp-label">Kosten (€)</label>
-          <input id="ws-kosten" class="inp" type="number" inputmode="decimal" placeholder="z.B. 250" style="width:130px" />
+          <input id="ws-kosten" class="inp" type="number" inputmode="decimal" placeholder="z.B. 250" style="width:7.5rem" />
           <label class="inp-label">Betriebsstunden aktuell</label>
-          <input id="ws-stunden" class="inp" type="number" inputmode="decimal" placeholder="z.B. 1300" style="width:150px" />
+          <input id="ws-stunden" class="inp" type="number" inputmode="decimal" placeholder="z.B. 1300" style="width:9rem" />
           <div id="ws-checkliste-container" style="margin:.6rem 0"></div>
           <textarea id="ws-notiz" class="inp" rows="3" placeholder="Notizen / Befunde / Ersatzteile"></textarea>
           <div class="form-actions">
@@ -3581,7 +3581,7 @@ function renderAufgaben() {
           <input id="af-name" class="inp" placeholder="Aufgabe * (z.B. Melkmaschine reinigen)" />
           <textarea id="af-notiz" class="inp" rows="2" placeholder="Notiz / Details (optional)"></textarea>
           <label class="inp-label">Fällig am</label>
-          <input id="af-faellig" class="inp" type="date" style="width:180px" />
+          <input id="af-faellig" class="inp" type="date" style="width:10rem" />
           <label class="inp-label">Zuweisen an</label>
           <select id="af-zuweisen" class="inp">
             <option value="">— Alle / Niemand bestimmt —</option>
@@ -3736,13 +3736,13 @@ function renderLager() {
           <input id="la-name" class="inp" placeholder="Artikelname *" />
           <input id="la-beschreibung" class="inp" placeholder="Beschreibung / Hersteller" />
           <label class="inp-label">Einheit</label>
-          <select id="la-einheit" class="inp" style="width:140px">${['Stück','kg','g','Liter','ml','Packung','Box','Karton','Flasche','Tube','Paar'].map(e=>`<option>${e}</option>`).join('')}</select>
+          <select id="la-einheit" class="inp" style="width:8rem">${['Stück','kg','g','Liter','ml','Packung','Box','Karton','Flasche','Tube','Paar'].map(e=>`<option>${e}</option>`).join('')}</select>
           <label class="inp-label">Aktueller Bestand</label>
-          <input id="la-bestand" class="inp" type="number" step="0.1" inputmode="decimal" placeholder="0" style="width:130px" />
+          <input id="la-bestand" class="inp" type="number" step="0.1" inputmode="decimal" placeholder="0" style="width:7.5rem" />
           <label class="inp-label">Mindestbestand (Alarm)</label>
-          <input id="la-mindest" class="inp" type="number" step="0.1" inputmode="decimal" placeholder="0" style="width:130px" />
+          <input id="la-mindest" class="inp" type="number" step="0.1" inputmode="decimal" placeholder="0" style="width:7.5rem" />
           <label class="inp-label">Preis pro Einheit (€)</label>
-          <input id="la-preis" class="inp" type="number" step="0.01" inputmode="decimal" placeholder="0.00" style="width:130px" />
+          <input id="la-preis" class="inp" type="number" step="0.01" inputmode="decimal" placeholder="0.00" style="width:7.5rem" />
           <label class="inp-label">Ablaufdatum (optional)</label>
           <input id="la-ablauf" class="inp" type="date" />
           <div class="form-actions">
@@ -3761,7 +3761,7 @@ function renderLager() {
           <input type="hidden" id="lv-artikel-id" />
           <div id="lv-artikel-info" style="margin-bottom:.6rem;font-size:.85rem;color:var(--text2)"></div>
           <label class="inp-label">Menge verbraucht</label>
-          <input id="lv-menge" class="inp" type="number" step="0.1" inputmode="decimal" style="width:130px" />
+          <input id="lv-menge" class="inp" type="number" step="0.1" inputmode="decimal" style="width:7.5rem" />
           <input id="lv-notiz" class="inp" placeholder="Notiz" />
           <div class="form-actions">
             <button class="btn-secondary" onclick="closeForm('lager-verbrauch-overlay')">Abbrechen</button>
@@ -3779,9 +3779,9 @@ function renderLager() {
           <input type="hidden" id="lz-artikel-id" />
           <div id="lz-artikel-info" style="margin-bottom:.6rem;font-size:.85rem;color:var(--text2)"></div>
           <label class="inp-label">Menge zugegangen</label>
-          <input id="lz-menge" class="inp" type="number" step="0.1" inputmode="decimal" style="width:130px" />
+          <input id="lz-menge" class="inp" type="number" step="0.1" inputmode="decimal" style="width:7.5rem" />
           <label class="inp-label">Preis gesamt (€)</label>
-          <input id="lz-preis" class="inp" type="number" step="0.01" inputmode="decimal" style="width:130px" />
+          <input id="lz-preis" class="inp" type="number" step="0.01" inputmode="decimal" style="width:7.5rem" />
           <input id="lz-notiz" class="inp" placeholder="Lieferant / Notiz" />
           <div class="form-actions">
             <button class="btn-secondary" onclick="closeForm('lager-zugang-overlay')">Abbrechen</button>
