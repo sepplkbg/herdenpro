@@ -39,7 +39,11 @@
 }
 
 html,body{
+  /* Mehrere Fallbacks: ältere Browser → 100%, normale → 100vh,
+     moderne Mobile-Browser → 100dvh (dynamisch, ohne URL-Bar-Glitches) */
   height:100%;
+  height:100vh;
+  height:100dvh;
   background:var(--bg);
   color:var(--text);
   font-family:'Georgia','Times New Roman',serif;
@@ -59,29 +63,35 @@ html,body{
 ::-webkit-scrollbar-thumb{background:var(--border2);border-radius:3px}
 
 /* ── Root Layout ── */
+/* Auf Mobil: Container füllt komplett den verfügbaren Viewport.
+   Mehrfacher height-Fallback für ältere Browser, dvh ist neu (Mai 2022). */
 #root{
   display:flex;flex-direction:column;
-  height:100%;max-width:480px;margin:0 auto;
+  width:100%;
+  height:100%;
+  height:100vh;
+  height:100dvh;
+  min-height:100vh;
+  min-height:100dvh;
+  margin:0 auto;
   position:relative;
   background:linear-gradient(180deg, var(--bg) 0%, #0c1a09 100%);
 }
 
-/* ── Desktop-Container: App in Phone-Form mittig auf Desktop ── */
-@media (min-width: 600px) {
+/* ── Desktop-Container: App im Phone-Frame nur auf wirklich großen Screens ── */
+@media (min-width: 900px) {
   body {
-    /* Außenfläche dezent abgedunkelt damit der App-Container hervorsticht */
     background:
       radial-gradient(ellipse at top, #0c1a09 0%, #050805 60%, #000 100%);
   }
   #root {
-    /* Schmalerer Phone-ähnlicher Container, mit Schatten links/rechts */
     max-width:440px;
-    height:min(900px, 100vh);
-    margin:max(0px, calc((100vh - 900px)/2)) auto;
+    height:min(900px, 100dvh);
+    min-height:auto;
+    margin:max(0px, calc((100dvh - 900px)/2)) auto;
     border-left:1px solid var(--border);
     border-right:1px solid var(--border);
     box-shadow:0 0 60px rgba(0,0,0,.6), 0 0 0 1px rgba(212,168,75,.05);
-    /* Optional abgerundet wie ein Smartphone-Frame */
     border-radius:18px;
     overflow:hidden;
   }
