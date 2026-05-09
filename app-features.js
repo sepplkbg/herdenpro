@@ -4688,7 +4688,7 @@ window.deleteBenutzer = async function(uid, email) {
             ];
         var imMenu = allMods.filter(function(mod){ return !mainNav.includes(mod.id) && mod.id !== '__drucken__'; });
         grid.innerHTML = imMenu.map(function(mod){
-          return '<button class="mehr-btn" onclick="window.navigate&&window.navigate(\''+mod.id+'\');document.getElementById(\'mehr-menu\').style.display=\'none\'" style="display:flex;flex-direction:column;align-items:center;gap:3px;background:var(--bg3);border:1px solid var(--border);border-radius:10px;padding:.6rem .3rem;font-size:.72rem;color:var(--text2);cursor:pointer;font-family:inherit"><span style="font-size:1.3rem">'+mod.icon+'</span>'+mod.label+'</button>';
+          return '<button class="mehr-btn" onclick="window.navigate&&window.navigate(\''+mod.id+'\');document.getElementById(\'mehr-menu\').style.display=\'none\'"><span>'+mod.icon+'</span>'+mod.label+'</button>';
         }).join('');
       }
     }
