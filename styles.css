@@ -39,16 +39,14 @@
 }
 
 html,body{
-  /* Mehrere Fallbacks: ältere Browser → 100%, normale → 100vh,
-     moderne Mobile-Browser → 100dvh (dynamisch, ohne URL-Bar-Glitches) */
   height:100%;
   height:100vh;
   height:100dvh;
   background:var(--bg);
   color:var(--text);
   font-family:'Georgia','Times New Roman',serif;
-  /* Mobile-Basisgröße 16px verhindert iOS-Auto-Zoom in Inputs */
-  font-size:16px;
+  /* Basis 18px: bequem auf Distanz lesbar im Stall, mit Sonnenlicht ok */
+  font-size:18px;
   line-height:1.45;
   overflow:hidden;
   overscroll-behavior:none;
@@ -138,17 +136,15 @@ html,body{
 .nav-item{
   flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;
   gap:4px;background:none;border:none;color:var(--text3);cursor:pointer;
-  font-family:inherit;font-size:.7rem;letter-spacing:.3px;font-weight:500;
-  /* min-height stellt sicher dass die Touchzone groß genug bleibt */
-  min-height:48px;
+  font-family:inherit;font-size:.82rem;letter-spacing:.3px;font-weight:500;
+  min-height:52px;
   padding:8px 4px;position:relative;
   transition:color .2s,transform .1s;
-  /* Verhindert Text-Selektion beim Lang-Drücken */
   -webkit-user-select:none;user-select:none;
   -webkit-touch-callout:none;
 }
 .nav-item:active{transform:scale(.92);background:rgba(212,168,75,.08)}
-.nav-item .nav-icon{font-size:1.5rem;line-height:1;transition:filter .2s,transform .2s}
+.nav-item .nav-icon{font-size:1.7rem;line-height:1;transition:filter .2s,transform .2s}
 .nav-item.active{color:var(--gold)}
 .nav-item.active .nav-icon{
   filter:drop-shadow(0 0 8px rgba(212,168,75,.7));
@@ -184,7 +180,7 @@ button,[onclick],[role="button"],a {
   margin-bottom:1.1rem;
 }
 .page-header h2{
-  font-size:1.95rem;color:var(--gold);
+  font-size:2.2rem;color:var(--gold);
   text-shadow:0 0 16px rgba(212,168,75,.3);
   letter-spacing:.3px;
   line-height:1.15;
@@ -205,15 +201,15 @@ button,[onclick],[role="button"],a {
 }
 .back-btn:hover{color:var(--gold)}
 .section-title{
-  font-size:.88rem;color:var(--text2);
-  letter-spacing:1.5px;margin:1.5rem 0 .6rem;
+  font-size:1.05rem;color:var(--text2);
+  letter-spacing:1.8px;margin:1.6rem 0 .7rem;
   text-transform:uppercase;
-  font-weight:600;
+  font-weight:700;
 }
 .section-label{
-  font-size:.88rem;color:var(--text2);
-  letter-spacing:1.5px;text-transform:uppercase;
-  font-weight:600;
+  font-size:1.05rem;color:var(--text2);
+  letter-spacing:1.8px;text-transform:uppercase;
+  font-weight:700;
 }
 
 /* ── Saison Banner ── */
@@ -222,8 +218,8 @@ button,[onclick],[role="button"],a {
   background:linear-gradient(135deg,rgba(74,138,184,.15),rgba(74,138,184,.05));
   border:1px solid rgba(74,138,184,.35);
   border-radius:var(--radius-sm);
-  padding:.85rem 1.15rem;margin-bottom:.9rem;
-  font-size:1.05rem;color:#80b8e0;cursor:pointer;
+  padding:1rem 1.25rem;margin-bottom:.9rem;
+  font-size:1.15rem;color:#80b8e0;cursor:pointer;
   transition:border-color .2s,background .2s;
 }
 .saison-banner:hover{border-color:rgba(74,138,184,.6)}
@@ -257,18 +253,18 @@ button,[onclick],[role="button"],a {
 }
 .stat-card:active{transform:scale(.97)}
 .stat-card.stat-warn{border-color:var(--red);box-shadow:0 0 12px rgba(200,60,60,.2)}
-.stat-icon{font-size:2rem;margin-bottom:.3rem}
-.stat-num{font-size:2.4rem;color:var(--gold);font-weight:bold;line-height:1;text-shadow:0 0 10px rgba(212,168,75,.3)}
-.stat-label{font-size:.88rem;color:var(--text3);margin-top:5px;letter-spacing:.3px}
+.stat-icon{font-size:2.4rem;margin-bottom:.4rem}
+.stat-num{font-size:2.8rem;color:var(--gold);font-weight:bold;line-height:1;text-shadow:0 0 10px rgba(212,168,75,.3)}
+.stat-label{font-size:1.05rem;color:var(--text3);margin-top:7px;letter-spacing:.3px}
 
 /* ── Alert List ── */
 .alert-list{display:flex;flex-direction:column;gap:.45rem}
 .alert-item{
-  display:flex;align-items:center;gap:.85rem;
+  display:flex;align-items:center;gap:.9rem;
   background:var(--bg3);
   border:1px solid var(--border);
   border-radius:var(--radius-sm);
-  padding:.85rem 1.05rem;cursor:pointer;font-size:1.05rem;
+  padding:1rem 1.2rem;cursor:pointer;font-size:1.15rem;
   transition:transform .15s,border-color .2s;
   animation:slideIn .25s ease;
 }
@@ -309,15 +305,15 @@ button,[onclick],[role="button"],a {
 .list-card.card-warn{border-color:rgba(200,60,60,.5);box-shadow:0 0 10px rgba(200,60,60,.15)}
 .list-card-left{display:flex;align-items:center;gap:.85rem;flex:1;min-width:0}
 .list-card-right{display:flex;align-items:center;gap:.6rem;flex-shrink:0}
-.list-card-title{font-size:1.15rem;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:500}
-.list-card-sub{font-size:.92rem;color:var(--text3);margin-top:3px}
-.chevron{color:var(--text3);font-size:1.45rem;opacity:.6}
+.list-card-title{font-size:1.3rem;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:500}
+.list-card-sub{font-size:1.05rem;color:var(--text3);margin-top:4px}
+.chevron{color:var(--text3);font-size:1.6rem;opacity:.6}
 
 .nr-badge{
   background:linear-gradient(135deg,rgba(212,168,75,.2),rgba(212,168,75,.1));
   border:1px solid rgba(212,168,75,.4);
   color:var(--gold);border-radius:var(--radius-xs);
-  padding:5px 11px;font-size:1rem;
+  padding:6px 13px;font-size:1.15rem;
   white-space:nowrap;flex-shrink:0;
   text-shadow:0 0 8px rgba(212,168,75,.4);
   font-weight:600;
@@ -332,7 +328,7 @@ button,[onclick],[role="button"],a {
 }
 .info-row{
   display:flex;justify-content:space-between;align-items:center;
-  padding:.5rem 0;font-size:1.05rem;
+  padding:.6rem 0;font-size:1.15rem;
   border-bottom:1px solid var(--border);
 }
 .info-row:last-child{border-bottom:none}
@@ -350,9 +346,9 @@ button,[onclick],[role="button"],a {
 .btn-primary{
   background:linear-gradient(135deg,var(--gold2),#9a7020);
   color:#0a0800;border:none;border-radius:var(--radius-sm);
-  padding:.7rem 1.2rem;font-size:.92rem;cursor:pointer;
+  padding:.85rem 1.4rem;font-size:1.1rem;cursor:pointer;
   font-family:inherit;font-weight:bold;white-space:nowrap;
-  min-height:44px;
+  min-height:48px;
   transition:transform .12s,box-shadow .2s,filter .2s;
   box-shadow:0 2px 8px rgba(184,138,40,.3);
   -webkit-tap-highlight-color:transparent;
@@ -363,8 +359,8 @@ button,[onclick],[role="button"],a {
 .btn-secondary{
   background:var(--bg3);color:var(--text2);
   border:1px solid var(--border2);border-radius:var(--radius-sm);
-  padding:.7rem 1.2rem;font-size:.92rem;cursor:pointer;font-family:inherit;
-  min-height:44px;
+  padding:.85rem 1.4rem;font-size:1.1rem;cursor:pointer;font-family:inherit;
+  min-height:48px;
   transition:border-color .2s,background .2s,transform .12s;
   -webkit-tap-highlight-color:transparent;
 }
@@ -385,9 +381,9 @@ button,[onclick],[role="button"],a {
   background:rgba(212,168,75,.12);
   border:1px solid rgba(212,168,75,.3);
   color:var(--gold);border-radius:var(--radius-xs);
-  padding:8px 14px;font-size:.78rem;cursor:pointer;
+  padding:10px 16px;font-size:1rem;cursor:pointer;
   font-family:inherit;white-space:nowrap;
-  min-height:36px;
+  min-height:42px;
   transition:background .15s,transform .1s;
   -webkit-tap-highlight-color:transparent;
 }
@@ -397,8 +393,8 @@ button,[onclick],[role="button"],a {
   background:rgba(200,60,60,.1);
   border:1px solid rgba(200,60,60,.25);
   color:#e08080;border-radius:var(--radius-xs);
-  padding:8px 14px;font-size:.78rem;cursor:pointer;font-family:inherit;
-  min-height:36px;
+  padding:10px 16px;font-size:1rem;cursor:pointer;font-family:inherit;
+  min-height:42px;
   transition:background .15s,transform .1s;
   -webkit-tap-highlight-color:transparent;
 }
@@ -498,7 +494,7 @@ textarea.inp{resize:vertical;min-height:64px}
   backdrop-filter:blur(10px);
   border-bottom:1px solid var(--border);z-index:1;
 }
-.form-header h3{color:var(--gold);font-size:1.4rem;letter-spacing:.2px;font-weight:700}
+.form-header h3{color:var(--gold);font-size:1.6rem;letter-spacing:.2px;font-weight:700}
 .close-btn{
   background:var(--bg3);border:1px solid var(--border);
   color:var(--text3);font-size:1.15rem;cursor:pointer;
@@ -682,9 +678,9 @@ textarea.inp{resize:vertical;min-height:64px}
 /* ── Filter Chip ── */
 .filter-chip{
   background:var(--bg3);border:1px solid var(--border2);
-  border-radius:24px;color:var(--text2);
-  padding:10px 18px;font-size:1rem;cursor:pointer;font-family:inherit;
-  min-height:42px;font-weight:500;
+  border-radius:26px;color:var(--text2);
+  padding:11px 20px;font-size:1.1rem;cursor:pointer;font-family:inherit;
+  min-height:46px;font-weight:500;
   display:inline-flex;align-items:center;
   transition:background .15s,border-color .15s,color .15s,transform .1s;
   -webkit-tap-highlight-color:transparent;
