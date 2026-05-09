@@ -19,11 +19,11 @@
 ═══════════════════════════════════════════════════════════════════════════ -->
 <script>
 // Force clear cache if version changed
-if(localStorage.getItem('hp_version') !== 'v34.0') {
+if(localStorage.getItem('hp_version') !== 'v34.1') {
   localStorage.removeItem('mainNav');
   localStorage.removeItem('mehrOrder');
   localStorage.removeItem('mehrOrder');
-  localStorage.setItem('hp_version','v34.0');
+  localStorage.setItem('hp_version','v34.1');
   // Force SW update
   if('serviceWorker' in navigator) {
     navigator.serviceWorker.getRegistrations().then(function(regs) {
@@ -39,8 +39,8 @@ if(localStorage.getItem('hp_version') !== 'v34.0') {
       });
     }
     // Reload once after clearing
-    if(!sessionStorage.getItem('reloaded_v34_0')) {
-      sessionStorage.setItem('reloaded_v34_0','1');
+    if(!sessionStorage.getItem('reloaded_v34_1')) {
+      sessionStorage.setItem('reloaded_v34_1','1');
       window.location.reload(true);
     }
   }
@@ -298,13 +298,14 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 </script>
 
-  <!-- Floating Action Button -->
-  <div id="fab-container" style="position:fixed;bottom:calc(var(--nav-h) + var(--safe-b) + 16px);right:16px;z-index:80;display:flex;flex-direction:column;align-items:flex-end;gap:.5rem">
-    <!-- Sub-actions (hidden by default) -->
-    <div id="fab-actions" style="display:none;flex-direction:column;align-items:flex-end;gap:.4rem">
-      <div style="display:flex;align-items:center;gap:.5rem">
-        <span style="background:rgba(0,0,0,.7);color:#fff;padding:.25rem .6rem;border-radius:12px;font-size:.75rem;white-space:nowrap">Milch erfassen</span>
-        <button onclick="closeFab();showMilchForm()" style="width:44px;height:44px;border-radius:50%;background:linear-gradient(135deg,#1a5a8a,#2a7abf);border:none;font-size:1.3rem;cursor:pointer;box-shadow:0 4px 12px rgba(0,0,0,.3);display:flex;align-items:center;justify-content:center">🥛</button>
-      </div>
-      <div style="display:flex;align-items:center;gap:.5rem">
-        <span style="background:rgba(0,0,0,.7);color:#fff;padding:.25rem .6rem;border-radius:12px;font-size:.75rem;white-space:nowrap">Behandlung<
+  <!-- Floating Action Button (Phase B3) — nur am Dashboard sichtbar via CSS -->
+  <button id="fab-milch" onclick="window.haptic&&window.haptic('tap');window.showMilchForm&&window.showMilchForm()"
+    style="position:fixed;bottom:calc(var(--nav-h) + var(--safe-b) + 16px);right:calc(16px + var(--safe-r));z-index:80;width:60px;height:60px;border-radius:50%;background:linear-gradient(135deg,#1a5a8a,#2a7abf);border:none;font-size:1.8rem;cursor:pointer;box-shadow:0 6px 20px rgba(0,0,0,.5),0 2px 10px rgba(74,138,184,.4);display:none;align-items:center;justify-content:center;color:#fff;padding:0;line-height:1">
+    🥛
+  </button>
+
+  <!-- Käse-Modul-Template (vom Käse-Render genutzt) -->
+  <div id="kaese-template" style="display:none"></div>
+
+</body>
+</html>
