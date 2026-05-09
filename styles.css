@@ -62,9 +62,9 @@ html,body{
 ::-webkit-scrollbar-track{background:transparent}
 ::-webkit-scrollbar-thumb{background:var(--border2);border-radius:3px}
 
-/* ── Root Layout ── */
-/* Auf Mobil: Container füllt komplett den verfügbaren Viewport.
-   Mehrfacher height-Fallback für ältere Browser, dvh ist neu (Mai 2022). */
+/* ── Root Layout ──
+   App füllt IMMER den ganzen Viewport (kein Phone-Frame mehr,
+   weil das auf Geräten mit DPR=1 / hoher CSS-Auflösung kontraproduktiv war). */
 #root{
   display:flex;flex-direction:column;
   width:100%;
@@ -73,33 +73,9 @@ html,body{
   height:100dvh;
   min-height:100vh;
   min-height:100dvh;
-  margin:0 auto;
+  margin:0;
   position:relative;
   background:linear-gradient(180deg, var(--bg) 0%, #0c1a09 100%);
-}
-
-/* ── Desktop-Container: App im Phone-Frame nur auf echten Desktop-Geräten ──
-   Drei kombinierte Bedingungen damit das nicht versehentlich auf Phones
-   mit hoher CSS-Auflösung (Display-Zoom, DPR=1) auslöst:
-   - min-width 1100px (klassischer Desktop-Bildschirm)
-   - pointer:fine (Maus, nicht Touch)
-   - hover:hover (echtes Hover-Verhalten möglich) */
-@media (min-width: 1100px) and (pointer: fine) and (hover: hover) {
-  body {
-    background:
-      radial-gradient(ellipse at top, #0c1a09 0%, #050805 60%, #000 100%);
-  }
-  #root {
-    max-width:440px;
-    height:min(900px, 100dvh);
-    min-height:auto;
-    margin:max(0px, calc((100dvh - 900px)/2)) auto;
-    border-left:1px solid var(--border);
-    border-right:1px solid var(--border);
-    box-shadow:0 0 60px rgba(0,0,0,.6), 0 0 0 1px rgba(212,168,75,.05);
-    border-radius:18px;
-    overflow:hidden;
-  }
 }
 
 /* ── Main Content ── */
