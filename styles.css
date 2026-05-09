@@ -1037,11 +1037,25 @@ textarea.inp{resize:vertical;min-height:64px}
   text-transform:uppercase; letter-spacing:1.2px;
   padding:.15rem .3rem .35rem; opacity:.85;
 }
-/* Mistgang-Beschriftung zwischen Reihen (nur Anbindestall) */
+/* Mistgang-Zeile mit optionalen Türen links/rechts */
+.sp-mistgang-zeile {
+  display:flex; align-items:center; gap:.5rem; padding:.3rem 0;
+}
+.sp-mistgang-tuer-links, .sp-mistgang-tuer-rechts {
+  flex:0 0 auto;
+}
+.sp-mistgang-tuer {
+  display:inline-flex; align-items:center; gap:.3rem;
+  background:rgba(139,105,20,.18); border:2px dashed rgba(212,168,75,.5);
+  color:var(--gold); padding:.4rem .7rem; border-radius:8px;
+  font-size:.78rem; font-weight:600;
+}
+/* Mistgang-Beschriftung */
 .sp-mistgang {
+  flex:1;
   display:flex; align-items:center; justify-content:center; gap:.6rem;
   font-size:.7rem; color:var(--text3); letter-spacing:2px;
-  text-transform:uppercase; padding:.25rem 0; opacity:.6;
+  text-transform:uppercase; opacity:.7;
   font-weight:600;
 }
 .sp-mistgang::before, .sp-mistgang::after {
@@ -1124,7 +1138,11 @@ textarea.inp{resize:vertical;min-height:64px}
 .sp-platz-wz-aktiv { border-color:#d4844b; background:rgba(212,132,75,.18); }
 .sp-platz-wz-krit  { border-color:#d44b4b; background:rgba(212,60,60,.22); animation:sp-pulse 1.5s ease-in-out infinite; }
 @keyframes sp-pulse { 0%,100%{box-shadow:0 0 0 0 rgba(212,60,60,.4)} 50%{box-shadow:0 0 0 4px rgba(212,60,60,0)} }
-.sp-platz-faded { opacity:.25; }
+.sp-platz-faded {
+  opacity:.2 !important;
+  filter:grayscale(.6);
+  pointer-events:none;
+}
 
 /* Inhalt im Platz: kompakt */
 .sp-platz-nr {
