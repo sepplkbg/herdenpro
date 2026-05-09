@@ -3557,14 +3557,110 @@ window.kaeseInit = async function() {
 
 
 // Load kaese data when navigating to kaese
+// Generischer Kuh-Picker (Vollbild-Modal mit Suche)
+function _escHtml(s) {
+  return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+window.openKuhPicker = function(hiddenInputId, buttonId) {
+  const existing = document.getElementById('kuh-picker-overlay');
+  if(existing) existing.remove();
+
+  const currentVal = document.getElementById(hiddenInputId)?.value || '';
+  const liste = Object.entries(kuehe||{})
+    .sort((a,b)=>{
+      const na = parseInt(a[1].nr)||0, nb = parseInt(b[1].nr)||0;
+      if(na!==nb) return na-nb;
+      return (a[1].nr||'').localeCompare(b[1].nr||'',undefined,{numeric:true});
+    });
+
+  const ov = document.createElement('div');
+  ov.id = 'kuh-picker-overlay';
+  ov.className = 'form-overlay';
+  ov.style.display = 'flex';
+  ov.style.zIndex = '10000';
+  ov.innerHTML = `
+    <div class="form-sheet">
+      <div class="form-header">
+        <h3>Kuh wählen</h3>
+        <button class="close-btn" onclick="document.getElementById('kuh-picker-overlay').remove()">✕</button>
+      </div>
+      <div class="form-body">
+        <input id="kuh-picker-suche" class="inp" placeholder="🔍 Nr oder Name suchen…"
+          oninput="kuhPickerFilter(this.value)"
+          style="position:sticky;top:0;z-index:5;margin-bottom:.5rem" />
+        <div id="kuh-picker-list">
+          ${liste.length===0 ? `<div style="padding:1rem;text-align:center;color:var(--text3)">Keine Kühe vorhanden</div>` :
+            liste.map(([id,k])=>{
+              const search = ((k.nr||'')+' '+(k.name||'')).toLowerCase();
+              const label = '#'+(k.nr||'')+(k.name?' '+k.name:'');
+              return `<div class="kuh-picker-item"
+                data-search="${_escHtml(search)}"
+                data-id="${_escHtml(id)}"
+                data-label="${_escHtml(label)}"
+                style="display:flex;align-items:center;gap:.7rem;padding:.7rem .9rem;border-bottom:1px solid var(--border2);cursor:pointer;${currentVal===id?'background:rgba(184,138,40,.15)':''}">
+                <div style="font-weight:700;color:var(--gold);min-width:3rem">#${_escHtml(k.nr||'')}</div>
+                <div style="flex:1">${k.name?_escHtml(k.name):'<span style="color:var(--text3)">(kein Name)</span>'}</div>
+                ${currentVal===id?'<span style="color:var(--green)">✓</span>':''}
+              </div>`;
+            }).join('')}
+        </div>
+      </div>
+    </div>
+  `;
+  ov.onclick = e => { if(e.target===ov) ov.remove(); };
+  ov.querySelectorAll('.kuh-picker-item').forEach(el=>{
+    el.addEventListener('click', ()=>{
+      kuhPickerSelect(hiddenInputId, buttonId, el.dataset.id, el.dataset.label);
+    });
+  });
+  document.body.appendChild(ov);
+  setTimeout(()=>{
+    const inp = document.getElementById('kuh-picker-suche');
+    if(inp) inp.focus();
+  }, 100);
+};
+
+window.kuhPickerFilter = function(q) {
+  q = (q||'').toLowerCase().trim();
+  document.querySelectorAll('.kuh-picker-item').forEach(el=>{
+    const s = el.dataset.search||'';
+    el.style.display = (!q || s.includes(q)) ? '' : 'none';
+  });
+};
+
+window.kuhPickerSelect = function(hiddenInputId, buttonId, kuhId, label) {
+  const hidden = document.getElementById(hiddenInputId);
+  if(hidden) hidden.value = kuhId;
+  const labelSpan = document.getElementById(buttonId+'-label');
+  if(labelSpan) {
+    labelSpan.textContent = label || '';
+    labelSpan.style.color = '';
+  }
+  // Optional: change-Event triggern, falls Listener vorhanden
+  if(hidden) {
+    try { hidden.dispatchEvent(new Event('change',{bubbles:true})); } catch(e){}
+  }
+  document.getElementById('kuh-picker-overlay')?.remove();
+};
+
 window.setBehBehandler = function(typ, btn) {
-  document.getElementById('b-behandler').value = typ;
+  const behEl = document.getElementById('b-behandler');
+  if(behEl) behEl.value = typ;
   const btnP = document.getElementById('b-btn-personal');
   const btnT = document.getElementById('b-btn-tierarzt');
   const taBlock = document.getElementById('b-tazettel-block');
-  const fotoBlock = document.getElementById('b-foto-block');
-  if(btnP) { btnP.style.background = typ==='personal'?'var(--green)':'transparent'; btnP.style.color=typ==='personal'?'#fff':'var(--text3)'; btnP.style.border=typ==='personal'?'2px solid var(--green)':'1px solid var(--border)'; }
-  if(btnT) { btnT.style.background = typ==='tierarzt'?'#3a8fd4':'transparent'; btnT.style.color=typ==='tierarzt'?'#fff':'var(--text3)'; btnT.style.border=typ==='tierarzt'?'2px solid #3a8fd4':'1px solid var(--border)'; }
+  if(btnP) {
+    btnP.style.background = typ==='personal'?'var(--green)':'transparent';
+    btnP.style.color = typ==='personal'?'#fff':'var(--text3)';
+    btnP.style.border = typ==='personal'?'2px solid var(--green)':'1px solid var(--border)';
+    btnP.style.fontWeight = typ==='personal'?'bold':'normal';
+  }
+  if(btnT) {
+    btnT.style.background = typ==='tierarzt'?'#3a8fd4':'transparent';
+    btnT.style.color = typ==='tierarzt'?'#fff':'var(--text3)';
+    btnT.style.border = typ==='tierarzt'?'2px solid #3a8fd4':'1px solid var(--border)';
+    btnT.style.fontWeight = typ==='tierarzt'?'bold':'normal';
+  }
   if(taBlock) taBlock.style.display = typ==='tierarzt' ? '' : 'none';
 };
 
