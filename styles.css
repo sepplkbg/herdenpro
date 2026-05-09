@@ -43,7 +43,7 @@
    (auch alle inline style="font-size:.8rem"-Werte aus den JS-Templates).
    WICHTIG: keine zweite font-size-Regel auf html, sonst wird das überschrieben. */
 html{
-  font-size:24px !important;
+  font-size:26px !important;
   -webkit-text-size-adjust:100%;
   height:100%;
 }
