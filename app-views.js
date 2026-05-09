@@ -91,6 +91,62 @@ function renderDashboard() {
   // Wetter state
   const wetter = window._wetterData;
 
+  // ── Heute-Übersicht (Phase A6) ──────────────────────────────────
+  const aktiveBeh = Object.values(behandlungen).filter(b=>b.aktiv);
+  const behHeuteFaellig = aktiveBeh.filter(b => {
+    if(!b.folgeTermin) return false;
+    const t = new Date(b.folgeTermin); t.setHours(0,0,0,0);
+    const h = new Date(heute); h.setHours(0,0,0,0);
+    return t.getTime() <= h.getTime();
+  }).length;
+  const milchSchnittHeute = heuteMilch.length
+    ? Math.round((heuteMilchL / kueheOben.length || 0)*10)/10
+    : 0;
+
+  // ── Nächste Termine (Phase A6) ──────────────────────────────────
+  const naechsteTermine = [];
+  // Behandlungs-Folgetermine
+  Object.entries(behandlungen).forEach(([bid, b]) => {
+    if(!b.aktiv || !b.folgeTermin || b.folgeTermin < heute) return;
+    const k = kuehe[b.kuhId];
+    naechsteTermine.push({
+      ts: b.folgeTermin,
+      titel: 'Folgetermin' + (k ? ' #'+k.nr+' '+(k.name||'') : ''),
+      icon: '⚕',
+      farbe: 'var(--orange)',
+      ziel: 'behandlung'
+    });
+  });
+  // Kalender-Termine
+  Object.entries(kalenderTermine||{}).forEach(([kid, t]) => {
+    if(!t.datum || t.datum < heute) return;
+    naechsteTermine.push({
+      ts: t.datum,
+      titel: t.titel || 'Termin',
+      icon: t.icon || '📅',
+      farbe: 'var(--gold)',
+      ziel: 'kalender'
+    });
+  });
+  naechsteTermine.sort((a,b)=>a.ts-b.ts);
+  const top3Termine = naechsteTermine.slice(0,3);
+
+  // ── Mini Saison-Kurve: Milchleistung letzte 7 Tage ─────────────
+  function tagesMilch(ts) {
+    const tagStart = new Date(ts); tagStart.setHours(0,0,0,0);
+    const tagEnde = tagStart.getTime() + 86400000;
+    return Object.values(milchEintraege)
+      .filter(m => m.datum >= tagStart.getTime() && m.datum < tagEnde)
+      .reduce((s,m)=>s+(m.gesamt||0),0);
+  }
+  const last7 = [];
+  for(let i=6;i>=0;i--){
+    const ts = heute - i*86400000;
+    last7.push({ ts, l: tagesMilch(ts) });
+  }
+  const last7Max = Math.max(...last7.map(d=>d.l), 1);
+  const last7Trend = last7[6].l - last7[0].l;
+
   return `
     <!-- Saison Banner -->
     ${saisonInfo?.aktiv ? `
@@ -146,7 +202,16 @@ function renderDashboard() {
       </div>
     </div>
 
-
+    <!-- Heute-Übersicht (Phase A6) -->
+    <div style="background:linear-gradient(135deg,rgba(212,168,75,.07),rgba(212,168,75,.02));border:1px solid rgba(212,168,75,.18);border-radius:var(--radius-sm);padding:.7rem .9rem;margin-bottom:.8rem;display:flex;gap:.8rem;align-items:center;flex-wrap:wrap">
+      <div style="font-size:.68rem;color:var(--gold);letter-spacing:.06em;font-weight:600;flex:0 0 auto">▸ HEUTE</div>
+      <div style="flex:1;min-width:0;display:flex;gap:.9rem;flex-wrap:wrap;font-size:.78rem;color:var(--text2)">
+        <span><b style="color:${behHeuteFaellig?'var(--orange)':'var(--text)'}">${behHeuteFaellig}</b> Behandl. fällig</span>
+        <span><b style="color:var(--text)">${kueheOben.length}/${kuhListe.length}</b> oben</span>
+        ${heuteMilch.length ? `<span><b style="color:var(--gold)">${milchSchnittHeute}L</b> Ø/Kuh</span>` : `<span style="color:var(--text3)">Keine Milch heute</span>`}
+        <span style="color:var(--text3)">${heuteMorgens?'☀':'·'} ${heuteAbends?'🌙':'·'}</span>
+      </div>
+    </div>
 
     <!-- Brunst-Kontrolle Tag 19-23 -->
     ${brunstAlerts.length ? `
@@ -217,6 +282,50 @@ function renderDashboard() {
         </div>`;
       } catch(e){ return ''; }
     })()}
+
+    <!-- Nächste Termine (Phase A6) -->
+    ${top3Termine.length ? `
+    <div style="margin-top:1rem">
+      <div class="section-title">📅 Nächste Termine</div>
+      ${top3Termine.map(t => {
+        const d = new Date(t.ts);
+        const heuteTag = new Date(heute); heuteTag.setHours(0,0,0,0);
+        const tTag = new Date(t.ts); tTag.setHours(0,0,0,0);
+        const tageHin = Math.round((tTag.getTime()-heuteTag.getTime())/86400000);
+        const wann = tageHin===0 ? 'Heute' : tageHin===1 ? 'Morgen' : tageHin<7 ? 'in '+tageHin+' Tagen' : d.toLocaleDateString('de-AT',{weekday:'short',day:'numeric',month:'short'});
+        return `<div style="background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);padding:.55rem .8rem;margin-bottom:.35rem;display:flex;align-items:center;gap:.7rem;cursor:pointer" onclick="navigate('${t.ziel}')">
+          <span style="font-size:1.1rem">${t.icon}</span>
+          <div style="flex:1;min-width:0">
+            <div style="font-size:.83rem;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${t.titel}</div>
+            <div style="font-size:.7rem;color:${t.farbe}">${wann}</div>
+          </div>
+          <span class="chevron" style="color:var(--text3)">›</span>
+        </div>`;
+      }).join('')}
+    </div>` : ''}
+
+    <!-- Mini Saison-Kurve: Milchleistung letzte 7 Tage (Phase A6) -->
+    ${last7.some(d=>d.l>0) ? `
+    <div style="background:linear-gradient(135deg,rgba(74,184,232,.06),rgba(74,184,232,.01));border:1px solid rgba(74,184,232,.18);border-radius:var(--radius-sm);padding:.7rem .9rem;margin-top:1rem;cursor:pointer" onclick="navigate('milch')">
+      <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:.5rem">
+        <div style="font-size:.7rem;color:#7acbff;letter-spacing:.06em;font-weight:600">📈 MILCH 7 TAGE</div>
+        <div style="font-size:.74rem;color:${last7Trend>=0?'var(--green)':'var(--orange)'}">
+          ${last7Trend>=0?'↗':'↘'} ${last7Trend>=0?'+':''}${Math.round(last7Trend)}L
+        </div>
+      </div>
+      <div style="display:flex;align-items:flex-end;gap:4px;height:42px">
+        ${last7.map((d,i) => {
+          const pct = last7Max ? Math.max(4, Math.round(d.l/last7Max*100)) : 4;
+          const istHeute = i===6;
+          const datum = new Date(d.ts);
+          const tag = ['So','Mo','Di','Mi','Do','Fr','Sa'][datum.getDay()];
+          return `<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:3px">
+            <div style="width:100%;background:linear-gradient(180deg,${istHeute?'#7acbff':'#4a88b8'},rgba(74,184,232,.2));height:${pct}%;border-radius:3px 3px 0 0;${istHeute?'box-shadow:0 0 8px rgba(122,203,255,.5)':''}" title="${d.l}L"></div>
+            <div style="font-size:.6rem;color:${istHeute?'var(--gold)':'var(--text3)'};font-weight:${istHeute?'700':'400'}">${tag}</div>
+          </div>`;
+        }).join('')}
+      </div>
+    </div>` : ''}
   `;
 }
 function renderHerde() {
