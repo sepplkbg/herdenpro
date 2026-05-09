@@ -43,7 +43,7 @@
    Desktop (≥1024px Browser-Fenster): 16px – Standard-Größe.
    Width-only Detection weil pointer:fine/hover:hover auf User-Setup unzuverlässig ist. */
 html{
-  font-size:32px;
+  font-size:34px;
   -webkit-text-size-adjust:100%;
   height:100%;
 }
@@ -454,13 +454,16 @@ button,[onclick],[role="button"],a {
   border-radius:var(--radius-sm);
   color:var(--text);padding:.85rem 1.05rem;
   font-family:inherit;
-  /* 1rem = 22px – über dem 16px-iOS-Zoom-Schwellwert */
   font-size:1rem;
   outline:none;width:100%;
   min-height:50px;
   transition:border-color .2s,box-shadow .2s;
   -webkit-appearance:none;
   appearance:none;
+}
+/* Zahlen-Inputs müssen breit genug sein für 3-stellige Werte mit Komma (z. B. "12,5") */
+input[type="number"], input[inputmode="decimal"], input[inputmode="numeric"] {
+  min-width:5rem;
 }
 .inp:focus{
   border-color:var(--gold2);

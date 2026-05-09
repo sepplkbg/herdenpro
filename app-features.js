@@ -1644,7 +1644,7 @@ function renderMilch() {
                     </div>
                     <div style="display:flex;align-items:center;gap:.3rem">
                       <button onclick="milchStep('${id}',-1)" style="width:28px;height:28px;border-radius:50%;border:1px solid var(--border);background:var(--bg3);color:var(--text);font-size:1rem;cursor:pointer;display:flex;align-items:center;justify-content:center;font-family:inherit">−</button>
-                      <input class="inp kuh-liter" data-id="${id}" data-nr="${k.nr}" data-name="${k.name||''}" placeholder="L" inputmode="decimal" style="width:62px;text-align:center;font-size:.95rem;font-weight:bold;padding:.35rem .4rem" oninput="onMilchInput(this);checkMilchWert(this,'${id}')" onfocus="this.select()" />
+                      <input class="inp kuh-liter" data-id="${id}" data-nr="${k.nr}" data-name="${k.name||''}" placeholder="L" inputmode="decimal" style="width:5rem;min-width:5rem;text-align:center;font-size:1rem;font-weight:bold;padding:.4rem .3rem" oninput="onMilchInput(this);checkMilchWert(this,'${id}')" onfocus="this.select()" />
                       <button onclick="milchStep('${id}',1)" style="width:28px;height:28px;border-radius:50%;border:1px solid var(--border);background:var(--bg3);color:var(--text);font-size:1rem;cursor:pointer;display:flex;align-items:center;justify-content:center;font-family:inherit">+</button>
                     </div>
                   </div>
@@ -4715,13 +4715,14 @@ window.deleteBenutzer = async function(uid, email) {
   }
 
   // Android Install Prompt
-  window.addEventListener('beforeinstallprompt', e => {
-    e.preventDefault();
-    const btn = document.createElement('button');
-    btn.textContent = '📲 App installieren';
-    btn.style.cssText='position:fixed;bottom:80px;right:1rem;z-index:99;background:#b88c30;color:#1a0f00;border:none;border-radius:10px;padding:.6rem 1rem;font-size:.85rem;cursor:pointer;box-shadow:0 4px 12px rgba(0,0,0,.4)';
-    btn.onclick = () => { e.prompt(); btn.remove(); };
-    document.body.appendChild(btn);
-    setTimeout(()=>btn.remove(), 15000);
-  });
 
+// PWA-Install-Prompt
+window.addEventListener('beforeinstallprompt', function(e) {
+  e.preventDefault();
+  var btn = document.createElement('button');
+  btn.textContent = '📲 App installieren';
+  btn.style.cssText='position:fixed;bottom:calc(var(--nav-h) + var(--safe-b) + 12px);right:1rem;z-index:99;background:#b88c30;color:#1a0f00;border:none;border-radius:10px;padding:.6rem 1rem;font-size:.85rem;cursor:pointer;box-shadow:0 4px 12px rgba(0,0,0,.4)';
+  btn.onclick = function() { e.prompt(); btn.remove(); };
+  document.body.appendChild(btn);
+  setTimeout(function(){ btn.remove(); }, 15000);
+});
