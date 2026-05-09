@@ -174,18 +174,9 @@ button,[onclick],[role="button"],a {
   -webkit-tap-highlight-color:transparent;
 }
 
-/* ── FAB (Phase B3) – nur am Dashboard sichtbar ────────────────────── */
-#fab-milch{
-  transition:transform .15s ease-out, box-shadow .2s ease, opacity .2s ease;
-  opacity:0;transform:scale(.6);pointer-events:none;
-}
-body[data-view="dashboard"] #fab-milch{
-  display:flex !important;
-  opacity:1;transform:scale(1);
-  pointer-events:auto;
-}
-#fab-milch:active{transform:scale(.92) !important}
-#fab-milch:hover{filter:brightness(1.1)}
+/* FAB wurde auf User-Wunsch komplett entfernt — kein Auto-Knopf mehr.
+   Module benutzen den "+ Neu" Button rechts oben im Header. */
+#fab-milch, #fab-container { display:none !important; }
 
 /* ── Page Header ── */
 .page-header{
@@ -193,32 +184,36 @@ body[data-view="dashboard"] #fab-milch{
   margin-bottom:1.1rem;
 }
 .page-header h2{
-  font-size:1.5rem;color:var(--gold);
+  font-size:1.95rem;color:var(--gold);
   text-shadow:0 0 16px rgba(212,168,75,.3);
   letter-spacing:.3px;
-  line-height:1.2;
+  line-height:1.15;
   font-weight:700;
 }
 .date-chip{
-  font-size:.7rem;color:var(--text3);
+  font-size:.9rem;color:var(--text3);
   background:var(--bg3);
   border:1px solid var(--border);
-  padding:3px 10px;border-radius:20px;
+  padding:5px 14px;border-radius:20px;
 }
 .back-btn{
   background:none;border:none;color:var(--text2);
-  font-size:1.3rem;cursor:pointer;padding:0;font-family:inherit;
+  font-size:1.5rem;cursor:pointer;padding:.4rem .6rem;font-family:inherit;
   transition:color .15s;
+  min-height:44px;
+  display:inline-flex;align-items:center;
 }
 .back-btn:hover{color:var(--gold)}
 .section-title{
-  font-size:.67rem;color:var(--text3);
-  letter-spacing:1.5px;margin:1.3rem 0 .5rem;
+  font-size:.88rem;color:var(--text2);
+  letter-spacing:1.5px;margin:1.5rem 0 .6rem;
   text-transform:uppercase;
+  font-weight:600;
 }
 .section-label{
-  font-size:.67rem;color:var(--text3);
+  font-size:.88rem;color:var(--text2);
   letter-spacing:1.5px;text-transform:uppercase;
+  font-weight:600;
 }
 
 /* ── Saison Banner ── */
@@ -227,8 +222,8 @@ body[data-view="dashboard"] #fab-milch{
   background:linear-gradient(135deg,rgba(74,138,184,.15),rgba(74,138,184,.05));
   border:1px solid rgba(74,138,184,.35);
   border-radius:var(--radius-sm);
-  padding:.65rem 1rem;margin-bottom:.9rem;
-  font-size:.82rem;color:#80b8e0;cursor:pointer;
+  padding:.85rem 1.15rem;margin-bottom:.9rem;
+  font-size:1.05rem;color:#80b8e0;cursor:pointer;
   transition:border-color .2s,background .2s;
 }
 .saison-banner:hover{border-color:rgba(74,138,184,.6)}
@@ -247,7 +242,7 @@ body[data-view="dashboard"] #fab-milch{
   background:linear-gradient(135deg,var(--bg3),var(--bg4));
   border:1px solid var(--border);
   border-radius:var(--radius);
-  padding:1rem;text-align:center;cursor:pointer;
+  padding:1.4rem 1rem;text-align:center;cursor:pointer;
   transition:border-color .2s,transform .15s,box-shadow .2s;
   position:relative;overflow:hidden;
 }
@@ -262,18 +257,18 @@ body[data-view="dashboard"] #fab-milch{
 }
 .stat-card:active{transform:scale(.97)}
 .stat-card.stat-warn{border-color:var(--red);box-shadow:0 0 12px rgba(200,60,60,.2)}
-.stat-icon{font-size:1.5rem;margin-bottom:.2rem}
-.stat-num{font-size:1.8rem;color:var(--gold);font-weight:bold;line-height:1;text-shadow:0 0 10px rgba(212,168,75,.3)}
-.stat-label{font-size:.68rem;color:var(--text3);margin-top:3px;letter-spacing:.3px}
+.stat-icon{font-size:2rem;margin-bottom:.3rem}
+.stat-num{font-size:2.4rem;color:var(--gold);font-weight:bold;line-height:1;text-shadow:0 0 10px rgba(212,168,75,.3)}
+.stat-label{font-size:.88rem;color:var(--text3);margin-top:5px;letter-spacing:.3px}
 
 /* ── Alert List ── */
 .alert-list{display:flex;flex-direction:column;gap:.45rem}
 .alert-item{
-  display:flex;align-items:center;gap:.7rem;
+  display:flex;align-items:center;gap:.85rem;
   background:var(--bg3);
   border:1px solid var(--border);
   border-radius:var(--radius-sm);
-  padding:.65rem .9rem;cursor:pointer;font-size:.82rem;
+  padding:.85rem 1.05rem;cursor:pointer;font-size:1.05rem;
   transition:transform .15s,border-color .2s;
   animation:slideIn .25s ease;
 }
@@ -298,9 +293,9 @@ body[data-view="dashboard"] #fab-milch{
   background:linear-gradient(135deg,var(--bg3),var(--bg4));
   border:1px solid var(--border);
   border-radius:var(--radius-sm);
-  padding:.75rem .95rem;cursor:pointer;
+  padding:1rem 1.1rem;cursor:pointer;
   transition:border-color .2s,transform .12s,box-shadow .2s;
-  gap:.6rem;position:relative;overflow:hidden;
+  gap:.7rem;position:relative;overflow:hidden;
   animation:fadeUp .2s ease;
 }
 @keyframes fadeUp{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:translateY(0)}}
@@ -310,21 +305,22 @@ body[data-view="dashboard"] #fab-milch{
 }
 .list-card:hover{border-color:var(--border2);transform:translateY(-1px);box-shadow:var(--shadow-sm)}
 .list-card:active{transform:scale(.98)}
-.list-card.list-card-sm{padding:.5rem .8rem}
+.list-card.list-card-sm{padding:.65rem .9rem}
 .list-card.card-warn{border-color:rgba(200,60,60,.5);box-shadow:0 0 10px rgba(200,60,60,.15)}
-.list-card-left{display:flex;align-items:center;gap:.7rem;flex:1;min-width:0}
-.list-card-right{display:flex;align-items:center;gap:.5rem;flex-shrink:0}
-.list-card-title{font-size:.9rem;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.list-card-sub{font-size:.71rem;color:var(--text3);margin-top:2px}
-.chevron{color:var(--text3);font-size:1.2rem;opacity:.6}
+.list-card-left{display:flex;align-items:center;gap:.85rem;flex:1;min-width:0}
+.list-card-right{display:flex;align-items:center;gap:.6rem;flex-shrink:0}
+.list-card-title{font-size:1.15rem;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:500}
+.list-card-sub{font-size:.92rem;color:var(--text3);margin-top:3px}
+.chevron{color:var(--text3);font-size:1.45rem;opacity:.6}
 
 .nr-badge{
   background:linear-gradient(135deg,rgba(212,168,75,.2),rgba(212,168,75,.1));
   border:1px solid rgba(212,168,75,.4);
   color:var(--gold);border-radius:var(--radius-xs);
-  padding:2px 8px;font-size:.77rem;
+  padding:5px 11px;font-size:1rem;
   white-space:nowrap;flex-shrink:0;
   text-shadow:0 0 8px rgba(212,168,75,.4);
+  font-weight:600;
 }
 
 /* ── Card Section ── */
@@ -336,7 +332,7 @@ body[data-view="dashboard"] #fab-milch{
 }
 .info-row{
   display:flex;justify-content:space-between;align-items:center;
-  padding:.35rem 0;font-size:.84rem;
+  padding:.5rem 0;font-size:1.05rem;
   border-bottom:1px solid var(--border);
 }
 .info-row:last-child{border-bottom:none}
@@ -466,7 +462,7 @@ body[data-view="dashboard"] #fab-milch{
 .inp::placeholder{color:var(--text3)}
 select.inp{cursor:pointer}
 textarea.inp{resize:vertical;min-height:64px}
-.inp-label{font-size:.71rem;color:var(--text3);margin-top:.2rem;margin-bottom:-.3rem}
+.inp-label{font-size:.92rem;color:var(--text2);margin-top:.4rem;margin-bottom:.1rem;font-weight:500}
 .checkbox-row{
   display:flex;align-items:center;gap:.5rem;
   font-size:.85rem;color:var(--text2);cursor:pointer;
@@ -502,7 +498,7 @@ textarea.inp{resize:vertical;min-height:64px}
   backdrop-filter:blur(10px);
   border-bottom:1px solid var(--border);z-index:1;
 }
-.form-header h3{color:var(--gold);font-size:1.05rem;letter-spacing:.2px}
+.form-header h3{color:var(--gold);font-size:1.4rem;letter-spacing:.2px;font-weight:700}
 .close-btn{
   background:var(--bg3);border:1px solid var(--border);
   color:var(--text3);font-size:1.15rem;cursor:pointer;
@@ -685,18 +681,20 @@ textarea.inp{resize:vertical;min-height:64px}
 
 /* ── Filter Chip ── */
 .filter-chip{
-  background:var(--bg3);border:1px solid var(--border);
-  border-radius:20px;color:var(--text3);
-  padding:8px 14px;font-size:.8rem;cursor:pointer;font-family:inherit;
-  min-height:34px;
+  background:var(--bg3);border:1px solid var(--border2);
+  border-radius:24px;color:var(--text2);
+  padding:10px 18px;font-size:1rem;cursor:pointer;font-family:inherit;
+  min-height:42px;font-weight:500;
   display:inline-flex;align-items:center;
   transition:background .15s,border-color .15s,color .15s,transform .1s;
   -webkit-tap-highlight-color:transparent;
 }
 .filter-chip:active{transform:scale(.94)}
 .filter-chip.active{
-  background:rgba(212,168,75,.15);
+  background:rgba(212,168,75,.18);
   border-color:var(--gold2);color:var(--gold);
+  font-weight:600;
+  box-shadow:0 0 12px rgba(212,168,75,.15);
 }
 
 /* ── Kuh Select Chip ── */
