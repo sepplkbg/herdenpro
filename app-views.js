@@ -695,7 +695,7 @@ function renderKuhDetail() {
 
     <!-- Klauenpflege-Formular -->
     <div id="klauen-overlay" class="form-overlay" style="display:none">
-      <div class="form-sheet" style="max-height:92vh;overflow-y:auto">
+      <div class="form-sheet">
         <div class="form-header"><h3>🐾 Klauenpflege</h3><button class="close-btn" onclick="closeForm('klauen-overlay')">✕</button></div>
         <div class="form-body">
           <input type="hidden" id="kl-kuh-id" value="${id}" />
@@ -4335,15 +4335,24 @@ window.spOpenPlatzZuweisung = function(platzId) {
                   ? stall.tableConfig.reihen[rIdx].name : ('Reihe '+(rIdx+1));
     lbl.textContent = rname+' · Platz '+pNr;
   }
-  // Kuh-Select dynamisch befüllen damit auch frisch angelegte Kühe sofort wählbar sind
+  // Kuh-Select dynamisch befüllen.
+  // Bereits zugewiesene Kühe ausblenden — außer die für DIESEN Platz aktuell gewählte.
   var sel = document.getElementById('sp-kuh-select');
   if(sel) {
     var aktKuhId = (stall.plaetze||{})[platzId] || '';
+    // Set aller bereits anderswo zugewiesenen Kuh-IDs
+    var assigned = new Set();
+    Object.entries(stall.plaetze||{}).forEach(function(e){
+      var pid = e[0], kid = e[1];
+      if(kid && pid !== platzId) assigned.add(kid);
+    });
     var opts = '<option value="">— Leer lassen —</option>';
     Object.entries(kuehe).sort(function(a,b){
       return (parseInt(a[1].nr)||0) - (parseInt(b[1].nr)||0);
     }).forEach(function(e){
       var id = e[0], k = e[1];
+      // Bereits anderswo zugewiesene Kühe überspringen (außer die aktuelle)
+      if(assigned.has(id) && id !== aktKuhId) return;
       opts += '<option value="'+id+'"'+(id===aktKuhId?' selected':'')+'>#'+k.nr+' '+(k.name||'–')+(k.bauer?' ('+k.bauer+')':'')+'</option>';
     });
     sel.innerHTML = opts;
@@ -4593,17 +4602,28 @@ window.spSaveWizard = async function() {
   var gangTueren = {};
   if(gangLinks) gangTueren.links = { label: gangLinks };
   if(gangRechts) gangTueren.rechts = { label: gangRechts };
-  // Stalltyp ist immer 'anbindestall' — kein Wahl-UI mehr
   var tableConfig = { typ:'anbindestall', layout:layout, reihen: window._spWizReihen, gangTueren: gangTueren };
-  if(stallId) {
-    await update(ref(db,'stallplanV2/'+stallId), {name:name, tableConfig:tableConfig});
-  } else {
-    var nr = await push(ref(db,'stallplanV2'), {name:name, tableConfig:tableConfig, plaetze:{}});
-    window._spAktivId = nr.key;
+
+  // Optimistic-Update: lokal sofort übernehmen damit Türen/Layout-Änderung sofort sichtbar
+  if(stallId && window._spStaelle && window._spStaelle[stallId]) {
+    window._spStaelle[stallId].name = name;
+    window._spStaelle[stallId].tableConfig = tableConfig;
   }
   closeForm('sp-wizard-overlay');
   if(window.haptic) window.haptic('save');
+  if(typeof render === 'function') render();
   showSaveToast && showSaveToast('Stall gespeichert');
+
+  // Firebase-Sync im Hintergrund
+  try {
+    if(stallId) {
+      await update(ref(db,'stallplanV2/'+stallId), {name:name, tableConfig:tableConfig});
+    } else {
+      var nr = await push(ref(db,'stallplanV2'), {name:name, tableConfig:tableConfig, plaetze:{}});
+      window._spAktivId = nr.key;
+      if(typeof render === 'function') render();
+    }
+  } catch(e) { console.warn('Stall-Save Firebase-Fehler:', e); }
 };
 
 // Text-Parser: parsed strikte Syntax und füllt _spWizReihen
@@ -7544,7 +7564,6 @@ window.hideMedDropdown = function() {
   const dd = document.getElementById('med-dropdown');
   if(dd) dd.style.display = 'none';
 };
-
 window.onMedInput = function(inp) {
   const q = (inp.value||'').toLowerCase().trim();
   const dd = document.getElementById('med-dropdown');
