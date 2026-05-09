@@ -78,8 +78,13 @@ html,body{
   background:linear-gradient(180deg, var(--bg) 0%, #0c1a09 100%);
 }
 
-/* ── Desktop-Container: App im Phone-Frame nur auf wirklich großen Screens ── */
-@media (min-width: 900px) {
+/* ── Desktop-Container: App im Phone-Frame nur auf echten Desktop-Geräten ──
+   Drei kombinierte Bedingungen damit das nicht versehentlich auf Phones
+   mit hoher CSS-Auflösung (Display-Zoom, DPR=1) auslöst:
+   - min-width 1100px (klassischer Desktop-Bildschirm)
+   - pointer:fine (Maus, nicht Touch)
+   - hover:hover (echtes Hover-Verhalten möglich) */
+@media (min-width: 1100px) and (pointer: fine) and (hover: hover) {
   body {
     background:
       radial-gradient(ellipse at top, #0c1a09 0%, #050805 60%, #000 100%);
