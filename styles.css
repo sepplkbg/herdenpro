@@ -1058,12 +1058,37 @@ textarea.inp{resize:vertical;min-height:64px}
   display:flex; flex-direction:row; gap:4px;
   overflow-x:auto; overflow-y:hidden;
   padding:.3rem 2px;
-  /* Touch-Scroll smooth */
   -webkit-overflow-scrolling:touch;
   scroll-snap-type:x proximity;
 }
 .sp-platz-liste::-webkit-scrollbar { height:4px; }
 .sp-platz-liste::-webkit-scrollbar-thumb { background:var(--border2); border-radius:2px; }
+
+/* Vertikales Layout: Reihen untereinander, Plätze als volle Zeile pro Reihe */
+.sp-layout-vertikal .sp-platz-liste {
+  flex-direction:column; overflow-x:hidden; gap:6px;
+}
+.sp-layout-vertikal .sp-platz {
+  width:100%; min-height:auto;
+  flex-direction:row; align-items:center; justify-content:flex-start;
+  text-align:left; padding:.6rem 1rem; gap:.8rem;
+}
+.sp-layout-vertikal .sp-platz-foto { width:3rem; height:3rem; }
+.sp-layout-vertikal .sp-platz-kuh { font-size:1.1rem; }
+.sp-layout-vertikal .sp-platz-bauer { font-size:.85rem; }
+.sp-layout-vertikal .sp-platz-wz { margin-left:auto; }
+.sp-layout-vertikal .sp-saeule {
+  width:100%; min-height:auto; height:8px;
+  background:repeating-linear-gradient(90deg,
+    rgba(120,120,120,.3) 0, rgba(120,120,120,.3) 4px,
+    transparent 4px, transparent 8px);
+}
+.sp-layout-vertikal .sp-saeule::before { display:none; }
+.sp-layout-vertikal .sp-tuer, .sp-layout-vertikal .sp-fenster {
+  width:100%; min-height:auto; min-width:auto;
+  flex-direction:row; padding:.5rem 1rem;
+  font-size:.9rem;
+}
 
 .sp-platz {
   flex:0 0 auto; width:6rem; min-height:7rem;
@@ -1074,13 +1099,14 @@ textarea.inp{resize:vertical;min-height:64px}
   font-family:inherit; transition:transform .1s,border-color .15s,background .15s;
   -webkit-tap-highlight-color:transparent;
   scroll-snap-align:start;
-  /* Einzugs-Animation */
-  animation: sp-platz-in .5s cubic-bezier(.2,.8,.2,1) both;
-  opacity:0;
+}
+/* Einzugs-Animation: jede Box fliegt einzeln rein, Delay per inline style */
+.sp-stall-tabelle .sp-platz {
+  animation:sp-platz-in .55s cubic-bezier(.2,.8,.2,1) both;
 }
 @keyframes sp-platz-in {
-  0%   { opacity:0; transform:translateY(-30px) scale(.7); }
-  60%  { opacity:1; transform:translateY(4px) scale(1.04); }
+  0%   { opacity:0; transform:translateY(-40px) scale(.6); }
+  70%  { opacity:1; transform:translateY(3px) scale(1.05); }
   100% { opacity:1; transform:translateY(0) scale(1); }
 }
 .sp-platz-foto {
@@ -1140,5 +1166,28 @@ textarea.inp{resize:vertical;min-height:64px}
 .sp-tuer { background:rgba(139,105,20,.18); border:2px dashed rgba(212,168,75,.5); color:var(--gold); }
 .sp-fenster { background:rgba(74,184,232,.12); border:2px dashed rgba(74,184,232,.4); color:#7acbff; }
 .sp-tuer-icon, .sp-fenster-icon { font-size:1.3rem; line-height:1; }
+
+/* Vertikales Layout */
+.sp-layout-vertikal .sp-platz-liste { flex-direction:column; overflow-x:hidden; gap:6px; }
+.sp-layout-vertikal .sp-platz {
+  width:100%; min-height:auto;
+  flex-direction:row; align-items:center; justify-content:flex-start;
+  text-align:left; padding:.6rem 1rem; gap:.8rem;
+}
+.sp-layout-vertikal .sp-platz-foto { width:3rem; height:3rem; }
+.sp-layout-vertikal .sp-platz-kuh { font-size:1.1rem; }
+.sp-layout-vertikal .sp-platz-bauer { font-size:.85rem; }
+.sp-layout-vertikal .sp-platz-wz { margin-left:auto; }
+.sp-layout-vertikal .sp-saeule {
+  width:100%; min-height:auto; height:8px;
+  background:repeating-linear-gradient(90deg,
+    rgba(120,120,120,.3) 0, rgba(120,120,120,.3) 4px,
+    transparent 4px, transparent 8px);
+}
+.sp-layout-vertikal .sp-saeule::before { display:none; }
+.sp-layout-vertikal .sp-tuer, .sp-layout-vertikal .sp-fenster {
+  width:100%; min-height:auto; min-width:auto;
+  flex-direction:row; padding:.5rem 1rem; font-size:.9rem;
+}
 .kp-vis-chip { display:flex;align-items:center;gap:4px;padding:2px 8px;border-radius:16px;border:1px solid;cursor:pointer;font-size:.72rem; }
 .kp-vis-chip.kp-hidden { opacity:.35; }
