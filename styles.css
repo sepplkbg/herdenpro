@@ -38,14 +38,16 @@
   --glow-green:0 0 20px rgba(77,184,78,.2);
 }
 
-/* Basis-Schriftgröße: 24px – zentraler Skalierungs-Hebel.
+/* Basis-Schriftgröße: 24px auf html – zentraler Skalierungs-Hebel.
    Macht alle rem-basierten Elemente in der gesamten App proportional größer
-   (auch alle inline style="font-size:.8rem"-Werte aus den JS-Templates). */
+   (auch alle inline style="font-size:.8rem"-Werte aus den JS-Templates).
+   WICHTIG: keine zweite font-size-Regel auf html, sonst wird das überschrieben. */
 html{
-  font-size:24px;
+  font-size:24px !important;
   -webkit-text-size-adjust:100%;
+  height:100%;
 }
-html,body{
+body{
   height:100%;
   height:100vh;
   height:100dvh;
