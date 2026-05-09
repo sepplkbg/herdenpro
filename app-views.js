@@ -4175,25 +4175,28 @@ window.spExpandReihe = function(reihe) {
   return items;
 };
 
-// Eine Reihe rendern (HTML-String)
+// Eine Reihe rendern (HTML-String) — kompakter Stall-Look
 window.spRenderReihe = function(reihe, rIdx, stall) {
   var items = window.spExpandReihe(reihe);
   var plaetze = stall.plaetze || {};
   var platzNamen = stall.platzNamen || {};
   var rname = reihe.name || ('Reihe '+(rIdx+1));
   var prefix = (rname[0] || 'R').toUpperCase();
-  var aktivFilter = window._spFilter || 'alle';
 
-  var html = '<div class="sp-reihe">';
+  var html = '';
+  // Mistgang-Beschriftung zwischen Reihen
+  if(rIdx > 0) html += '<div class="sp-mistgang">━ Mistgang ━</div>';
+
+  html += '<div class="sp-reihe">';
   html += '<div class="sp-reihe-name">'+rname+'</div>';
   html += '<div class="sp-platz-liste">';
   items.forEach(function(it){
     if(it.typ === 'saeule') {
-      html += '<div class="sp-saeule"><span>▬</span> Säule <span>▬</span></div>';
+      html += '<div class="sp-saeule" title="Säule"></div>';
     } else if(it.typ === 'tuer') {
-      html += '<div class="sp-tuer">🚪 '+(it.label||'Tür')+'</div>';
+      html += '<div class="sp-tuer" title="'+(it.label||'Tür')+'"><span class="sp-tuer-icon">🚪</span><span>'+(it.label||'Tür')+'</span></div>';
     } else if(it.typ === 'fenster') {
-      html += '<div class="sp-fenster">🪟 '+(it.label||'Fenster')+'</div>';
+      html += '<div class="sp-fenster" title="'+(it.label||'Fenster')+'"><span class="sp-fenster-icon">🪟</span><span>'+(it.label||'Fenster')+'</span></div>';
     } else if(it.typ === 'platz') {
       var platzId = rIdx + '-' + it.nr;
       var kuhId = plaetze[platzId];
@@ -4233,11 +4236,12 @@ window.spRenderReihe = function(reihe, rIdx, stall) {
       else if(k) classes += ' sp-platz-belegt';
       if(!filterPasst) classes += ' sp-platz-faded';
 
-      html += '<button class="'+classes+'" data-platzid="'+platzId+'"'+(kuhId?' data-kuhid="'+kuhId+'"':'')+' onclick="spPlatzClicked(\''+platzId+'\')">';
+      html += '<button class="'+classes+'" data-platzid="'+platzId+'"'+(kuhId?' data-kuhid="'+kuhId+'"':'')+' onclick="spPlatzClicked(\''+platzId+'\')" title="'+label+(k?' · #'+k.nr+' '+(k.name||''):'')+'">';
       html += '<span class="sp-platz-nr">'+label+'</span>';
       if(k) {
-        html += '<span class="sp-platz-kuh"><b>#'+k.nr+'</b> '+(k.name||'–')+'</span>';
-        html += '<span class="sp-platz-bauer">'+(k.bauer?'👤 '+k.bauer:'')+'</span>';
+        var nm = (k.name||'–');
+        if(nm.length > 7) nm = nm.slice(0,6)+'…';
+        html += '<span class="sp-platz-kuh"><b>#'+k.nr+'</b> '+nm+'</span>';
         if(wzStatus !== 'none') {
           var sym = wzStatus==='kritisch' ? '⚕' : '⏱';
           html += '<span class="sp-platz-wz">'+sym+' '+wzResttage+'T</span>';
@@ -6997,7 +7001,6 @@ window.kfToggleGruppe = function(btn) {
   localStorage.setItem('kf_aktivGruppen', JSON.stringify(aktiv));
   render();
 };
-
 window.saveKraftfutter = async function() {
   const kuhId = document.getElementById('kf-kuh')?.value;
   const menge = parseFloat(document.getElementById('kf-menge')?.value);
@@ -7328,6 +7331,7 @@ window.onMedInput = function(inp) {
     <div onclick="selectMedikament(this.dataset.med)" data-med="${m.replace(/"/g,'&quot;').replace(/'/g,'&#39;')}"
       style="padding:.55rem .8rem;cursor:pointer;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--border);transition:background .1s"
       onpointerenter="this.style.background='rgba(212,168,75,.1)'"
+      onpointerleave="this.style.background=''">
       <span style="font-size:.85rem;color:var(--text)">${m.replace(new RegExp('('+q.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+')','gi'),'<b style="color:var(--gold)">$1</b>')}</span>
       <span style="font-size:.68rem;color:var(--text3)">${c}×</span>
     </div>`).join('');
