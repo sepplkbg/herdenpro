@@ -1730,7 +1730,7 @@ window.renderWizard = function() {
       <label class="inp-label">Almname *</label>
       <input id="wiz-alm" class="inp" placeholder="z.B. Nassereinalm" value="${d.alm}" />
       <label class="inp-label">Jahr</label>
-      <input id="wiz-jahr" class="inp" type="number" value="${d.jahr}" inputmode="numeric" style="width:120px" />
+      <input id="wiz-jahr" class="inp" type="number" value="${d.jahr}" inputmode="numeric" style="width:7rem" />
       <label class="inp-label">Auftriebsdatum</label>
       <input id="wiz-auftrieb" class="inp" type="date" value="${d.auftrieb}" />
       <div class="form-actions" style="margin-top:1rem">
@@ -2105,7 +2105,7 @@ function renderEinstellungen() {
         <button class="btn-xs" onclick="saveAlmName()">✓ Speichern</button>
       </div>
       <div style="display:flex;align-items:center;gap:.5rem;margin-bottom:.4rem">
-        <input id="einst-almjahr" class="inp" placeholder="Saison-Jahr" value="${saisonInfo?.jahr||new Date().getFullYear()}" style="width:100px" inputmode="numeric" />
+        <input id="einst-almjahr" class="inp" placeholder="Saison-Jahr" value="${saisonInfo?.jahr||new Date().getFullYear()}" style="width:6rem" inputmode="numeric" />
         <label style="font-size:.8rem;color:var(--text3)">Saison-Jahr</label>
       </div>
       <button class="btn-secondary" style="width:100%;margin-top:.3rem" <label class="inp-label">Nächste Stadt (für Wetter)</label>
@@ -2830,7 +2830,7 @@ window.weideAbschliessen = function(map) {
 
   // In Firebase speichern
   const weideData = { name, coords: window._weidePunkte, farbe, erstellt: Date.now() };
-  push(ref(db, 'almKarteWeiden'), weideData);
+  push(ref(db, 'almKarteWeiden'), weideData).catch(function(e){console.warn('Weide-Save:',e);});
 
   window._weidePunkte = [];
   window._weideZeichnen = false;
@@ -4715,6 +4715,8 @@ window.deleteBenutzer = async function(uid, email) {
   }
 
   // Android Install Prompt
+
+// PWA-Install-Prompt
 
 // PWA-Install-Prompt
 window.addEventListener('beforeinstallprompt', function(e) {

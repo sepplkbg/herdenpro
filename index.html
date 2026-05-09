@@ -19,11 +19,11 @@
 ═══════════════════════════════════════════════════════════════════════════ -->
 <script>
 // Force clear cache if version changed
-if(localStorage.getItem('hp_version') !== 'v37.1') {
+if(localStorage.getItem('hp_version') !== 'v37.3') {
   localStorage.removeItem('mainNav');
   localStorage.removeItem('mehrOrder');
   localStorage.removeItem('mehrOrder');
-  localStorage.setItem('hp_version','v37.1');
+  localStorage.setItem('hp_version','v37.3');
   // Force SW update
   if('serviceWorker' in navigator) {
     navigator.serviceWorker.getRegistrations().then(function(regs) {
@@ -39,8 +39,8 @@ if(localStorage.getItem('hp_version') !== 'v37.1') {
       });
     }
     // Reload once after clearing
-    if(!sessionStorage.getItem('reloaded_v37_1')) {
-      sessionStorage.setItem('reloaded_v37_1','1');
+    if(!sessionStorage.getItem('reloaded_v37_3')) {
+      sessionStorage.setItem('reloaded_v37_3','1');
       window.location.reload(true);
     }
   }
@@ -199,23 +199,49 @@ window.FIREBASE_CONFIG = {
 <body>
 
 <!-- LOGIN SCREEN -->
-<div id="login-screen" style="position:fixed;inset:0;z-index:10000;background:linear-gradient(160deg,#0a1a04,#1a3a0a,#0d2e03);display:flex;flex-direction:column;align-items:center;justify-content:center;padding:1.5rem">
-  <div style="background:#1a2a10;border:1px solid #2e5c14;border-radius:16px;padding:2rem 1.5rem;width:100%;max-width:360px;box-shadow:0 8px 40px rgba(0,0,0,.6)">
-    <div style="font-size:3rem;text-align:center;margin-bottom:.5rem">🐄</div>
-    <div style="text-align:center;font-size:1.4rem;font-weight:bold;color:#D4A84B;margin-bottom:.3rem">HerdenPro</div>
-    <div style="text-align:center;font-size:.8rem;color:#666;margin-bottom:1.5rem">Almwirtschaft · Herdenverwaltung</div>
-    <div id="login-error" style="background:rgba(200,60,60,.15);border:1px solid rgba(200,60,60,.4);border-radius:8px;padding:.5rem .8rem;font-size:.8rem;color:#c83c3c;margin-bottom:.8rem;display:none"></div>
-    <div id="login-form">
-      <input id="login-email" style="display:block;width:100%;padding:.6rem .8rem;background:#0d1f06;border:1px solid #2e5c14;border-radius:8px;color:#e8f0e0;font-size:.9rem;margin-bottom:.5rem;box-sizing:border-box" type="email" placeholder="E-Mail" inputmode="email" autocomplete="email" />
-      <input id="login-pw" style="display:block;width:100%;padding:.6rem .8rem;background:#0d1f06;border:1px solid #2e5c14;border-radius:8px;color:#e8f0e0;font-size:.9rem;margin-bottom:1rem;box-sizing:border-box" type="password" placeholder="Passwort" autocomplete="current-password" onkeydown="if(event.key==='Enter')doLogin()" />
-      <button onclick="doLogin()" style="width:100%;padding:.7rem;background:linear-gradient(135deg,#D4A84B,#b8903a);border:none;border-radius:8px;color:#000;font-weight:bold;font-size:.95rem;cursor:pointer;font-family:inherit">Anmelden</button>
-    </div>
-    <div style="text-align:center;margin-top:1rem">
-      <button onclick="showPwReset()" style="background:none;border:none;color:#555;font-size:.78rem;cursor:pointer;font-family:inherit">Passwort vergessen?</button>
-    </div>
+<div id="login-screen">
+  <!-- Animierte Wiese im Hintergrund -->
+  <div class="login-meadow">
+    <div class="login-sky"></div>
+    <div class="login-mountains"></div>
+    <div class="login-grass"></div>
+    <!-- Kühe auf der Wiese (CSS-Animation: laufen, Kopf senken zum Grasen) -->
+    <div class="login-cow login-cow-1">🐄</div>
+    <div class="login-cow login-cow-2">🐮</div>
+    <div class="login-cow login-cow-3">🐄</div>
+    <div class="login-cow login-cow-4">🐮</div>
+    <!-- Grashalme die wehen -->
+    <div class="login-grasshalm" style="left:8%;animation-delay:0s">🌾</div>
+    <div class="login-grasshalm" style="left:22%;animation-delay:.7s">🌱</div>
+    <div class="login-grasshalm" style="left:38%;animation-delay:1.3s">🌾</div>
+    <div class="login-grasshalm" style="left:55%;animation-delay:.4s">🌱</div>
+    <div class="login-grasshalm" style="left:72%;animation-delay:1.1s">🌾</div>
+    <div class="login-grasshalm" style="left:88%;animation-delay:.9s">🌱</div>
+    <!-- Sonne -->
+    <div class="login-sun">☀️</div>
   </div>
-  <div style="position:absolute;bottom:2rem;font-size:.65rem;color:rgba(255,255,255,.2);text-align:center">
-    <a href="./datenschutz.html" target="_blank" style="color:rgba(255,255,255,.35);text-decoration:underline">Datenschutzerklärung</a> · Daten verschlüsselt · EU-Server<br><span style="color:rgba(255,255,255,.5);font-size:.7rem;margin-top:.3rem;display:block">Engineering by LN Machinery</span>
+
+  <!-- Login-Karte vorne mittig -->
+  <div class="login-card">
+    <div class="login-logo">🐄</div>
+    <h1 class="login-title">HerdenPro</h1>
+    <p class="login-subtitle">Almwirtschaft · Herdenverwaltung</p>
+    <div id="login-error" class="login-error" style="display:none"></div>
+    <div id="login-form">
+      <label class="login-label" for="login-email">E-Mail</label>
+      <input id="login-email" class="login-input" type="email" placeholder="dein@hof.at" inputmode="email" autocomplete="email" autocapitalize="none" />
+      <label class="login-label" for="login-pw">Passwort</label>
+      <input id="login-pw" class="login-input" type="password" placeholder="••••••••" autocomplete="current-password" onkeydown="if(event.key==='Enter')doLogin()" />
+      <button onclick="doLogin()" class="login-btn">Anmelden</button>
+    </div>
+    <button onclick="showPwReset()" class="login-link">Passwort vergessen?</button>
+  </div>
+
+  <!-- Footer -->
+  <div class="login-footer">
+    <a href="./datenschutz.html" target="_blank">Datenschutzerklärung</a>
+    <span> · Daten verschlüsselt · EU-Server</span>
+    <div class="login-engineering">Engineering by LN Machinery</div>
   </div>
 </div>
 
