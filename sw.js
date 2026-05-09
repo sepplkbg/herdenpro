@@ -1,4 +1,4 @@
-const CACHE = 'herdenpro-v88';
+const CACHE = 'herdenpro-v89';
 const SHELL = [
   '/herdenpro/',
   '/herdenpro/index.html',
@@ -24,7 +24,6 @@ self.addEventListener('activate', e => {
 });
 
 self.addEventListener('fetch', e => {
-  // Firebase & externe APIs: nie cachen
   if(
     e.request.url.includes('firebase') ||
     e.request.url.includes('googleapis') ||
@@ -34,12 +33,9 @@ self.addEventListener('fetch', e => {
   ) {
     return;
   }
-
-  // Shell-Dateien: Network-first, bei Fehler Cache
   e.respondWith(
     fetch(e.request)
       .then(response => {
-        // Erfolgreiche Antwort im Cache speichern
         if(response && response.status === 200 && response.type === 'basic') {
           const clone = response.clone();
           caches.open(CACHE).then(c => c.put(e.request, clone));

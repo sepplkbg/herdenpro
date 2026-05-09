@@ -5649,6 +5649,8 @@ window.swNotify = async function(title, options) {
   options = options || {};
   options.icon = options.icon || './icon-192.png';
   options.badge = options.badge || './icon-192.png';
+  // Haptic-Ping bei wichtigen Notifications (Wartezeit / Brunst / Termin)
+  if(typeof window.haptic === 'function') window.haptic('alarm');
   // Versuche Service Worker
   if('serviceWorker' in navigator) {
     try {
@@ -7056,7 +7058,6 @@ window.onMedInput = function(inp) {
     <div onclick="selectMedikament(this.dataset.med)" data-med="${m.replace(/"/g,'&quot;').replace(/'/g,'&#39;')}"
       style="padding:.55rem .8rem;cursor:pointer;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--border);transition:background .1s"
       onpointerenter="this.style.background='rgba(212,168,75,.1)'"
-      onpointerleave="this.style.background=''">
       <span style="font-size:.85rem;color:var(--text)">${m.replace(new RegExp('('+q.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+')','gi'),'<b style="color:var(--gold)">$1</b>')}</span>
       <span style="font-size:.68rem;color:var(--text3)">${c}×</span>
     </div>`).join('');
