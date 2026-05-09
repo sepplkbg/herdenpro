@@ -26,7 +26,7 @@
   --radius:   16px;
   --radius-sm:10px;
   --radius-xs:6px;
-  --nav-h:    68px;
+  --nav-h:    88px;
   --topbar-h: 56px;
   --safe-t:   env(safe-area-inset-top,0px);
   --safe-b:   env(safe-area-inset-bottom,0px);
@@ -143,16 +143,16 @@ body{
 }
 .nav-item{
   flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;
-  gap:4px;background:none;border:none;color:var(--text3);cursor:pointer;
-  font-family:inherit;font-size:.82rem;letter-spacing:.3px;font-weight:500;
-  min-height:52px;
-  padding:8px 4px;position:relative;
+  gap:5px;background:none;border:none;color:var(--text3);cursor:pointer;
+  font-family:inherit;font-size:.95rem;letter-spacing:.3px;font-weight:500;
+  min-height:60px;
+  padding:10px 4px;position:relative;
   transition:color .2s,transform .1s;
   -webkit-user-select:none;user-select:none;
   -webkit-touch-callout:none;
 }
 .nav-item:active{transform:scale(.92);background:rgba(212,168,75,.08)}
-.nav-item .nav-icon{font-size:1.7rem;line-height:1;transition:filter .2s,transform .2s}
+.nav-item .nav-icon{font-size:1.95rem;line-height:1;transition:filter .2s,transform .2s}
 .nav-item.active{color:var(--gold)}
 .nav-item.active .nav-icon{
   filter:drop-shadow(0 0 8px rgba(212,168,75,.7));
@@ -665,13 +665,16 @@ textarea.inp{resize:vertical;min-height:64px}
   box-shadow:0 -8px 30px rgba(0,0,0,.4);
 }
 .mehr-btn{
-  display:flex;flex-direction:column;align-items:center;gap:4px;
+  display:flex;flex-direction:column;align-items:center;gap:3px;
   background:var(--bg3);border:1px solid var(--border);
-  border-radius:var(--radius-sm);padding:.65rem .3rem;
-  font-size:.7rem;color:var(--text2);cursor:pointer;font-family:inherit;
+  border-radius:var(--radius-sm);
+  /* weniger vertikales Padding → weniger "in die Höhe gezogen" */
+  padding:.45rem .35rem;
+  font-size:.85rem;color:var(--text2);cursor:pointer;font-family:inherit;
   transition:border-color .2s,background .15s,transform .12s,color .15s;
+  line-height:1.2;
 }
-.mehr-btn span:first-child{font-size:1.35rem;transition:transform .2s}
+.mehr-btn span:first-child{font-size:1.5rem;transition:transform .2s;line-height:1}
 .mehr-btn:hover{border-color:var(--gold2);color:var(--gold);background:var(--bg4)}
 .mehr-btn:hover span:first-child{transform:scale(1.15)}
 .mehr-btn:active{transform:scale(.93)}
