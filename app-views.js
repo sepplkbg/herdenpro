@@ -457,7 +457,7 @@ function renderKuhDetail() {
 
   <!-- Header -->
   <div class="page-header kd-s1" style="padding-bottom:.4rem">
-    <button class="back-btn" onclick="navigate('herde')">‹ Herde</button>
+    <button class="back-btn" onclick="(function(){var s=window._navStack||[];var prev=s[s.length-2];navigate(prev==='stallplan'?'stallplan':'herde');})()">‹ ${(window._navStack && window._navStack[window._navStack.length-2]==='stallplan') ? 'Stallplan' : 'Herde'}</button>
     <div style="display:flex;gap:.35rem">
       <button class="btn-ghost" onclick="showKuhForm('${id}')">✎</button>
       <button class="btn-xs" onclick="showQRCode('${id}','${k.nr}','${(k.name||'').replace(/'/g,'')}')">QR</button>
@@ -4043,7 +4043,9 @@ function renderStallplan() {
 
   // Reihen-HTML rendern
   let reihenHTML = '';
+  let layoutClass = '';
   if(stall && stall.tableConfig && Array.isArray(stall.tableConfig.reihen)) {
+    layoutClass = (stall.tableConfig.layout === 'vertikal') ? 'sp-layout-vertikal' : 'sp-layout-horizontal';
     reihenHTML = stall.tableConfig.reihen.map((reihe, rIdx) =>
       spRenderReihe(reihe, rIdx, stall)
     ).join('');
@@ -4075,7 +4077,7 @@ function renderStallplan() {
   </div>
 
   <!-- Reihen-Tabelle -->
-  <div class="sp-stall-tabelle">${reihenHTML}</div>
+  <div class="sp-stall-tabelle ${layoutClass}">${reihenHTML}</div>
 
   <!-- Aktionen -->
   <div style="display:flex;gap:.5rem;margin-top:1.2rem;flex-wrap:wrap">
@@ -4099,10 +4101,10 @@ function renderStallplan() {
         <label class="inp-label">Stallname *</label>
         <input id="sp-wiz-name" class="inp" placeholder="z. B. Nasereinalm" />
 
-        <label class="inp-label" style="margin-top:.6rem">Stalltyp</label>
-        <select id="sp-wiz-typ" class="inp">
-          <option value="anbindestall">Anbindestall (2 Reihen mit Mistgang)</option>
-          <option value="frei">Frei (beliebige Reihen, kein Mistgang)</option>
+        <label class="inp-label" style="margin-top:.6rem">Anordnung der Boxen</label>
+        <select id="sp-wiz-layout" class="inp">
+          <option value="horizontal">Horizontal (Plätze nebeneinander)</option>
+          <option value="vertikal">Vertikal (Plätze untereinander)</option>
         </select>
 
         <label class="inp-label" style="margin-top:.6rem">Reihen</label>
@@ -4253,7 +4255,6 @@ window.spRenderReihe = function(reihe, rIdx, stall) {
       var animStyle = ' style="animation-delay:'+animDelay+'ms"';
 
       html += '<button class="'+classes+'"'+animStyle+' data-platzid="'+platzId+'"'+(kuhId?' data-kuhid="'+kuhId+'"':'')+' onclick="spPlatzClicked(\''+platzId+'\')" oncontextmenu="event.preventDefault();spPlatzLongPress(\''+platzId+'\');return false;" title="'+label+(k?' · #'+k.nr+' '+(k.name||''):'')+'">';
-      html += '<span class="sp-platz-nr">'+label+'</span>';
       if(k) {
         // Foto-Thumbnail oder Emoji-Fallback
         var foto = fotos[kuhId];
@@ -4263,19 +4264,17 @@ window.spRenderReihe = function(reihe, rIdx, stall) {
           html += '<span class="sp-platz-foto sp-platz-foto-fallback">🐄</span>';
         }
         var nm = (k.name||'–');
-        if(nm.length > 7) nm = nm.slice(0,6)+'…';
         html += '<span class="sp-platz-kuh"><b>#'+k.nr+'</b> '+nm+'</span>';
-        // Bauer-Name (gekürzt)
+        // Bauer-Name vollständig
         if(k.bauer) {
-          var bn = String(k.bauer);
-          if(bn.length > 8) bn = bn.slice(0,7)+'…';
-          html += '<span class="sp-platz-bauer">👤 '+bn+'</span>';
+          html += '<span class="sp-platz-bauer">👤 '+k.bauer+'</span>';
         }
         if(wzStatus !== 'none') {
           var sym = wzStatus==='kritisch' ? '⚕' : '⏱';
           html += '<span class="sp-platz-wz">'+sym+' '+wzResttage+'T</span>';
         }
       } else {
+        html += '<span class="sp-platz-nr">'+label+'</span>';
         html += '<span class="sp-platz-leer-text">+ leer</span>';
       }
       html += '</button>';
@@ -4317,9 +4316,19 @@ window.spOpenPlatzZuweisung = function(platzId) {
                   ? stall.tableConfig.reihen[rIdx].name : ('Reihe '+(rIdx+1));
     lbl.textContent = rname+' · Platz '+pNr;
   }
-  // Vorbelegung mit aktuell zugewiesener Kuh (falls vorhanden)
+  // Kuh-Select dynamisch befüllen damit auch frisch angelegte Kühe sofort wählbar sind
   var sel = document.getElementById('sp-kuh-select');
-  if(sel) sel.value = (stall.plaetze||{})[platzId] || '';
+  if(sel) {
+    var aktKuhId = (stall.plaetze||{})[platzId] || '';
+    var opts = '<option value="">— Leer lassen —</option>';
+    Object.entries(kuehe).sort(function(a,b){
+      return (parseInt(a[1].nr)||0) - (parseInt(b[1].nr)||0);
+    }).forEach(function(e){
+      var id = e[0], k = e[1];
+      opts += '<option value="'+id+'"'+(id===aktKuhId?' selected':'')+'>#'+k.nr+' '+(k.name||'–')+(k.bauer?' ('+k.bauer+')':'')+'</option>';
+    });
+    sel.innerHTML = opts;
+  }
   ov.style.display = 'flex';
 };
 
@@ -4379,10 +4388,10 @@ window.spOpenWizard = function(stallId) {
   document.getElementById('sp-wiz-name').value = stall ? (stall.name||'') : '';
   document.getElementById('sp-wiz-text').value = '';
   document.getElementById('sp-wiz-text-err').textContent = '';
-  // Stalltyp setzen
-  window._spWizTyp = (stall && stall.tableConfig && stall.tableConfig.typ) || 'anbindestall';
-  var typSel = document.getElementById('sp-wiz-typ');
-  if(typSel) typSel.value = window._spWizTyp;
+  // Layout-Wahl setzen (default horizontal)
+  var layout = (stall && stall.tableConfig && stall.tableConfig.layout) || 'horizontal';
+  var layoutSel = document.getElementById('sp-wiz-layout');
+  if(layoutSel) layoutSel.value = layout;
   // Reihen aus Stall oder Default
   if(stall && stall.tableConfig && stall.tableConfig.reihen) {
     window._spWizReihen = JSON.parse(JSON.stringify(stall.tableConfig.reihen));
@@ -4405,30 +4414,133 @@ window.spWizDelReihe = function(idx) {
   spWizRender();
 };
 window.spWizSetReihe = function(idx, field, val) {
-  if(field === 'name') window._spWizReihen[idx].name = val;
-  else if(field === 'anzahl') window._spWizReihen[idx].sektoren[0].anzahl = parseInt(val)||0;
-  else if(field === 'saeule') window._spWizReihen[idx].sektoren[0].saeuleAlle = parseInt(val)||0;
+  var r = window._spWizReihen[idx];
+  if(field === 'name') {
+    r.name = val;
+  } else if(field === 'anzahl' || field === 'saeule') {
+    // Plätze/Säule global ändern unter Erhaltung bestehender Türen
+    var anzahl = field==='anzahl' ? (parseInt(val)||0) : (function(){
+      var n=0; (r.sektoren||[]).forEach(function(s){if(s.typ==='plaetze') n += s.anzahl||0;});
+      return n;
+    })();
+    var saeuleAlle = field==='saeule' ? (parseInt(val)||0) : (function(){
+      var s=0; (r.sektoren||[]).forEach(function(x){if(x.typ==='plaetze' && x.saeuleAlle) s = x.saeuleAlle;});
+      return s;
+    })();
+    // Existierende Türen extrahieren (Position = laufender pCount)
+    var tueren = []; var p = 0;
+    (r.sektoren||[]).forEach(function(s){
+      if(s.typ === 'plaetze') p += s.anzahl||0;
+      else if(s.typ === 'tuer') tueren.push({nachPlatz:Math.min(p,anzahl), label:s.label||'Tür'});
+    });
+    // Sektoren neu bauen
+    tueren.sort(function(a,b){return a.nachPlatz - b.nachPlatz;});
+    var sektoren = []; var prev = 0;
+    tueren.forEach(function(t){
+      var seg = Math.max(0, Math.min(t.nachPlatz, anzahl) - prev);
+      if(seg > 0) sektoren.push({typ:'plaetze', anzahl:seg, saeuleAlle:saeuleAlle});
+      sektoren.push({typ:'tuer', label:t.label||'Tür'});
+      prev = Math.max(prev, t.nachPlatz);
+    });
+    var rest = Math.max(0, anzahl - prev);
+    if(rest > 0) sektoren.push({typ:'plaetze', anzahl:rest, saeuleAlle:saeuleAlle});
+    if(!sektoren.length) sektoren = [{typ:'plaetze', anzahl:anzahl, saeuleAlle:saeuleAlle}];
+    r.sektoren = sektoren;
+  }
 };
 window.spWizRender = function() {
   var box = document.getElementById('sp-wiz-reihen');
   if(!box) return;
   box.innerHTML = window._spWizReihen.map(function(r, idx){
     var ersterSektor = (r.sektoren && r.sektoren[0]) || {typ:'plaetze',anzahl:0,saeuleAlle:0};
-    var hatKomplexeSektoren = r.sektoren && r.sektoren.length > 1;
+    // Türen aus den Sektoren extrahieren (typ='tuer')
+    var tueren = [];
+    var pCount = 0;
+    (r.sektoren||[]).forEach(function(s){
+      if(s.typ === 'plaetze') pCount += s.anzahl||0;
+      else if(s.typ === 'tuer') tueren.push({nachPlatz:pCount, label:s.label||'Tür'});
+    });
+    var maxPlaetze = ersterSektor.anzahl || pCount;
+    var tuerenHTML = tueren.map(function(t, ti){
+      return '<div style="display:flex;gap:.4rem;align-items:center;margin-top:.3rem;padding:.3rem .5rem;background:rgba(212,168,75,.08);border:1px solid rgba(212,168,75,.25);border-radius:6px">'+
+        '🚪 nach Platz <input class="inp" type="number" min="0" max="'+maxPlaetze+'" value="'+t.nachPlatz+'" oninput="spWizSetTuer('+idx+','+ti+',\'nachPlatz\',this.value)" style="width:4rem;padding:4px 6px" />'+
+        '<input class="inp" placeholder="Beschriftung" value="'+(t.label||'').replace(/"/g,'&quot;')+'" oninput="spWizSetTuer('+idx+','+ti+',\'label\',this.value)" style="flex:1;padding:4px 6px" />'+
+        '<button class="btn-xs-danger" onclick="spWizDelTuer('+idx+','+ti+')">✕</button>'+
+      '</div>';
+    }).join('');
     return '<div style="background:var(--bg3);border:1px solid var(--border);border-radius:10px;padding:.7rem">'+
       '<div style="display:flex;gap:.5rem;align-items:center;margin-bottom:.5rem">'+
         '<input class="inp" placeholder="Reihen-Name" value="'+(r.name||'').replace(/"/g,'&quot;')+'" oninput="spWizSetReihe('+idx+',\'name\',this.value)" style="flex:1" />'+
         '<button class="btn-xs-danger" onclick="spWizDelReihe('+idx+')">🗑</button>'+
       '</div>'+
-      (hatKomplexeSektoren
-        ? '<div style="font-size:.85rem;color:var(--text3);padding:.4rem;background:var(--bg);border-radius:6px">📋 Komplexes Layout — über Text-Eingabe änderbar</div>'
-        : '<div style="display:flex;gap:.5rem">'+
-            '<div style="flex:1"><label class="inp-label">Anzahl Plätze</label><input class="inp" type="number" min="1" value="'+(ersterSektor.anzahl||0)+'" oninput="spWizSetReihe('+idx+',\'anzahl\',this.value)" /></div>'+
-            '<div style="flex:1"><label class="inp-label">Säule alle (0=keine)</label><input class="inp" type="number" min="0" value="'+(ersterSektor.saeuleAlle||0)+'" oninput="spWizSetReihe('+idx+',\'saeule\',this.value)" /></div>'+
-          '</div>'
-      )+
+      '<div style="display:flex;gap:.5rem">'+
+        '<div style="flex:1"><label class="inp-label">Anzahl Plätze</label><input class="inp" type="number" min="1" value="'+(ersterSektor.anzahl||0)+'" oninput="spWizSetReihe('+idx+',\'anzahl\',this.value)" /></div>'+
+        '<div style="flex:1"><label class="inp-label">Säule alle (0=keine)</label><input class="inp" type="number" min="0" value="'+(ersterSektor.saeuleAlle||0)+'" oninput="spWizSetReihe('+idx+',\'saeule\',this.value)" /></div>'+
+      '</div>'+
+      tuerenHTML +
+      '<button class="btn-xs" style="margin-top:.4rem" onclick="spWizAddTuer('+idx+')">+ Tür</button>'+
     '</div>';
   }).join('');
+};
+
+// Türen pro Reihe verwalten
+window.spWizAddTuer = function(rIdx) {
+  var r = window._spWizReihen[rIdx];
+  if(!r.sektoren) r.sektoren = [];
+  // Standard: nach 0 Plätzen (Anfang), Label "Eingangstür"
+  spRebuildSektorenAusGUI(rIdx, function(tueren){
+    tueren.push({nachPlatz:0, label:'Tür'});
+    return tueren;
+  });
+  spWizRender();
+};
+window.spWizDelTuer = function(rIdx, tIdx) {
+  spRebuildSektorenAusGUI(rIdx, function(tueren){
+    tueren.splice(tIdx, 1);
+    return tueren;
+  });
+  spWizRender();
+};
+window.spWizSetTuer = function(rIdx, tIdx, field, val) {
+  spRebuildSektorenAusGUI(rIdx, function(tueren){
+    if(field === 'nachPlatz') tueren[tIdx].nachPlatz = parseInt(val)||0;
+    else if(field === 'label') tueren[tIdx].label = val;
+    return tueren;
+  });
+};
+
+// Helper: Sektoren-Liste der Reihe aus Plätze-Anzahl + Säule + Türen-Liste rekonstruieren
+window.spRebuildSektorenAusGUI = function(rIdx, tuerenMutator) {
+  var r = window._spWizReihen[rIdx];
+  // Aktuelle Plätze + Säule extrahieren (immer aus erstem plaetze-Sektor)
+  var anzahl = 0, saeuleAlle = 0;
+  (r.sektoren||[]).forEach(function(s){
+    if(s.typ === 'plaetze') { anzahl += s.anzahl||0; if(s.saeuleAlle) saeuleAlle = s.saeuleAlle; }
+  });
+  if(!anzahl) anzahl = (r.sektoren && r.sektoren[0] && r.sektoren[0].anzahl) || 0;
+  // Aktuelle Türen extrahieren
+  var tueren = [];
+  var pCount = 0;
+  (r.sektoren||[]).forEach(function(s){
+    if(s.typ === 'plaetze') pCount += s.anzahl||0;
+    else if(s.typ === 'tuer') tueren.push({nachPlatz:pCount, label:s.label||'Tür'});
+  });
+  // Mutator anwenden
+  tueren = tuerenMutator(tueren);
+  // Neue Sektoren-Liste bauen: Plätze in Stücken zwischen Türen
+  tueren.sort(function(a,b){return a.nachPlatz - b.nachPlatz;});
+  var sektoren = [];
+  var prev = 0;
+  tueren.forEach(function(t){
+    var seg = Math.max(0, Math.min(t.nachPlatz, anzahl) - prev);
+    if(seg > 0) sektoren.push({typ:'plaetze', anzahl:seg, saeuleAlle:saeuleAlle});
+    sektoren.push({typ:'tuer', label:t.label||'Tür'});
+    prev = Math.max(prev, t.nachPlatz);
+  });
+  var rest = Math.max(0, anzahl - prev);
+  if(rest > 0) sektoren.push({typ:'plaetze', anzahl:rest, saeuleAlle:saeuleAlle});
+  if(sektoren.length === 0) sektoren = [{typ:'plaetze', anzahl:anzahl, saeuleAlle:saeuleAlle}];
+  r.sektoren = sektoren;
 };
 
 window.spSaveWizard = async function() {
@@ -4437,8 +4549,9 @@ window.spSaveWizard = async function() {
   if(!name){alert('Stallname Pflicht');return;}
   if(!window._spWizReihen.length){alert('Mindestens eine Reihe');return;}
 
-  var typ = (document.getElementById('sp-wiz-typ')?.value) || window._spWizTyp || 'anbindestall';
-  var tableConfig = { typ:typ, reihen: window._spWizReihen };
+  var layout = (document.getElementById('sp-wiz-layout')?.value) || 'horizontal';
+  // Stalltyp ist immer 'anbindestall' — kein Wahl-UI mehr
+  var tableConfig = { typ:'anbindestall', layout:layout, reihen: window._spWizReihen };
   if(stallId) {
     await update(ref(db,'stallplanV2/'+stallId), {name:name, tableConfig:tableConfig});
   } else {
@@ -4844,7 +4957,8 @@ window.spRequestAnimation = function() {
 window._spFilter = 'alle';
 window.spSetFilter = function(filterId) {
   window._spFilter = filterId || 'alle';
-  spDraw();
+  // Tabellen-Layout: render() neu auslösen statt Canvas neu zu zeichnen
+  if(typeof render === 'function') render();
 };
 // Prüft ob eine Box durch den aktuellen Filter passt.
 // Leere Boxen passen immer (damit man Plätze sieht).
