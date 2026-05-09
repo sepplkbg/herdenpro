@@ -1037,7 +1037,7 @@ textarea.inp{resize:vertical;min-height:64px}
   text-transform:uppercase; letter-spacing:1.2px;
   padding:.15rem .3rem .35rem; opacity:.85;
 }
-/* Mistgang-Beschriftung zwischen Reihen */
+/* Mistgang-Beschriftung zwischen Reihen (nur Anbindestall) */
 .sp-mistgang {
   display:flex; align-items:center; justify-content:center; gap:.6rem;
   font-size:.7rem; color:var(--text3); letter-spacing:2px;
@@ -1047,6 +1047,10 @@ textarea.inp{resize:vertical;min-height:64px}
 .sp-mistgang::before, .sp-mistgang::after {
   content:''; flex:1; height:1px;
   background:linear-gradient(90deg, transparent, var(--text3), transparent);
+}
+/* Schlichter Reihen-Trenner für freie Stalltypen */
+.sp-reihe-trenner {
+  height:.5rem;
 }
 
 /* Plätze nebeneinander (horizontal) mit Auto-Scroll */
@@ -1062,15 +1066,31 @@ textarea.inp{resize:vertical;min-height:64px}
 .sp-platz-liste::-webkit-scrollbar-thumb { background:var(--border2); border-radius:2px; }
 
 .sp-platz {
-  flex:0 0 auto; width:5.5rem; min-height:5.5rem;
-  display:flex; flex-direction:column; align-items:center; justify-content:center;
-  gap:1px; padding:.35rem .25rem;
+  flex:0 0 auto; width:6rem; min-height:7rem;
+  display:flex; flex-direction:column; align-items:center; justify-content:flex-start;
+  gap:2px; padding:.4rem .25rem;
   background:var(--bg2); border:1.5px solid var(--border);
-  border-radius:8px; cursor:pointer; text-align:center;
+  border-radius:10px; cursor:pointer; text-align:center;
   font-family:inherit; transition:transform .1s,border-color .15s,background .15s;
   -webkit-tap-highlight-color:transparent;
   scroll-snap-align:start;
+  /* Einzugs-Animation */
+  animation: sp-platz-in .5s cubic-bezier(.2,.8,.2,1) both;
+  opacity:0;
 }
+@keyframes sp-platz-in {
+  0%   { opacity:0; transform:translateY(-30px) scale(.7); }
+  60%  { opacity:1; transform:translateY(4px) scale(1.04); }
+  100% { opacity:1; transform:translateY(0) scale(1); }
+}
+.sp-platz-foto {
+  width:2.5rem; height:2.5rem; border-radius:50%;
+  background:var(--bg); border:2px solid rgba(212,168,75,.4);
+  overflow:hidden; display:flex; align-items:center; justify-content:center;
+  font-size:1.5rem; flex-shrink:0;
+}
+.sp-platz-foto img { width:100%; height:100%; object-fit:cover; }
+.sp-platz-foto-fallback { color:var(--text3); }
 .sp-platz:active { transform:scale(.94); }
 .sp-platz-leer { border-style:dashed; opacity:.55; }
 .sp-platz-leer:hover { opacity:1; border-color:var(--gold); }
@@ -1087,7 +1107,7 @@ textarea.inp{resize:vertical;min-height:64px}
 }
 .sp-platz-kuh { font-size:.9rem; color:var(--text); font-weight:700; line-height:1.05; }
 .sp-platz-kuh b { font-size:.85em; color:var(--gold); margin-right:2px; }
-.sp-platz-bauer { display:none; }  /* zu wenig Platz horizontal - bei Tap im Popup sichtbar */
+.sp-platz-bauer { display:block; font-size:.55rem; color:var(--text3); line-height:1.1; opacity:.85; }
 .sp-platz-leer-text { font-size:.78rem; color:var(--text3); }
 .sp-platz-wz {
   font-size:.62rem; font-weight:700; padding:1px 5px;

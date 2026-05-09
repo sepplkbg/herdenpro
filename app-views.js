@@ -4099,6 +4099,12 @@ function renderStallplan() {
         <label class="inp-label">Stallname *</label>
         <input id="sp-wiz-name" class="inp" placeholder="z. B. Nasereinalm" />
 
+        <label class="inp-label" style="margin-top:.6rem">Stalltyp</label>
+        <select id="sp-wiz-typ" class="inp">
+          <option value="anbindestall">Anbindestall (2 Reihen mit Mistgang)</option>
+          <option value="frei">Frei (beliebige Reihen, kein Mistgang)</option>
+        </select>
+
         <label class="inp-label" style="margin-top:.6rem">Reihen</label>
         <div id="sp-wiz-reihen" style="display:flex;flex-direction:column;gap:.5rem"></div>
         <button class="btn-xs" onclick="spWizAddReihe()">+ Reihe hinzufügen</button>
@@ -4184,8 +4190,14 @@ window.spRenderReihe = function(reihe, rIdx, stall) {
   var prefix = (rname[0] || 'R').toUpperCase();
 
   var html = '';
-  // Mistgang-Beschriftung zwischen Reihen
-  if(rIdx > 0) html += '<div class="sp-mistgang">━ Mistgang ━</div>';
+  // Mistgang-Beschriftung zwischen Reihen — nur bei Anbindestall mit 2 Reihen
+  var stallTyp = (stall.tableConfig && stall.tableConfig.typ) || 'anbindestall';
+  var anzahlReihen = (stall.tableConfig && stall.tableConfig.reihen) ? stall.tableConfig.reihen.length : 0;
+  if(rIdx > 0 && stallTyp === 'anbindestall' && anzahlReihen === 2) {
+    html += '<div class="sp-mistgang">━ Mistgang ━</div>';
+  } else if(rIdx > 0) {
+    html += '<div class="sp-reihe-trenner"></div>';
+  }
 
   html += '<div class="sp-reihe">';
   html += '<div class="sp-reihe-name">'+rname+'</div>';
@@ -4236,12 +4248,29 @@ window.spRenderReihe = function(reihe, rIdx, stall) {
       else if(k) classes += ' sp-platz-belegt';
       if(!filterPasst) classes += ' sp-platz-faded';
 
-      html += '<button class="'+classes+'" data-platzid="'+platzId+'"'+(kuhId?' data-kuhid="'+kuhId+'"':'')+' onclick="spPlatzClicked(\''+platzId+'\')" title="'+label+(k?' · #'+k.nr+' '+(k.name||''):'')+'">';
+      // Animationsverzögerung pro Box (staggered Einzug beim Render)
+      var animDelay = (rIdx * 80 + (it.nr-1) * 25);
+      var animStyle = ' style="animation-delay:'+animDelay+'ms"';
+
+      html += '<button class="'+classes+'"'+animStyle+' data-platzid="'+platzId+'"'+(kuhId?' data-kuhid="'+kuhId+'"':'')+' onclick="spPlatzClicked(\''+platzId+'\')" oncontextmenu="event.preventDefault();spPlatzLongPress(\''+platzId+'\');return false;" title="'+label+(k?' · #'+k.nr+' '+(k.name||''):'')+'">';
       html += '<span class="sp-platz-nr">'+label+'</span>';
       if(k) {
+        // Foto-Thumbnail oder Emoji-Fallback
+        var foto = fotos[kuhId];
+        if(foto) {
+          html += '<span class="sp-platz-foto"><img src="'+foto+'" alt=""/></span>';
+        } else {
+          html += '<span class="sp-platz-foto sp-platz-foto-fallback">🐄</span>';
+        }
         var nm = (k.name||'–');
         if(nm.length > 7) nm = nm.slice(0,6)+'…';
         html += '<span class="sp-platz-kuh"><b>#'+k.nr+'</b> '+nm+'</span>';
+        // Bauer-Name (gekürzt)
+        if(k.bauer) {
+          var bn = String(k.bauer);
+          if(bn.length > 8) bn = bn.slice(0,7)+'…';
+          html += '<span class="sp-platz-bauer">👤 '+bn+'</span>';
+        }
         if(wzStatus !== 'none') {
           var sym = wzStatus==='kritisch' ? '⚕' : '⏱';
           html += '<span class="sp-platz-wz">'+sym+' '+wzResttage+'T</span>';
@@ -4256,30 +4285,76 @@ window.spRenderReihe = function(reihe, rIdx, stall) {
   return html;
 };
 
-// Tap auf Platz: bei belegtem Platz → Schnellansicht; bei leerem → Zuweisung
+// Tap auf Platz: bei belegtem Platz → direkt Kuh-Detail; bei leerem → Zuweisung
+// Long-Press auf belegten Platz → Zuweisung zum Ändern (siehe spPlatzLongPress unten)
 window.spPlatzClicked = function(platzId) {
+  // Wenn gerade ein Long-Press registriert wurde, Single-Tap unterdrücken
+  if(window._spLongPressTriggered) { window._spLongPressTriggered = false; return; }
   var stall = window._spStaelle[window._spAktivId];
   if(!stall) return;
   var kuhId = (stall.plaetze||{})[platzId];
-  if(kuhId && kuehe[kuhId] && typeof window.spShowQuickView === 'function') {
-    window.spShowQuickView(kuhId);
+  if(kuhId && kuehe[kuhId] && typeof window.showKuhDetail === 'function') {
+    // Direkt ins Kuh-Profil
+    window.showKuhDetail(kuhId);
   } else {
-    // Zuweisung öffnen
-    var ov = document.getElementById('sp-kuh-overlay');
-    if(!ov) return;
-    document.getElementById('sp-kuh-platzid').value = platzId;
-    var lbl = document.getElementById('sp-kuh-platzlbl');
-    if(lbl) {
-      var rIdx = parseInt(platzId.split('-')[0]);
-      var pNr = platzId.split('-')[1];
-      var rname = stall.tableConfig.reihen[rIdx]?.name || ('Reihe '+(rIdx+1));
-      lbl.textContent = rname+' · Platz '+pNr;
-    }
-    var sel = document.getElementById('sp-kuh-select');
-    if(sel) sel.value = '';
-    ov.style.display = 'flex';
+    // Leerer Platz → Zuweisungs-Sheet öffnen
+    spOpenPlatzZuweisung(platzId);
   }
 };
+
+// Hilfsfunktion: Zuweisungs-Sheet öffnen mit aktueller Vorbelegung
+window.spOpenPlatzZuweisung = function(platzId) {
+  var stall = window._spStaelle[window._spAktivId];
+  if(!stall) return;
+  var ov = document.getElementById('sp-kuh-overlay');
+  if(!ov) return;
+  document.getElementById('sp-kuh-platzid').value = platzId;
+  var lbl = document.getElementById('sp-kuh-platzlbl');
+  if(lbl) {
+    var rIdx = parseInt(platzId.split('-')[0]);
+    var pNr = platzId.split('-')[1];
+    var rname = (stall.tableConfig && stall.tableConfig.reihen && stall.tableConfig.reihen[rIdx])
+                  ? stall.tableConfig.reihen[rIdx].name : ('Reihe '+(rIdx+1));
+    lbl.textContent = rname+' · Platz '+pNr;
+  }
+  // Vorbelegung mit aktuell zugewiesener Kuh (falls vorhanden)
+  var sel = document.getElementById('sp-kuh-select');
+  if(sel) sel.value = (stall.plaetze||{})[platzId] || '';
+  ov.style.display = 'flex';
+};
+
+// Long-Press: Zuweisung zum Ändern (auch bei belegtem Platz)
+window.spPlatzLongPress = function(platzId) {
+  window._spLongPressTriggered = true;
+  if(window.haptic) window.haptic('warn');
+  spOpenPlatzZuweisung(platzId);
+};
+
+// Touch/Mouse Long-Press-Erkennung global einbinden
+(function setupLongPress(){
+  if(window._spLongPressInstalled) return;
+  window._spLongPressInstalled = true;
+  var pressTimer = null;
+  function startPress(e) {
+    var btn = e.target.closest('.sp-platz');
+    if(!btn) return;
+    var pid = btn.getAttribute('data-platzid');
+    if(!pid) return;
+    pressTimer = setTimeout(function(){
+      pressTimer = null;
+      window.spPlatzLongPress(pid);
+    }, 500);
+  }
+  function cancelPress() {
+    if(pressTimer) { clearTimeout(pressTimer); pressTimer = null; }
+  }
+  document.addEventListener('touchstart', startPress, {passive:true});
+  document.addEventListener('touchend', cancelPress, {passive:true});
+  document.addEventListener('touchmove', cancelPress, {passive:true});
+  document.addEventListener('mousedown', startPress);
+  document.addEventListener('mouseup', cancelPress);
+  document.addEventListener('mouseleave', cancelPress);
+})();
 
 // Zuweisung speichern
 window.spSavePlatzZuweisung = async function() {
@@ -4304,6 +4379,10 @@ window.spOpenWizard = function(stallId) {
   document.getElementById('sp-wiz-name').value = stall ? (stall.name||'') : '';
   document.getElementById('sp-wiz-text').value = '';
   document.getElementById('sp-wiz-text-err').textContent = '';
+  // Stalltyp setzen
+  window._spWizTyp = (stall && stall.tableConfig && stall.tableConfig.typ) || 'anbindestall';
+  var typSel = document.getElementById('sp-wiz-typ');
+  if(typSel) typSel.value = window._spWizTyp;
   // Reihen aus Stall oder Default
   if(stall && stall.tableConfig && stall.tableConfig.reihen) {
     window._spWizReihen = JSON.parse(JSON.stringify(stall.tableConfig.reihen));
@@ -4358,7 +4437,8 @@ window.spSaveWizard = async function() {
   if(!name){alert('Stallname Pflicht');return;}
   if(!window._spWizReihen.length){alert('Mindestens eine Reihe');return;}
 
-  var tableConfig = { reihen: window._spWizReihen };
+  var typ = (document.getElementById('sp-wiz-typ')?.value) || window._spWizTyp || 'anbindestall';
+  var tableConfig = { typ:typ, reihen: window._spWizReihen };
   if(stallId) {
     await update(ref(db,'stallplanV2/'+stallId), {name:name, tableConfig:tableConfig});
   } else {
@@ -4472,7 +4552,10 @@ window._spRegisterStallplanListener = function() {
     window._spStaelle = data;
     if(!window._spAktivId && Object.keys(data).length)
       window._spAktivId = Object.keys(data)[0];
-    if(typeof spInitCanvas === 'function') spInitCanvas();
+    // Re-Render auslösen wenn aktuell Stallplan-View aktiv
+    if(window.currentView === 'stallplan' && typeof render === 'function') {
+      render();
+    }
   });
 };
 
