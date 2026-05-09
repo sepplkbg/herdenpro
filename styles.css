@@ -481,20 +481,27 @@ textarea.inp{resize:vertical;min-height:64px}
    Body scrollt im Mittelbereich.
    Desktop (≥1024px): zentriert max-width 720px für lesbares Layout. */
 .form-overlay{
-  position:fixed;inset:0;
-  background:var(--bg);
-  z-index:100;display:none;
-  align-items:stretch;justify-content:center;
-  /* Kein blur mehr — vollflächig dunkler App-Hintergrund */
+  position:fixed !important; inset:0 !important;
+  background:var(--bg) !important;
+  z-index:100;
+  align-items:stretch !important; justify-content:center !important;
+  padding:0 !important;
+  /* display:none/flex bleibt steuerbar via inline */
+}
+.form-overlay[style*="display:flex"], .form-overlay[style*="display: flex"] {
+  display:flex !important;
 }
 .form-sheet{
-  background:linear-gradient(180deg,var(--bg2),var(--bg));
-  width:100%;max-width:none;
-  height:100dvh; height:100vh;
-  display:flex;flex-direction:column;
-  border:none;border-radius:0;
+  background:linear-gradient(180deg,var(--bg2),var(--bg)) !important;
+  width:100% !important; max-width:none !important;
+  height:100vh !important; height:100dvh !important;
+  max-height:none !important;
+  display:flex !important; flex-direction:column !important;
+  border:none !important; border-radius:0 !important;
+  margin:0 !important;
   animation:formIn .25s cubic-bezier(.2,.8,.2,1);
-  box-shadow:none;
+  box-shadow:none !important;
+  overflow:hidden !important;
 }
 @keyframes formIn { from{opacity:0;transform:translateY(20px)} to{opacity:1;transform:translateY(0)} }
 .form-header{
@@ -650,23 +657,25 @@ textarea.inp{resize:vertical;min-height:64px}
 
 /* ── Popup → Vollbild auf Mobile, zentriert auf Desktop ─────── */
 .popup-overlay{
-  position:fixed;inset:0;
-  background:var(--bg);
-  display:none;align-items:stretch;justify-content:center;
+  position:fixed !important; inset:0 !important;
+  background:var(--bg) !important;
+  align-items:stretch !important; justify-content:center !important;
   z-index:200;
-  /* Padding 0 auf Mobile, damit popup-box den ganzen Screen füllt */
-  padding:0;
+  padding:0 !important;
+  backdrop-filter:none !important;
 }
 .popup-box{
-  background:linear-gradient(180deg,var(--bg2),var(--bg));
-  border:none;border-radius:0;
-  padding:calc(1.4rem + var(--safe-t)) calc(1.4rem + var(--safe-r)) calc(1.4rem + var(--safe-b)) calc(1.4rem + var(--safe-l));
-  width:100%;max-width:none;
-  height:100dvh;height:100vh;
-  overflow-y:auto;
-  color:var(--text);font-family:inherit;
+  background:linear-gradient(180deg,var(--bg2),var(--bg)) !important;
+  border:none !important; border-radius:0 !important;
+  padding:calc(1.4rem + var(--safe-t)) calc(1.4rem + var(--safe-r)) calc(1.4rem + var(--safe-b)) calc(1.4rem + var(--safe-l)) !important;
+  width:100% !important; max-width:none !important;
+  height:100vh !important; height:100dvh !important;
+  max-height:none !important;
+  overflow-y:auto !important;
+  margin:0 !important;
+  color:var(--text); font-family:inherit;
   animation:formIn .22s cubic-bezier(.16,1,.3,1);
-  box-shadow:none;
+  box-shadow:none !important;
 }
 /* Desktop: zentriertes Popup mit Backdrop */
 @media (min-width:1024px) {

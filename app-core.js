@@ -21,6 +21,20 @@ function remove(refObj) { return refObj.remove(); }
 function push(refObj, val) { return refObj.push(val); }
 function serverTimestamp() { return firebase.database.ServerValue.TIMESTAMP; }
 
+// ── parseFloat: Komma als Dezimaltrennzeichen akzeptieren ────────────────────
+// Wrapped die globale parseFloat damit "3,14" und "3.14" beide funktionieren.
+// Berührt nur Strings — bei Zahlen-Args bleibt das Verhalten identisch.
+(function(){
+  var origParseFloat = window.parseFloat;
+  window.parseFloat = function(s) {
+    if(typeof s === 'string') s = s.replace(',', '.');
+    return origParseFloat(s);
+  };
+  // Number.parseFloat zeigt auf dieselbe Funktion in modernen Browsern, aber
+  // sicherheitshalber explizit überschreiben:
+  if(Number && Number.parseFloat !== window.parseFloat) Number.parseFloat = window.parseFloat;
+})();
+
 // ── Bottom-Sheet-System (Phase B4) ────────────────────────────────────────────
 // markBottomSheet(overlayId) markiert ein vorhandenes form-overlay als Bottom-Sheet.
 // Wird einmal pro Overlay aufgerufen. Drag-Handler wird automatisch aktiviert.
@@ -548,6 +562,7 @@ window.drawMilchSaisonChart = function(canvas) {
       if(ctx.roundRect)ctx.roundRect(tx2,closest.y-th-8,tw,th,5);else ctx.rect(tx2,closest.y-th-8,tw,th);
       ctx.fill();
       ctx.fillStyle='#060e05'; ctx.font='bold 10px sans-serif'; ctx.textAlign='center';
+      var label=new Date(closest.d).toLocaleDateString('de-AT',{day:'numeric',month:'short'});
       ctx.fillText((closest.istPrognose?'~':'')+closest.l+'L · '+label, tx2+tw/2, closest.y-th/2-4);
     },{passive:false});
   }
