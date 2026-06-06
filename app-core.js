@@ -374,6 +374,8 @@ function render() {
     wetter:       function(){return renderWetter();},
     kaese:        function(){return (window.renderKaese||function(){return '<div class="empty-state">Käse-Modul lädt…</div>';})();},
     bauer_detail: function(){return renderBauerDetail();},
+    bauern_menu:  function(){return renderBauernMenu();},
+    bauern:       function(){return renderBauernMenu();},
     saisonvergleich: function(){return renderSaisonvergleich();},
     traenke:      function(){return renderTraenke();},
     stallplan:    function(){return renderStallplan();},
