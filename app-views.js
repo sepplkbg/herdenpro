@@ -382,7 +382,7 @@ function renderHerde() {
             lastGroup = groupKey;
             groupHeader = `<div style="font-size:.7rem;font-weight:700;color:var(--text3);letter-spacing:.06em;padding:.5rem 0 .2rem;border-top:1px solid var(--border);margin-top:.2rem">${groupKey}</div>`;
           }
-          return groupHeader + `<div class="list-card" data-bauer="${k.bauer||''}" data-gruppe="${k.gruppe||''}" data-bio="${k.bio?'1':'0'}" onclick="showKuhDetail('${id}')">
+          return groupHeader + `<div class="list-card" data-id="${id}" data-bauer="${k.bauer||''}" data-gruppe="${k.gruppe||''}" data-bio="${k.bio?'1':'0'}" onclick="showKuhDetail('${id}')">
             <div class="list-card-left">
               <span class="nr-badge">#${k.nr}</span>
               <div>
@@ -1550,10 +1550,27 @@ window.filterHerde=function(f,btn){
   document.querySelectorAll('.filter-chip').forEach(c=>c.classList.remove('active'));
   btn.classList.add('active');
   document.querySelectorAll('#kuh-list .list-card').forEach(c=>{
-    if(f==='') c.style.display='';
-    else if(f.startsWith('bauer:')) c.style.display=c.dataset.bauer===f.slice(6)?'':'none';
-    else if(f.startsWith('gruppe:')) c.style.display=c.dataset.gruppe===f.slice(7)?'':'none';
-    else if(f==='bio') c.style.display=c.dataset.bio==='1'?'':'none';
+    if(f==='') { c.style.display=''; return; }
+    if(f.startsWith('bauer:')) {
+      c.style.display = c.dataset.bauer === f.slice(6) ? '' : 'none';
+    } else if(f.startsWith('gruppe:')) {
+      // Multi-Membership: gruppe kann komma-getrennt mehrere Namen enthalten
+      const gName = f.slice(7);
+      const list = (c.dataset.gruppe||'').split(/\s*[,;\/]\s*/).filter(Boolean);
+      // Zusätzlich: Lookup über gruppen.mitglieder (falls k.gruppe noch leer ist)
+      const kuhId = c.dataset.id || '';
+      let inMitglieder = false;
+      if(kuhId && window.gruppen) {
+        for(const g of Object.values(window.gruppen)) {
+          if(g.name === gName && g.mitglieder && g.mitglieder[kuhId]) {
+            inMitglieder = true; break;
+          }
+        }
+      }
+      c.style.display = (list.includes(gName) || inMitglieder) ? '' : 'none';
+    } else if(f === 'bio') {
+      c.style.display = c.dataset.bio === '1' ? '' : 'none';
+    }
   });
 };
 window.importCSVDialog=function(){const ov=document.getElementById('csv-import-overlay');if(!ov){navigate('herde');setTimeout(()=>importCSVDialog(),150);return;}ov.style.display='flex';};
