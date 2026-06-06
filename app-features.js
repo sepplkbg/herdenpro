@@ -617,6 +617,174 @@ window.importRohdatenExcel = async function(input) {
   input.value = '';
 };
 
+// ── Saisonstart-Import (12 Spalten): Bauer + Kuh + Besamung in einem Sheet ──
+// Spalten: A Bauer | B Anzahl | C BIO | D Verkauf%Butter | E Verkauf%Käse | F Adresse
+//          G Ohrmarke | H Kuhnummer | I Name | J Gruppe(n) | K Notiz | L Besamungsdatum
+window.importSaisonstartExcel = async function(input) {
+  const file = input.files[0];
+  if(!file) return;
+  const statusEl = document.getElementById('saisonstart-status');
+  if(statusEl) statusEl.innerHTML = '⏳ Lese Excel-Datei...';
+
+  if(typeof XLSX === 'undefined') {
+    const s = document.createElement('script');
+    s.src = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
+    s.onload = () => importSaisonstartExcel(input);
+    document.head.appendChild(s);
+    return;
+  }
+
+  try {
+    const fname = file.name.toLowerCase();
+    if(!fname.endsWith('.xlsx') && !fname.endsWith('.xls') && !fname.endsWith('.xlsm')) {
+      if(statusEl) statusEl.innerHTML = '✗ Falsches Format – bitte .xlsx verwenden';
+      alert('Falsches Dateiformat. Bitte .xlsx hochladen.');
+      input.value = ''; return;
+    }
+    const buf = await file.arrayBuffer();
+    const wb = XLSX.read(buf, {type:'array', cellDates:true, bookVBA:false});
+    const ws = wb.Sheets['Saisonstart'] || wb.Sheets[wb.SheetNames[0]];
+    if(!ws) { alert('Kein Sheet gefunden.'); return; }
+
+    // Ab Zeile 8 (Header in Zeile 4, Beispiele 5–7, Daten ab 8)
+    // range:7 ist 0-indexed = Excel-Zeile 8
+    const rows = XLSX.utils.sheet_to_json(ws, {header:1, defval:'', range:7});
+
+    let bauerCount = 0, kuhCount = 0, bsCount = 0, gruppeCount = 0, skipped = 0;
+    let lastBauer = '';
+    const ts = Date.now();
+
+    // Helfer: Gruppe finden oder anlegen, kuhId zuordnen
+    const farben = ['#e74c3c','#e67e22','#f1c40f','#2ecc71','#3498db','#9b59b6','#1abc9c','#34495e','#d35400','#16a085'];
+    async function ensureGruppe(gName, kuhId) {
+      if(!gName || !kuhId) return;
+      let gruppeId = Object.entries(window.gruppen||{}).find(([,g])=>g.name===gName)?.[0];
+      if(!gruppeId) {
+        const col = farben[Object.keys(window.gruppen||{}).length % farben.length];
+        const r = await push(ref(db,'gruppen'), {name:gName, farbe:col, createdAt:ts});
+        gruppeId = r.key;
+        if(!window.gruppen) window.gruppen = {};
+        window.gruppen[gruppeId] = {name:gName, farbe:col, createdAt:ts, mitglieder:{}};
+        gruppeCount++;
+      }
+      const gData = window.gruppen[gruppeId] || {};
+      const members = gData.mitglieder || {};
+      members[kuhId] = true;
+      await update(ref(db,'gruppen/'+gruppeId), {mitglieder: members});
+    }
+
+    for(const row of rows) {
+      const bauerName    = String(row[0]||'').trim();
+      const anzahlRaw    = row[1];
+      const bioRaw       = String(row[2]||'').trim().toUpperCase();
+      const vButterRaw   = row[3];
+      const vKaeseRaw    = row[4];
+      const adresse      = String(row[5]||'').trim();
+      const ohrmarke     = String(row[6]||'').trim();
+      const kuhNrRaw     = row[7];
+      const kuhName      = String(row[8]||'').trim();
+      const gruppenRaw   = String(row[9]||'').trim();
+      const notiz        = String(row[10]||'').trim();
+      const besDatum     = parseExcelDatum(row[11]);
+
+      // ─── BAUER: Wenn Name in der Zeile steht ───────────────────────
+      if(bauerName) {
+        lastBauer = bauerName;
+        const bauerData = { name: bauerName, updatedAt: ts };
+        if(anzahlRaw !== '' && anzahlRaw != null)  bauerData.anzahl     = parseInt(anzahlRaw) || 0;
+        if(bioRaw)                                  bauerData.bio        = (bioRaw === 'JA');
+        if(vButterRaw !== '' && vButterRaw != null) bauerData.verkButter = parseFloat(vButterRaw) || 0;
+        if(vKaeseRaw  !== '' && vKaeseRaw  != null) bauerData.verkKase   = parseFloat(vKaeseRaw)  || 0;
+        if(adresse) bauerData.adresse = adresse;
+
+        const existing = Object.entries(bauern||{}).find(([,b])=>b.name===bauerName);
+        if(existing) {
+          await update(ref(db,'bauern/'+existing[0]), bauerData);
+        } else {
+          bauerData.createdAt = ts;
+          await push(ref(db,'bauern'), bauerData);
+          bauerCount++;
+        }
+      }
+
+      // ─── KUH: Kuhnummer ist Pflicht ────────────────────────────────
+      const kuhNr = String(kuhNrRaw||'').trim();
+      if(!kuhNr || isNaN(parseInt(kuhNr))) {
+        // reine Bauer-Zeile ohne Kuh-Daten: nicht als Skip zählen
+        if(!bauerName) skipped++;
+        continue;
+      }
+      if(!lastBauer) { skipped++; continue; }
+
+      const existingKuh = Object.entries(kuehe||{}).find(([,k])=>String(k.nr)===kuhNr);
+      const kuhData = {
+        nr: kuhNr,
+        name: kuhName,
+        bauer: lastBauer,
+        ohrmarke,
+        notiz,
+        updatedAt: ts
+      };
+      let kuhId;
+      if(existingKuh) {
+        kuhId = existingKuh[0];
+        await update(ref(db,'kuehe/'+kuhId), kuhData);
+      } else {
+        kuhData.createdAt = ts;
+        kuhData.almStatus = 'oben';
+        kuhData.laktation = 'melkend';
+        const r = await push(ref(db,'kuehe'), kuhData);
+        kuhId = r.key;
+        kuhCount++;
+      }
+
+      // ─── GRUPPEN: durch Komma/Semikolon/Slash getrennt ─────────────
+      if(gruppenRaw) {
+        const gListe = gruppenRaw.split(/[,;\/]/).map(s=>s.trim()).filter(Boolean);
+        for(const gName of gListe) {
+          await ensureGruppe(gName, kuhId);
+        }
+      }
+
+      // ─── BESAMUNG: nur wenn Datum gesetzt ──────────────────────────
+      if(besDatum && kuhId) {
+        const dupe = Object.values(besamungen||{}).find(b =>
+          b.kuhId === kuhId && b.datum && Math.abs(b.datum - besDatum) < 86400000);
+        if(!dupe) {
+          const geburt = new Date(besDatum);
+          geburt.setMonth(geburt.getMonth()+9);
+          geburt.setDate(geburt.getDate()+10);
+          const trock = new Date(geburt.getTime());
+          trock.setDate(trock.getDate()-56);
+          await push(ref(db,'besamungen'), {
+            kuhId, datum: besDatum, status: 'besamt',
+            erwartetGeburt: geburt.getTime(),
+            trockenstell: trock.getTime(),
+            quelle: 'saisonstart_import',
+            createdAt: ts
+          });
+          bsCount++;
+        }
+      }
+    }
+
+    const msg = '✓ Saisonstart Import abgeschlossen:\n\n'+
+                bauerCount   + ' neue Bauern\n'+
+                kuhCount     + ' neue Kühe\n'+
+                gruppeCount  + ' neue Gruppen\n'+
+                bsCount      + ' Besamungen\n'+
+                (skipped>0 ? '\n'+skipped+' Zeilen übersprungen (kein Bauer oder ungültige Kuhnummer)' : '');
+    if(statusEl) statusEl.innerHTML = '✓ '+bauerCount+' Bauern · '+kuhCount+' Kühe · '+gruppeCount+' Gruppen · '+bsCount+' Besamungen';
+    alert(msg);
+
+  } catch(e) {
+    if(statusEl) statusEl.innerHTML = '✗ Fehler: '+e.message;
+    alert('Fehler beim Import: '+e.message);
+    console.error(e);
+  }
+  input.value = '';
+};
+
 function parseExcelDatum(val) {
   if(!val) return null;
   if(typeof val === 'number') {
