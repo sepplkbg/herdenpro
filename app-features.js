@@ -734,6 +734,10 @@ window.importSaisonstartExcel = async function(input) {
       }
       if(!lastBauer) { skipped++; continue; }
 
+      // Gruppen vorberechnen, damit wir sie auch als k.gruppe speichern können
+      const gListe = gruppenRaw ? gruppenRaw.split(/[,;\/]/).map(s=>s.trim()).filter(Boolean) : [];
+      const gruppeString = gListe.join(', ');
+
       const existingKuh = Object.entries(kuehe||{}).find(([,k])=>String(k.nr)===kuhNr);
       const kuhData = {
         nr: kuhNr,
@@ -741,7 +745,8 @@ window.importSaisonstartExcel = async function(input) {
         bauer: lastBauer,
         ohrmarke,
         notiz,
-        bio: !!lastBauerBio,   // Bio-Flag vom Bauern auf jede Kuh übertragen
+        bio: !!lastBauerBio,         // Bio-Flag vom Bauern auf jede Kuh übertragen
+        gruppe: gruppeString,        // Komma-getrennte Gruppen-Namen für Filter & Anzeige
         updatedAt: ts
       };
       let kuhId;
@@ -757,12 +762,9 @@ window.importSaisonstartExcel = async function(input) {
         kuhCount++;
       }
 
-      // ─── GRUPPEN: durch Komma/Semikolon/Slash getrennt ─────────────
-      if(gruppenRaw) {
-        const gListe = gruppenRaw.split(/[,;\/]/).map(s=>s.trim()).filter(Boolean);
-        for(const gName of gListe) {
-          await ensureGruppe(gName, kuhId);
-        }
+      // ─── GRUPPEN: zusätzlich die bidirektionale Mitgliedschaft anlegen ──
+      for(const gName of gListe) {
+        await ensureGruppe(gName, kuhId);
       }
 
       // ─── BESAMUNG: nur wenn Datum gesetzt ──────────────────────────
