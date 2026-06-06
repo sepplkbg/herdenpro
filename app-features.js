@@ -652,7 +652,12 @@ window.importSaisonstartExcel = async function(input) {
 
     let bauerCount = 0, kuhCount = 0, bsCount = 0, gruppeCount = 0, skipped = 0;
     let lastBauer = '';
+    let lastBauerBio = false;   // Bio-Flag wird auf jede Kuh des Bauern übertragen
     const ts = Date.now();
+
+    // Lokaler Mitglieder-Cache, damit aufeinanderfolgende Kuh-Zuweisungen
+    // sich nicht gegenseitig überschreiben (Firebase-Listener ist asynchron).
+    const localMembers = {}; // { gruppeId: { kuhId1: true, kuhId2: true } }
 
     // Helfer: Gruppe finden oder anlegen, kuhId zuordnen
     const farben = ['#e74c3c','#e67e22','#f1c40f','#2ecc71','#3498db','#9b59b6','#1abc9c','#34495e','#d35400','#16a085'];
@@ -661,16 +666,20 @@ window.importSaisonstartExcel = async function(input) {
       let gruppeId = Object.entries(window.gruppen||{}).find(([,g])=>g.name===gName)?.[0];
       if(!gruppeId) {
         const col = farben[Object.keys(window.gruppen||{}).length % farben.length];
-        const r = await push(ref(db,'gruppen'), {name:gName, farbe:col, createdAt:ts});
+        const r = await push(ref(db,'gruppen'), {name:gName, farbe:col, createdAt:ts, mitglieder:{}});
         gruppeId = r.key;
         if(!window.gruppen) window.gruppen = {};
         window.gruppen[gruppeId] = {name:gName, farbe:col, createdAt:ts, mitglieder:{}};
         gruppeCount++;
       }
-      const gData = window.gruppen[gruppeId] || {};
-      const members = gData.mitglieder || {};
-      members[kuhId] = true;
-      await update(ref(db,'gruppen/'+gruppeId), {mitglieder: members});
+      // Lokalen Cache initialisieren mit dem, was schon in der Gruppe steht
+      if(!localMembers[gruppeId]) {
+        const existing = (window.gruppen[gruppeId]||{}).mitglieder || {};
+        localMembers[gruppeId] = {...existing};
+      }
+      localMembers[gruppeId][kuhId] = true;
+      // Vollständigen aktuellen Stand schreiben (kein Überschreiben mit Teilmenge)
+      await update(ref(db,'gruppen/'+gruppeId), {mitglieder: localMembers[gruppeId]});
     }
 
     for(const row of rows) {
@@ -691,8 +700,17 @@ window.importSaisonstartExcel = async function(input) {
       if(bauerName) {
         lastBauer = bauerName;
         const bauerData = { name: bauerName, updatedAt: ts };
+        // BIO toleranter erkennen (JA, J, YES, 1, true, ✓ …)
+        const bioYes = ['JA','J','YES','Y','TRUE','1','✓','X','✔'].includes(bioRaw);
+        const bioNo  = ['NEIN','N','NO','FALSE','0'].includes(bioRaw);
+        if(bioYes || bioNo) {
+          lastBauerBio = bioYes;
+          bauerData.bio = bioYes;
+        } else if(bauerName) {
+          // Default: nicht-Bio wenn nichts angegeben
+          lastBauerBio = false;
+        }
         if(anzahlRaw !== '' && anzahlRaw != null)  bauerData.anzahl     = parseInt(anzahlRaw) || 0;
-        if(bioRaw)                                  bauerData.bio        = (bioRaw === 'JA');
         if(vButterRaw !== '' && vButterRaw != null) bauerData.verkButter = parseFloat(vButterRaw) || 0;
         if(vKaeseRaw  !== '' && vKaeseRaw  != null) bauerData.verkKase   = parseFloat(vKaeseRaw)  || 0;
         if(adresse) bauerData.adresse = adresse;
@@ -723,6 +741,7 @@ window.importSaisonstartExcel = async function(input) {
         bauer: lastBauer,
         ohrmarke,
         notiz,
+        bio: !!lastBauerBio,   // Bio-Flag vom Bauern auf jede Kuh übertragen
         updatedAt: ts
       };
       let kuhId;
