@@ -5830,6 +5830,24 @@ function renderBackup() {
       </div>
     </div>
 
+    <div class="section-title" style="color:var(--gold)">🌱 Saisonstart Import</div>
+    <div class="card-section" style="margin-bottom:.8rem;border-color:var(--gold2)">
+      <p style="font-size:.82rem;color:var(--text2);margin-bottom:.8rem;line-height:1.6">
+        Schnelle Erfassung zum Saisonstart: Eine Excel‑Zeile pro Kuh.<br>
+        <b>Bauer</b> (Name, Anzahl, BIO, Verkauf%, Adresse) · <b>Kuh</b> (Ohrmarke, Nr, Name, Gruppen, Notiz, Besamungsdatum).
+        Vorlage <a href="Saisonstart_Vorlage.xlsx" download style="color:var(--gold)">hier herunterladen</a>.
+      </p>
+      <div style="display:flex;flex-direction:column;gap:.5rem">
+        <label style="cursor:pointer;display:block">
+          <span class="btn-primary" style="display:block;text-align:center;padding:.6rem;border-radius:var(--radius-sm);cursor:pointer;background:linear-gradient(135deg,var(--gold),var(--gold2))">
+            🌱 Saisonstart Excel importieren
+          </span>
+          <input type="file" accept=".xlsx,.xls" style="display:none" onchange="importSaisonstartExcel(this)" />
+        </label>
+      </div>
+      <div id="saisonstart-status" style="margin-top:.5rem;font-size:.78rem;color:var(--text3)"></div>
+    </div>
+
     <div class="section-title" style="color:var(--green)">📋 Rohdaten Import</div>
     <div class="card-section" style="margin-bottom:.8rem;border-color:var(--green)">
       <p style="font-size:.82rem;color:var(--text2);margin-bottom:.8rem;line-height:1.6">
