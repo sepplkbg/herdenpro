@@ -409,6 +409,16 @@ function renderHerde() {
             <option value="">Gruppe (optional)</option>
             ${Object.entries(gruppen).sort((a,b)=>a[1].name?.localeCompare(b[1].name)).map(([id,g])=>`<option value="${g.name}">${g.name}</option>`).join('')}
           </select>
+          <label class="inp-label">Laktationsstatus</label>
+          <select id="f-laktation" class="inp">
+            <option value="melkend">🥛 Melkend</option>
+            <option value="trocken">💧 Trocken</option>
+            <option value="trockengestellt">⏸ Trockengestellt</option>
+            <option value="tragend">🐄 Tragend</option>
+            <option value="jung">🌱 Jungtier</option>
+          </select>
+          <label class="inp-label">Notiz</label>
+          <textarea id="f-notiz" class="inp" rows="2" placeholder="Notiz zur Kuh…"></textarea>
           <div class="form-actions"><button class="btn-secondary" onclick="closeForm('kuh-form-overlay')">Abbrechen</button><button class="btn-primary" onclick="saveKuh()">Speichern</button></div></div></div></div>
   `;
 }
@@ -1526,6 +1536,9 @@ window.showKuhForm=function(id=null){
     document.getElementById('f-nr').value='';
     document.getElementById('f-name').value='';
     document.getElementById('f-rasse').value='';
+    const ohrm=document.getElementById('f-ohrmarke'); if(ohrm) ohrm.value='';
+    const lak=document.getElementById('f-laktation'); if(lak) lak.value='melkend';
+    const ntz=document.getElementById('f-notiz'); if(ntz) ntz.value='';
     document.getElementById('kuh-form-title').textContent='Kuh erfassen';
   }
   ov.style.display='flex';
@@ -1646,6 +1659,16 @@ window.saveBehandlung=async function(){
   };
   if(editId){await update(ref(db,'behandlungen/'+editId),{...data,updatedAt:Date.now()});}
   else{const nr=await push(ref(db,'behandlungen'),{...data,createdAt:Date.now()});editId=nr.key;}
+
+  // ── Auto-Trigger: Diagnose "Trockenstellen" → Kuh-Laktation auf 'trocken' ──
+  const diagnoseLower = (data.diagnose||'').toLowerCase();
+  if(diagnoseLower.includes('trockenstell') || diagnoseLower.includes('trocken stell') || diagnoseLower.includes('trockenlegen')) {
+    try {
+      await update(ref(db,'kuehe/'+kuhId), { laktation: 'trocken', updatedAt: Date.now() });
+      window.showSaveToast && showSaveToast('🥛→💧 Status auf "trocken" gesetzt');
+    } catch(e) { console.warn('Laktations-Update fehlgeschlagen:', e); }
+  }
+
   // Temperaturverlauf anhängen wenn Temperatur eingegeben
   const tempVal = parseFloat(document.getElementById('b-temperatur')?.value);
   if(tempVal && editId) {
@@ -4039,29 +4062,41 @@ function renderStallplan() {
   const ställe = window._spStaelle || {};
   const aktivId = window._spAktivId || null;
   const stallListe = Object.entries(ställe);
+  const alleModus = window._spAlleModus === true;
 
-  // Auto-select erstes Stall wenn keiner aktiv
-  if(!aktivId && stallListe.length > 0) {
+  // Auto-select erstes Stall wenn keiner aktiv UND nicht Alle-Modus
+  if(!alleModus && !aktivId && stallListe.length > 0) {
     window._spAktivId = stallListe[0][0];
     setTimeout(render, 10);
   }
 
-  const stall = window._spAktivId ? ställe[window._spAktivId] : null;
+  const stall = (!alleModus && window._spAktivId) ? ställe[window._spAktivId] : null;
 
-  // Auto-Migration Legacy → Tabelle (Boxen aus elemente in tableConfig+plaetze überführen)
+  // Auto-Migration Legacy → Tabelle für aktiven Stall
   if(stall && !stall.tableConfig && stall.elemente && stall.elemente.length > 0) {
     spAutoMigrate(window._spAktivId, stall);
   }
-
-  // Filter-Chip Daten
-  const aktivFilter = window._spFilter || 'alle';
-  const bauernSet = {};
-  if(stall && stall.plaetze) {
-    Object.values(stall.plaetze).forEach(kuhId => {
-      const k = kuhId && kuehe[kuhId];
-      if(k && k.bauer) bauernSet[k.bauer] = true;
+  // Im Alle-Modus auch für alle Ställe migrieren
+  if(alleModus) {
+    stallListe.forEach(([sid, s]) => {
+      if(s && !s.tableConfig && s.elemente && s.elemente.length > 0) {
+        spAutoMigrate(sid, s);
+      }
     });
   }
+
+  // Filter-Chip Daten (vereinigt über aktive Sicht)
+  const aktivFilter = window._spFilter || 'alle';
+  const bauernSet = {};
+  const sammelStaelle = alleModus ? stallListe.map(([,s])=>s) : (stall ? [stall] : []);
+  sammelStaelle.forEach(s => {
+    if(s && s.plaetze) {
+      Object.values(s.plaetze).forEach(kuhId => {
+        const k = kuhId && kuehe[kuhId];
+        if(k && k.bauer) bauernSet[k.bauer] = true;
+      });
+    }
+  });
   const bauernListe = Object.keys(bauernSet).sort();
   const gruppenListe = Object.entries(gruppen || {});
 
@@ -4070,17 +4105,26 @@ function renderStallplan() {
     return '<button class="filter-chip '+(aktiv?'active':'')+'" onclick="spSetFilter(\''+id.replace(/\'/g,"\\\\'")+'\')">'+(icon?icon+' ':'')+label+'</button>';
   }
 
-  // Reihen-HTML rendern
-  let reihenHTML = '';
-  let layoutClass = '';
-  if(stall && stall.tableConfig && Array.isArray(stall.tableConfig.reihen)) {
-    layoutClass = (stall.tableConfig.layout === 'vertikal') ? 'sp-layout-vertikal' : 'sp-layout-horizontal';
-    reihenHTML = stall.tableConfig.reihen.map((reihe, rIdx) =>
-      spRenderReihe(reihe, rIdx, stall)
-    ).join('');
-  } else if(stall) {
-    reihenHTML = '<div class="empty-state" style="margin:1rem 0"><div style="font-size:2rem;margin-bottom:.5rem">📐</div><div>Noch kein Layout gesetzt</div><button class="btn-primary" style="margin-top:.6rem" onclick="spOpenWizard(\''+window._spAktivId+'\')">📋 Layout anlegen</button></div>';
+  // Hilfsfunktion: Reihen-HTML eines Stalls bauen
+  function renderStallBlock(sid, s) {
+    let reihenHTML = '';
+    let layoutClass = '';
+    if(s && s.tableConfig && Array.isArray(s.tableConfig.reihen)) {
+      layoutClass = (s.tableConfig.layout === 'vertikal') ? 'sp-layout-vertikal' : 'sp-layout-horizontal';
+      // Wichtig: spRenderReihe nutzt den aktiven Stall – wir setzen ihn vorübergehend
+      const prevAktiv = window._spAktivId;
+      window._spAktivId = sid;
+      reihenHTML = s.tableConfig.reihen.map((reihe, rIdx) => spRenderReihe(reihe, rIdx, s)).join('');
+      window._spAktivId = prevAktiv;
+      return '<div class="sp-stall-tabelle '+layoutClass+'">'+reihenHTML+'</div>';
+    } else {
+      return '<div class="empty-state" style="margin:1rem 0"><div style="font-size:2rem;margin-bottom:.5rem">📐</div><div>Noch kein Layout gesetzt</div><button class="btn-primary" style="margin-top:.6rem" onclick="spOpenWizard(\''+sid+'\')">📋 Layout anlegen</button></div>';
+    }
   }
+
+  // Reihen-HTML für aktiven Stall (klassischer Modus)
+  let einzelReihenHTML = '';
+  if(stall) einzelReihenHTML = renderStallBlock(window._spAktivId, stall);
 
   return `<div class="page-header">
     <h2>🏚 Stallplan</h2>
@@ -4089,13 +4133,15 @@ function renderStallplan() {
 
   ${stallListe.length > 1 ? `
   <div style="display:flex;gap:.3rem;flex-wrap:wrap;margin-bottom:.7rem;padding:.2rem 0">
+    <button class="filter-chip ${alleModus?'active':''}"
+      onclick="window._spAlleModus=true;render()">📋 Alle Ställe</button>
     ${stallListe.map(([sid, s]) => `
-      <button class="filter-chip ${window._spAktivId===sid?'active':''}"
-        onclick="window._spAktivId='${sid}';render()">${s.name||'Stall'}</button>
+      <button class="filter-chip ${!alleModus && window._spAktivId===sid?'active':''}"
+        onclick="window._spAlleModus=false;window._spAktivId='${sid}';render()">${s.name||'Stall'}</button>
     `).join('')}
   </div>` : ''}
 
-  ${stall ? `
+  ${(stall || alleModus) ? `
   <!-- Filter-Chips -->
   <div style="display:flex;gap:.3rem;overflow-x:auto;margin-bottom:.7rem;padding:.2rem 0">
     ${chipBtn('alle', 'Alle', '🐄')}
@@ -4105,15 +4151,32 @@ function renderStallplan() {
     ${gruppenListe.map(([gid, g]) => chipBtn('gruppe:'+gid, g.name||'Gruppe', '🏷')).join('')}
   </div>
 
-  <!-- Reihen-Tabelle -->
-  <div class="sp-stall-tabelle ${layoutClass}">${reihenHTML}</div>
-
-  <!-- Aktionen -->
-  <div style="display:flex;gap:.5rem;margin-top:1.2rem;flex-wrap:wrap">
-    <button class="btn-xs" onclick="spOpenWizard('${window._spAktivId}')">✎ Layout bearbeiten</button>
-    <button class="btn-xs" onclick="spStallUmbenennen('${window._spAktivId}')">📝 Umbenennen</button>
-    <button class="btn-xs-danger" onclick="spStallLoeschen('${window._spAktivId}')">🗑 Stall löschen</button>
-  </div>
+  ${alleModus ? `
+    <!-- Alle Ställe untereinander -->
+    ${stallListe.length === 0 ? '<div class="empty-state">Keine Ställe angelegt</div>' :
+      stallListe.map(([sid, s]) => `
+        <div style="margin-bottom:1.5rem">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:.5rem;padding-bottom:.3rem;border-bottom:2px solid var(--gold2)">
+            <h3 style="margin:0;color:var(--gold);font-size:1.05rem">🏚 ${s.name||'Stall'}</h3>
+            <div style="display:flex;gap:.3rem">
+              <button class="btn-xs" onclick="spOpenWizard('${sid}')">✎</button>
+              <button class="btn-xs" onclick="spStallUmbenennen('${sid}')">📝</button>
+              <button class="btn-xs-danger" onclick="spStallLoeschen('${sid}')">🗑</button>
+            </div>
+          </div>
+          ${renderStallBlock(sid, s)}
+        </div>
+      `).join('')
+    }
+  ` : `
+    <!-- Einzelstall -->
+    ${einzelReihenHTML}
+    <div style="display:flex;gap:.5rem;margin-top:1.2rem;flex-wrap:wrap">
+      <button class="btn-xs" onclick="spOpenWizard('${window._spAktivId}')">✎ Layout bearbeiten</button>
+      <button class="btn-xs" onclick="spStallUmbenennen('${window._spAktivId}')">📝 Umbenennen</button>
+      <button class="btn-xs-danger" onclick="spStallLoeschen('${window._spAktivId}')">🗑 Stall löschen</button>
+    </div>
+  `}
   ` : `
   <div class="empty-state" style="margin-top:2rem;text-align:center">
     <div style="font-size:3rem;margin-bottom:.8rem">🏚</div>
