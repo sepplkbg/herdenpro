@@ -35,6 +35,24 @@ function serverTimestamp() { return firebase.database.ServerValue.TIMESTAMP; }
   if(Number && Number.parseFloat !== window.parseFloat) Number.parseFloat = window.parseFloat;
 })();
 
+// ── Multi-Gruppen-Match: prüft ob Kuh in einer Gruppe ist ─────────────────────
+// k.gruppe kann Komma-getrennt mehrere Namen enthalten ("Stall 1, Melkkühe, Bio").
+// Zusätzlicher Fallback über gruppen[gid].mitglieder für ältere Datensätze.
+window.kuhInGruppe = function(k, gName, kuhId) {
+  if(!gName) return true;  // kein Filter aktiv → alles durchlassen
+  if(!k) return false;
+  // 1) Komma-getrennte k.gruppe prüfen
+  const list = String(k.gruppe||'').split(/\s*[,;\/]\s*/).filter(Boolean);
+  if(list.includes(gName)) return true;
+  // 2) Fallback: window.gruppen[].mitglieder
+  if(kuhId && window.gruppen) {
+    for(const g of Object.values(window.gruppen)) {
+      if(g && g.name === gName && g.mitglieder && g.mitglieder[kuhId]) return true;
+    }
+  }
+  return false;
+};
+
 // ── Bottom-Sheet-System (Phase B4) ────────────────────────────────────────────
 // markBottomSheet(overlayId) markiert ein vorhandenes form-overlay als Bottom-Sheet.
 // Wird einmal pro Overlay aufgerufen. Drag-Handler wird automatisch aktiviert.
