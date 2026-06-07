@@ -1095,7 +1095,7 @@ window.showQRCode = function(kuhId, nr, name) {
 function renderZaehlung() {
   const _zaehG=window._zaehGruppe||'';
   const kuhListe=Object.entries(kuehe)
-    .filter(([,k])=>!_zaehG||k.gruppe===_zaehG)
+    .filter(([id,k])=>kuhInGruppe(k,_zaehG,id))
     .sort((a,b)=>{const nA=parseInt(a[1].nr)||0,nB=parseInt(b[1].nr)||0;return nA-nB;});
   const anwesend=zaehlSession?.anwesend||{};
   const total=kuhListe.length;const anwCount=kuhListe.filter(([id])=>anwesend[id]).length;
@@ -2281,8 +2281,18 @@ window.deleteKontakt = async function(id) {
 function renderGruppen() {
   const gruppenListe = Object.entries(gruppen).sort((a,b)=>a[1].name?.localeCompare(b[1].name));
   const aktiveGruppe = window._gruppeEdit||null;
-  const gruppeKuehe = aktiveGruppe ? Object.entries(kuehe).filter(([,k])=>k.gruppe===aktiveGruppe) : [];
-  const ohneGruppe = Object.entries(kuehe).filter(([,k])=>!k.gruppe||k.gruppe==='').sort((a,b)=>parseInt(a[1].nr)-parseInt(b[1].nr));
+  const gruppeKuehe = aktiveGruppe ? Object.entries(kuehe).filter(([id,k])=>kuhInGruppe(k, aktiveGruppe, id)) : [];
+  // Kühe ohne Gruppe: weder in k.gruppe-Liste noch in irgend einer gruppen.mitglieder enthalten
+  const ohneGruppe = Object.entries(kuehe).filter(([id,k])=>{
+    const list = String(k.gruppe||'').split(/\s*[,;\/]\s*/).filter(Boolean);
+    if(list.length > 0) return false;
+    if(window.gruppen) {
+      for(const g of Object.values(window.gruppen)) {
+        if(g && g.mitglieder && g.mitglieder[id]) return false;
+      }
+    }
+    return true;
+  }).sort((a,b)=>parseInt(a[1].nr)-parseInt(b[1].nr));
 
   return `
     <div class="page-header"><h2>🏷 Gruppen</h2><button class="btn-primary" onclick="showGruppeForm()">+ Gruppe</button></div>
@@ -2291,7 +2301,7 @@ function renderGruppen() {
     </p>
     <div class="card-list" style="margin-bottom:.8rem">
       ${gruppenListe.length ? gruppenListe.map(([id,g])=>{
-        const anzahl = Object.values(kuehe).filter(k=>k.gruppe===g.name).length;
+        const anzahl = Object.entries(kuehe).filter(([kid,k])=>kuhInGruppe(k, g.name, kid)).length;
         const isActive = aktiveGruppe===g.name;
         return `<div class="list-card ${isActive?'':''}" style="border-left:3px solid ${g.farbe||'#5ba85c'}${isActive?';border-color:'+g.farbe:''}" onclick="toggleGruppeEdit('${g.name}')">
           <div class="list-card-left">
@@ -2392,10 +2402,10 @@ function renderKontrolle() {
   const anwesend = zaehlSession?.anwesend || {};
   const gruppenListe = Object.entries(gruppen).sort((a,b)=>a[1].name?.localeCompare(b[1].name));
   
-  // Aktive Gruppe filtern
+  // Aktive Gruppe filtern (mit Multi-Membership-Support)
   const aktiveGruppe = window._kontrolleGruppe || '';
   const kuhListe = Object.entries(kuehe)
-    .filter(([,k]) => k.almStatus === 'oben' && (!aktiveGruppe || k.gruppe === aktiveGruppe))
+    .filter(([id,k]) => k.almStatus === 'oben' && kuhInGruppe(k, aktiveGruppe, id))
     .sort((a,b) => {
       const nA = parseInt(a[1].nr)||0, nB = parseInt(b[1].nr)||0;
       return nA - nB;
@@ -5947,8 +5957,22 @@ function renderBackup() {
 
     <div class="section-title">Vollständiges Backup</div>
     <div class="card-section" style="margin-bottom:.8rem">
-      <p style="font-size:.82rem;color:var(--text2);margin-bottom:.8rem">Alle Daten als JSON-Datei exportieren.</p>
-      <button class="btn-primary btn-block" onclick="exportJSON()">📥 Alle Daten als JSON exportieren</button>
+      <p style="font-size:.82rem;color:var(--text2);margin-bottom:.8rem">
+        Alle Daten als JSON-Datei sichern oder ein bestehendes Backup wiederherstellen.
+      </p>
+      <div style="display:flex;flex-direction:column;gap:.5rem">
+        <button class="btn-primary btn-block" onclick="exportJSON()">📥 Alle Daten als JSON exportieren</button>
+        <label style="cursor:pointer;display:block">
+          <span class="btn-secondary" style="display:block;text-align:center;padding:.6rem;border-radius:var(--radius-sm);cursor:pointer;border:2px dashed var(--orange);color:var(--orange);font-weight:600">
+            ♻ Backup wiederherstellen…
+          </span>
+          <input type="file" accept=".json" style="display:none" onchange="restoreBackup(this)" />
+        </label>
+      </div>
+      <div id="restore-status" style="margin-top:.5rem;font-size:.78rem;color:var(--text3)"></div>
+      <p style="font-size:.72rem;color:var(--text3);margin-top:.6rem;line-height:1.4">
+        ⚠ Wiederherstellung ersetzt alle aktuellen Daten. Vorher empfohlen: erst aktuelles Backup exportieren.
+      </p>
     </div>
     
     <div class="section-title">CSV Exporte</div>
