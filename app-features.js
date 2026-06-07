@@ -340,6 +340,129 @@ window.importSyncJSON = async function(input) {
 };
 
 // ══════════════════════════════════════════════════════════════
+//  BACKUP RESTORE (Vollständiges Backup-JSON wiederherstellen)
+// ══════════════════════════════════════════════════════════════
+window.restoreBackup = async function(input) {
+  const file = input.files[0];
+  if(!file) return;
+  const statusEl = document.getElementById('restore-status');
+  const setStatus = (msg, color) => {
+    if(statusEl) {
+      statusEl.innerHTML = msg;
+      statusEl.style.color = color || 'var(--text3)';
+    }
+  };
+
+  try {
+    setStatus('⏳ Datei wird gelesen...');
+    const text = await file.text();
+    let data;
+    try {
+      data = JSON.parse(text);
+    } catch(e) {
+      setStatus('✗ Ungültige JSON-Datei', 'var(--red)');
+      alert('Datei kann nicht gelesen werden. Bitte eine gültige HerdenPro-Backup-JSON wählen.');
+      input.value = ''; return;
+    }
+
+    // Plausibilitätscheck: muss mindestens kuehe oder bauern enthalten
+    if(!data.kuehe && !data.bauern && !data.behandlungen) {
+      setStatus('✗ Backup-Struktur nicht erkannt', 'var(--red)');
+      alert('Diese Datei sieht nicht wie ein HerdenPro-Backup aus. Wenn du eine Sync-Datei wiederherstellen willst, nutze stattdessen Sync Import.');
+      input.value = ''; return;
+    }
+
+    // Kennzahlen zum Anzeigen vor der Bestätigung
+    const z = {
+      kuehe:        Object.keys(data.kuehe||{}).length,
+      bauern:       Object.keys(data.bauern||{}).length,
+      behandlungen: Object.keys(data.behandlungen||{}).length,
+      besamungen:   Object.keys(data.besamungen||{}).length,
+      milch:        Object.keys(data.milchEintraege||{}).length,
+      weideTage:    Object.keys(data.weideTage||{}).length,
+      gruppen:      Object.keys(data.gruppen||{}).length,
+      kontakte:     Object.keys(data.kontakte||{}).length,
+      journal:      Object.keys(data.journal||{}).length,
+    };
+    const exportDatum = data.exportDatum ? new Date(data.exportDatum).toLocaleString('de-AT') : 'unbekannt';
+
+    const bestaetigung = confirm(
+      '⚠ BACKUP WIEDERHERSTELLEN\n\n'+
+      'Backup vom: '+exportDatum+'\n\n'+
+      'Enthält:\n'+
+      '  • '+z.kuehe+' Kühe\n'+
+      '  • '+z.bauern+' Bauern\n'+
+      '  • '+z.behandlungen+' Behandlungen\n'+
+      '  • '+z.besamungen+' Besamungen\n'+
+      '  • '+z.milch+' Milcheinträge\n'+
+      '  • '+z.gruppen+' Gruppen\n'+
+      '  • '+z.kontakte+' Kontakte · '+z.journal+' Journaleinträge\n\n'+
+      'ACHTUNG: Alle AKTUELLEN Daten in der App werden ersetzt!\n'+
+      'Möchtest du wirklich fortfahren?'
+    );
+    if(!bestaetigung) {
+      setStatus('Abgebrochen.', 'var(--text3)');
+      input.value = '';
+      return;
+    }
+
+    // Zweite Sicherheitsabfrage bei vielen vorhandenen Daten
+    const aktuell = Object.keys(kuehe||{}).length + Object.keys(behandlungen||{}).length;
+    if(aktuell > 10) {
+      const sicher = confirm(
+        'LETZTE WARNUNG\n\n'+
+        'Du hast aktuell bereits '+aktuell+' Datensätze in der App.\n'+
+        'Diese werden vollständig durch das Backup ersetzt.\n\n'+
+        'Wirklich fortfahren? Diese Aktion kann nicht rückgängig gemacht werden.'
+      );
+      if(!sicher) { setStatus('Abgebrochen.', 'var(--text3)'); input.value=''; return; }
+    }
+
+    setStatus('⏳ Stelle Backup wieder her...');
+
+    // Pfade die wiederhergestellt werden
+    const map = {
+      'kuehe':        data.kuehe,
+      'behandlungen': data.behandlungen,
+      'besamungen':   data.besamungen,
+      'milch':        data.milchEintraege,
+      'weideTage':    data.weideTage,
+      'weiden':       data.weiden,
+      'bauern':       data.bauern,
+      'gruppen':      data.gruppen,
+      'saison':       data.saison,
+      'journal':      data.journal,
+      'kontakte':     data.kontakte,
+    };
+
+    let restored = 0;
+    for(const [pfad, payload] of Object.entries(map)) {
+      if(payload === undefined) continue;
+      // set ersetzt den Pfad komplett (auch mit null wird gelöscht)
+      await set(ref(db, pfad), payload || null);
+      restored++;
+    }
+
+    setStatus('✓ Backup wiederhergestellt: '+restored+' Bereiche', 'var(--green)');
+    alert('✓ Backup erfolgreich wiederhergestellt!\n\n'+
+          'Die App lädt sich gleich automatisch neu, damit alle Daten aktuell sind.');
+
+    // Letzten Backup-Zeitstempel zurücksetzen (sonst Banner sofort wieder da)
+    localStorage.setItem('letzteBackup', Date.now().toString());
+    localStorage.setItem('letzteBackupDatum', isoDate(new Date()));
+
+    // Reload nach kurzer Pause damit Firebase-Listener anziehen
+    setTimeout(()=>{ window.location.reload(); }, 1500);
+
+  } catch(e) {
+    setStatus('✗ Fehler: '+e.message, 'var(--red)');
+    alert('Fehler beim Wiederherstellen: '+e.message);
+    console.error(e);
+  }
+  input.value = '';
+};
+
+// ══════════════════════════════════════════════════════════════
 //  ROHDATEN EXCEL IMPORT
 // ══════════════════════════════════════════════════════════════
 window.importRohdatenExcel = async function(input) {
@@ -2253,9 +2376,25 @@ function renderWeide() {
           </select>
           <input id="wt-freitext" class="inp" placeholder="Weidename" style="display:none" />
           <label class="inp-label">Tiere auf dieser Weide</label>
-          <div style="display:flex;gap:.4rem;margin-bottom:.4rem"><button class="btn-xs" onclick="alleKueheWeide(true)">Alle</button><button class="btn-xs" onclick="alleKueheWeide(false)">Keine</button></div>
-          <div id="wt-kuehe" style="display:flex;flex-wrap:wrap;gap:.4rem;max-height:150px;overflow-y:auto;background:var(--bg);border-radius:8px;padding:.5rem">
-            ${kueheOben.map(([id,k])=>`<label class="kuh-select-chip"><input type="checkbox" class="kuh-cb" value="${id}" checked />#${k.nr} ${k.name||''}</label>`).join('')}
+          <!-- Gruppen-Filter für Tier-Auswahl -->
+          ${Object.keys(gruppen||{}).length ? `
+          <div style="display:flex;gap:.3rem;flex-wrap:wrap;margin-bottom:.4rem;padding:.2rem 0">
+            <button type="button" class="filter-chip active" data-wf="" onclick="setWeideFilter('',this)">Alle Tiere</button>
+            ${Object.values(gruppen).sort((a,b)=>a.name?.localeCompare(b.name)).map(g=>`
+              <button type="button" class="filter-chip" data-wf="${g.name}" onclick="setWeideFilter('${g.name}',this)">
+                <span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:${g.farbe||'#5ba85c'};margin-right:4px;vertical-align:middle"></span>${g.name}
+              </button>`).join('')}
+          </div>` : ''}
+          <div style="display:flex;gap:.4rem;margin-bottom:.4rem;flex-wrap:wrap">
+            <button class="btn-xs" onclick="alleKueheWeide(true)">✓ Sichtbare</button>
+            <button class="btn-xs" onclick="alleKueheWeide(false)">✕ Sichtbare</button>
+            <span id="wt-cb-count" style="font-size:.75rem;color:var(--text3);align-self:center;margin-left:auto"></span>
+          </div>
+          <div id="wt-kuehe" style="display:flex;flex-wrap:wrap;gap:.4rem;max-height:240px;overflow-y:auto;background:var(--bg);border-radius:8px;padding:.5rem">
+            ${kueheOben.map(([id,k])=>{
+              const gruppenList = String(k.gruppe||'').split(/\s*[,;\/]\s*/).filter(Boolean).join('|');
+              return `<label class="kuh-select-chip" data-kuh-id="${id}" data-gruppen="${gruppenList}"><input type="checkbox" class="kuh-cb" value="${id}" checked onchange="updateWeideCount()" />#${k.nr} ${k.name||''}</label>`;
+            }).join('')}
           </div>
           <textarea id="wt-notiz" class="inp" rows="2" placeholder="Notizen (Wetter, Zaunschäden…)"></textarea>
           <div class="form-actions">
@@ -4001,11 +4140,65 @@ window.saveWeide=async function(){const name=document.getElementById('w-name')?.
 
 window.deleteWeide=async id=>{if(confirm('Weide löschen?'))await remove(ref(db,'weiden/'+id));};
 
-window.showWeideTagForm=function(){const ov=document.getElementById('weidetag-overlay');if(!ov){navigate('weide');setTimeout(()=>showWeideTagForm(),150);return;}ov.style.display='flex';};
+window.showWeideTagForm=function(){
+  const ov=document.getElementById('weidetag-overlay');
+  if(!ov){navigate('weide');setTimeout(()=>showWeideTagForm(),150);return;}
+  ov.style.display='flex';
+  // Filter zurücksetzen + Counter
+  setTimeout(()=>{
+    const allChip = ov.querySelector('.filter-chip[data-wf=""]');
+    if(allChip) setWeideFilter('', allChip);
+    updateWeideCount();
+  }, 20);
+};
+
+// Gruppen-Filter im Weidetag-Erfassdialog
+window.setWeideFilter = function(gName, btn) {
+  const ov = document.getElementById('weidetag-overlay');
+  if(!ov) return;
+  // Chip-Highlight
+  ov.querySelectorAll('.filter-chip[data-wf]').forEach(c=>c.classList.remove('active'));
+  if(btn) btn.classList.add('active');
+  // Kuh-Chips ein/ausblenden
+  ov.querySelectorAll('.kuh-select-chip').forEach(chip=>{
+    if(!gName) { chip.style.display = ''; return; }
+    const gList = (chip.dataset.gruppen||'').split('|').filter(Boolean);
+    const kuhId = chip.dataset.kuhId;
+    // Fallback über gruppen.mitglieder
+    let inMit = false;
+    if(window.gruppen) {
+      for(const g of Object.values(window.gruppen)) {
+        if(g && g.name === gName && g.mitglieder && g.mitglieder[kuhId]) { inMit = true; break; }
+      }
+    }
+    chip.style.display = (gList.includes(gName) || inMit) ? '' : 'none';
+  });
+  updateWeideCount();
+};
+
+// Live-Counter „X von Y ausgewählt"
+window.updateWeideCount = function() {
+  const ov = document.getElementById('weidetag-overlay');
+  if(!ov) return;
+  const sichtbar = [...ov.querySelectorAll('.kuh-select-chip')].filter(c=>c.style.display!=='none');
+  const checked = sichtbar.filter(c=>c.querySelector('.kuh-cb')?.checked).length;
+  const cnt = document.getElementById('wt-cb-count');
+  if(cnt) cnt.textContent = checked + ' / ' + sichtbar.length + ' ausgewählt';
+};
 
 window.saveWeideTag=async function(){
-  const datum=document.getElementById('wt-datum')?.value;const wv=document.getElementById('wt-weide')?.value;
-  await push(ref(db,'weideTage'),{datum,weideId:wv!=='__text__'?wv:'',weideText:wv==='__text__'?(document.getElementById('wt-freitext')?.value.trim()||''):'',kuhIds:[...document.querySelectorAll('.kuh-cb:checked')].map(c=>c.value),notiz:document.getElementById('wt-notiz')?.value.trim(),createdAt:Date.now()});
+  const datum=document.getElementById('wt-datum')?.value;
+  const wv=document.getElementById('wt-weide')?.value;
+  // Alle gecheckten Tiere übernehmen, auch wenn ausgeblendet (User-Intention zählt)
+  const kuhIds = [...document.querySelectorAll('#weidetag-overlay .kuh-cb:checked')].map(c=>c.value);
+  await push(ref(db,'weideTage'),{
+    datum,
+    weideId: wv!=='__text__' ? wv : '',
+    weideText: wv==='__text__' ? (document.getElementById('wt-freitext')?.value.trim()||'') : '',
+    kuhIds,
+    notiz: document.getElementById('wt-notiz')?.value.trim(),
+    createdAt: Date.now()
+  });
   closeForm('weidetag-overlay');
 };
 
@@ -4015,7 +4208,15 @@ window.deleteWeideTag=async id=>{if(confirm('Eintrag löschen?'))await remove(re
 //  BESTANDSBUCH
 // ══════════════════════════════════════════════════════════════════════════════
 
-window.alleKueheWeide=an=>document.querySelectorAll('.kuh-cb').forEach(cb=>cb.checked=an);
+window.alleKueheWeide=function(an){
+  // Nur sichtbare Tiere (respektiert den Gruppen-Filter)
+  document.querySelectorAll('#weidetag-overlay .kuh-select-chip').forEach(chip=>{
+    if(chip.style.display === 'none') return;
+    const cb = chip.querySelector('.kuh-cb');
+    if(cb) cb.checked = an;
+  });
+  updateWeideCount && updateWeideCount();
+};
 
 window.exportMilchMolkerei=function(){
   const kuhIds=Object.keys(kuehe);
