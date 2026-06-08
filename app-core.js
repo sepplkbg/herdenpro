@@ -286,7 +286,7 @@ function initApp() {
   onValue(ref(db,'saison'),       s=>{ saisonInfo=s.val();         render(); });
   onValue(ref(db,'journal'),      s=>{ journal=s.val()||{};        render(); });
   onValue(ref(db,'kontakte'),     s=>{ kontakte=s.val()||{};       render(); });
-  onValue(ref(db,'gruppen'),       s=>{ gruppen=s.val()||{};        render(); });
+  onValue(ref(db,'gruppen'),       s=>{ gruppen=s.val()||{}; window.gruppen=gruppen; render(); });
   onValue(ref(db,'fotos'),         s=>{ fotos=s.val()||{};          render(); });
   onValue(ref(db,'chat'),           s=>{ chatNachrichten=s.val()||{}; renderChat(); });
   onValue(ref(db,'kraftfutter'),    s=>{ kraftfutter=s.val()||{};      render(); });
