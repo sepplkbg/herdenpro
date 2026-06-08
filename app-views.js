@@ -405,10 +405,18 @@ function renderHerde() {
           <input id="f-nr" class="inp" placeholder="z.B. 1" inputmode="numeric" />
           <label class="inp-label">Ohrmarkennummer (z.B. AT59 4700 432)</label>
           <input id="f-ohrmarke" class="inp" placeholder="AT59 4700 432" /><input id="f-name" class="inp" placeholder="Kuhname" /><select id="f-bauer" class="inp"><option value="">Bauer wählen</option>${bauernListe.map(([,b])=>`<option value="${b.name}">${b.name}</option>`).join('')}<option value="__neu__">+ Freitext</option></select><input id="f-bauer-text" class="inp" placeholder="Bauer (Freitext)" style="display:none" /><input id="f-rasse" class="inp" placeholder="Rasse" />
-          <select id="f-gruppe" class="inp">
-            <option value="">Gruppe (optional)</option>
-            ${Object.entries(gruppen).sort((a,b)=>a[1].name?.localeCompare(b[1].name)).map(([id,g])=>`<option value="${g.name}">${g.name}</option>`).join('')}
-          </select>
+          <label class="inp-label">Gruppen <span style="font-size:.7rem;color:var(--text3)">(mehrere möglich)</span></label>
+          <div id="f-gruppen-box" style="background:var(--bg);border:1.5px solid var(--border2);border-radius:var(--radius-sm);padding:.6rem;min-height:50px">
+            ${Object.entries(gruppen).length === 0
+              ? '<span style="font-size:.78rem;color:var(--text3)">Noch keine Gruppen angelegt. → Mehr → Gruppen</span>'
+              : '<div style="display:flex;flex-wrap:wrap;gap:.4rem">'+
+                  Object.entries(gruppen).sort((a,b)=>a[1].name?.localeCompare(b[1].name))
+                    .map(([id,g])=>`<label class="kuh-select-chip" style="border-left:3px solid ${g.farbe||'#5ba85c'}"><input type="checkbox" class="f-gruppe-cb" value="${(g.name||'').replace(/"/g,'&quot;')}" />${g.name}</label>`)
+                    .join('')+
+                '</div>'}
+          </div>
+          <!-- Versteckter Kompat-Wert (alte saveKuh-Logik liest f-gruppe via getElementById) -->
+          <input type="hidden" id="f-gruppe" />
           <label class="inp-label">Laktationsstatus</label>
           <select id="f-laktation" class="inp">
             <option value="melkend">🥛 Melkend</option>
@@ -1521,9 +1529,19 @@ window.showKuhForm=function(id=null){
     const bauOpt=[...bauerSel.options].find(o=>o.value===k.bauer);
     if(bauOpt)bauerSel.value=k.bauer;
     else if(k.bauer){bauerSel.value='__neu__';document.getElementById('f-bauer-text').style.display='';document.getElementById('f-bauer-text').value=k.bauer;}
-    // Set gruppe
-    const grpSel=document.getElementById('f-gruppe');
-    if(grpSel)[...grpSel.options].forEach(o=>{if(o.value===k.gruppe)o.selected=true;});
+    // Set gruppen (Multi-Select Checkboxen)
+    const gruppenListe = String(k.gruppe||'').split(/\s*[,;\/]\s*/).filter(Boolean);
+    // Zusätzlich aus gruppen.mitglieder ableiten (für ältere Daten)
+    if(window.gruppen) {
+      Object.values(window.gruppen).forEach(g => {
+        if(g && g.mitglieder && g.mitglieder[id] && !gruppenListe.includes(g.name)) {
+          gruppenListe.push(g.name);
+        }
+      });
+    }
+    document.querySelectorAll('#f-gruppen-box .f-gruppe-cb').forEach(cb => {
+      cb.checked = gruppenListe.includes(cb.value);
+    });
     // Set laktation
     const lakSel=document.getElementById('f-laktation');
     if(lakSel&&k.laktation)lakSel.value=k.laktation;
@@ -1539,22 +1557,62 @@ window.showKuhForm=function(id=null){
     const ohrm=document.getElementById('f-ohrmarke'); if(ohrm) ohrm.value='';
     const lak=document.getElementById('f-laktation'); if(lak) lak.value='melkend';
     const ntz=document.getElementById('f-notiz'); if(ntz) ntz.value='';
+    document.querySelectorAll('#f-gruppen-box .f-gruppe-cb').forEach(cb => cb.checked = false);
     document.getElementById('kuh-form-title').textContent='Kuh erfassen';
   }
   ov.style.display='flex';
   document.getElementById('f-bauer').onchange=function(){document.getElementById('f-bauer-text').style.display=this.value==='__neu__'?'':'none';};
 };
-window.saveKuh=async function(){const nr=document.getElementById('f-nr')?.value.trim();if(!nr){alert('Nr Pflicht');return;}const bs=document.getElementById('f-bauer')?.value;const bauer=bs==='__neu__'?(document.getElementById('f-bauer-text')?.value.trim()||''):bs;const data={
+window.saveKuh=async function(){
+  const nr=document.getElementById('f-nr')?.value.trim();
+  if(!nr){alert('Nr Pflicht');return;}
+  const bs=document.getElementById('f-bauer')?.value;
+  const bauer=bs==='__neu__'?(document.getElementById('f-bauer-text')?.value.trim()||''):bs;
+  // Multi-Gruppen aus den Checkboxen einsammeln
+  const ausgewaehlteGruppen = [...document.querySelectorAll('#f-gruppen-box .f-gruppe-cb:checked')].map(cb=>cb.value);
+  const gruppeString = ausgewaehlteGruppen.join(', ');
+  // verstecktes Kompat-Feld setzen (falls noch wo gelesen)
+  const hidden = document.getElementById('f-gruppe'); if(hidden) hidden.value = gruppeString;
+  const data={
     nr,
     ohrmarke:   document.getElementById('f-ohrmarke')?.value.trim()||'',
     name:       document.getElementById('f-name')?.value.trim(),
     bauer,
     rasse:      document.getElementById('f-rasse')?.value.trim(),
-    gruppe:     document.getElementById('f-gruppe')?.value||'',
+    gruppe:     gruppeString,
     laktation:  document.getElementById('f-laktation')?.value||'',
     notiz:      document.getElementById('f-notiz')?.value.trim()||'',
     updatedAt:  Date.now()
-  };if(editId)await update(ref(db,'kuehe/'+editId),data);else{data.createdAt=Date.now();data.almStatus='unten';await push(ref(db,'kuehe'),data);}closeForm('kuh-form-overlay');};
+  };
+  let savedKuhId = editId;
+  if(editId) {
+    await update(ref(db,'kuehe/'+editId), data);
+  } else {
+    data.createdAt = Date.now();
+    data.almStatus = 'unten';
+    const r = await push(ref(db,'kuehe'), data);
+    savedKuhId = r.key;
+  }
+  // ── Gruppen-Mitgliedschaften synchronisieren ─────────────────────────
+  // Für jede aktuell ausgewählte Gruppe: kuhId in mitglieder eintragen
+  // Für alle übrigen Gruppen: kuhId aus mitglieder entfernen
+  if(savedKuhId && window.gruppen) {
+    for(const [gid, g] of Object.entries(window.gruppen)) {
+      if(!g || !g.name) continue;
+      const mitglieder = {...(g.mitglieder||{})};
+      const drinSein = ausgewaehlteGruppen.includes(g.name);
+      const aktuellDrin = !!mitglieder[savedKuhId];
+      if(drinSein && !aktuellDrin) {
+        mitglieder[savedKuhId] = true;
+        await update(ref(db,'gruppen/'+gid), {mitglieder});
+      } else if(!drinSein && aktuellDrin) {
+        delete mitglieder[savedKuhId];
+        await update(ref(db,'gruppen/'+gid), {mitglieder});
+      }
+    }
+  }
+  closeForm('kuh-form-overlay');
+};
 window.deleteKuh=async function(id){if(confirm('Kuh löschen?'))await remove(ref(db,'kuehe/'+id));navigate('herde');};
 window.showKuhDetail=function(id){editId=id;currentView='kuh-detail';render();};
 window.filterKuehe=q=>document.querySelectorAll('#kuh-list .list-card').forEach(c=>c.style.display=c.textContent.toLowerCase().includes(q.toLowerCase())?'':'none');
