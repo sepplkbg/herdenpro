@@ -1007,6 +1007,7 @@ window.showMilchDetail = function(id, e) {
 
   const actions = groupInfo
     ? '<button class="btn-secondary" style="flex:1" onclick="closePopup()">Schließen</button>' +
+      '<button class="btn-primary" onclick="closePopup();editMilchEintrag(\''+id+'\')">✎ Bearbeiten</button>' +
       '<button class="btn-xs-danger" onclick="closePopup();deleteMilchGruppe(\''+id+'\')">Alle löschen</button>'
     : '<button class="btn-secondary" style="flex:1" onclick="closePopup()">Schließen</button>' +
       '<button class="btn-primary" onclick="closePopup();editMilchEintrag(window._milchDetailId)">✎ Bearbeiten</button>' +
@@ -1579,14 +1580,29 @@ window.parseFloat = function(v) {
 };
 
 window.editMilchEintrag = function(id) {
-  const e = milchEintraege[id];
-  if(!e) return;
-  
+  // Gruppen-ID? Dann gemergte Daten aus _milchGruppen holen, speichern später
+  // löscht alle underlying Einträge und schreibt einen neuen aggregierten.
+  let e, isGroup = false;
+  if(typeof id === 'string' && id.startsWith('group:')) {
+    const key = id.slice(6);
+    const g = window._milchGruppen && window._milchGruppen[key];
+    if(!g) return;
+    isGroup = true;
+    e = {
+      datum: g.datum, zeit: g.zeit, art: 'prokuh',
+      gesamt: g.gesamt, prokuh: g.prokuh,
+      molkerei: g.molkerei, notiz: g.notizen.join(' · ')
+    };
+  } else {
+    e = milchEintraege[id];
+    if(!e) return;
+  }
+
   // Open milch form pre-filled
   const ov = document.getElementById('milch-form-overlay');
   if(!ov) return;
-  
-  // Set edit ID
+
+  // Set edit ID (für Gruppen wird der "group:xxx"-Marker gespeichert)
   let eid = document.getElementById('m-edit-id');
   if(!eid) {
     eid = document.createElement('input');
@@ -1627,16 +1643,21 @@ window.editMilchEintrag = function(id) {
     Object.entries(e.prokuh).forEach(([kuhId, liter]) => {
       const inp = document.querySelector(`.kuh-liter[data-id="${kuhId}"]`);
       if(inp) {
-        inp.value = liter;
+        // Auf 1 Nachkommastelle runden (Float-Addition aus Aggregation)
+        inp.value = Math.round((parseFloat(liter)||0) * 10) / 10;
         onMilchInput(inp);
       }
     });
   }
-  
-  // Update title
+
+  // Update title (mit Gruppen-Hinweis falls aggregiert)
   const titleEl = document.getElementById('m-form-title');
-  if(titleEl) titleEl.textContent = '✎ Milcheintrag bearbeiten';
-  
+  if(titleEl) {
+    titleEl.textContent = isGroup
+      ? '✎ Milcheintrag bearbeiten (zusammengeführt)'
+      : '✎ Milcheintrag bearbeiten';
+  }
+
   ov.style.display = 'flex';
 };
 
@@ -1664,7 +1685,25 @@ window.saveMilch = async function() {
   const datumTs = new Date(datum + 'T12:00').getTime();
 
   const editMilchId = document.getElementById('m-edit-id')?.value;
-  if(editMilchId) {
+  if(editMilchId && editMilchId.startsWith('group:')) {
+    // Gruppen-Edit: alle unterliegenden Einträge löschen, einen neuen aggregierten schreiben
+    const key = editMilchId.slice(6);
+    const g = window._milchGruppen && window._milchGruppen[key];
+    if(g && Array.isArray(g.ids)) {
+      for(const oldId of g.ids) {
+        try { await remove(ref(db, 'milch/' + oldId)); } catch(x) { console.error(x); }
+      }
+    }
+    await push(ref(db, 'milch'), {
+      datum: datumTs, art: modus, zeit, gesamt,
+      prokuh: modus==='prokuh' ? prokuh : null,
+      molkerei, notiz,
+      createdAt: Date.now(),
+      quelle: 'merged_edit'
+    });
+    const eid = document.getElementById('m-edit-id'); if(eid) eid.value='';
+    const titleEl = document.getElementById('m-form-title'); if(titleEl) titleEl.textContent='🥛 Milch erfassen';
+  } else if(editMilchId) {
     await update(ref(db, 'milch/' + editMilchId), {
       datum: datumTs, art: modus, zeit, gesamt,
       prokuh: modus==='prokuh' ? prokuh : null, molkerei, notiz, updatedAt: Date.now()
@@ -4315,16 +4354,60 @@ window.alleKueheWeide=function(an){
   updateWeideCount && updateWeideCount();
 };
 
+// Hilfsfunktion: Zahl mit Komma als Dezimaltrennzeichen formatieren (DE-Locale).
+// Punkt-Werte werden in Excel-DE sonst als Datum interpretiert (8.3 \u2192 8. M\u00e4rz).
+function _csvNum(v) {
+  if(v === '' || v == null) return '';
+  const n = parseFloat(v);
+  if(isNaN(n)) return '';
+  return String(n).replace('.', ',');
+}
+// CSV-sicher: Komma \u2192 wird Quotes brauchen damit der Wert nicht als Separator z\u00e4hlt
+function _csvCell(v) {
+  const s = String(v == null ? '' : v);
+  // Wenn Zelle Semikolon, Anf\u00fchrungszeichen oder Zeilenumbruch enth\u00e4lt \u2192 quoten
+  if(/[";\n\r]/.test(s)) return '"' + s.replace(/"/g, '""') + '"';
+  return s;
+}
+
 window.exportMilchMolkerei=function(){
+  // Auf Datum+Zeit aggregierte Gruppen exportieren (mehrere Melker \u2192 1 Zeile)
+  const grupiertMap = new Map();
+  Object.values(milchEintraege).forEach(e => {
+    if(!e.datum) return;
+    const tagKey = new Date(e.datum).toISOString().slice(0,10);
+    const key = tagKey + '_' + (e.zeit || 'morgen');
+    if(!grupiertMap.has(key)) {
+      grupiertMap.set(key, {
+        datum: e.datum, zeit: e.zeit || 'morgen',
+        gesamt: 0, prokuh: {}, molkerei: false, notizen: []
+      });
+    }
+    const g = grupiertMap.get(key);
+    g.gesamt += (e.gesamt || 0);
+    g.molkerei = g.molkerei || !!e.molkerei;
+    if(e.notiz) g.notizen.push(e.notiz);
+    if(e.prokuh) {
+      Object.entries(e.prokuh).forEach(([kuhId, l]) => {
+        g.prokuh[kuhId] = (g.prokuh[kuhId] || 0) + (parseFloat(l) || 0);
+      });
+    }
+  });
+
   const kuhIds=Object.keys(kuehe);
   const sortedKuehe=kuhIds.sort((a,b)=>(parseInt(kuehe[a]?.nr)||0)-(parseInt(kuehe[b]?.nr)||0));
-  const kuhHeader=sortedKuehe.map(id=>'#'+kuehe[id]?.nr+' '+(kuehe[id]?.name||'')).join(';');
+  const kuhHeader=sortedKuehe.map(id=>_csvCell('#'+kuehe[id]?.nr+' '+(kuehe[id]?.name||''))).join(';');
   let csv='Datum;Zeit;An Molkerei;'+kuhHeader+';Gesamt;Notiz\n';
-  Object.values(milchEintraege).sort((a,b)=>a.datum-b.datum).forEach(e=>{
-    const datum=new Date(e.datum).toLocaleDateString('de-AT');
-    const zeit=e.zeit==='abend'?'Abends':'Morgens';
-    const kuhWerte=sortedKuehe.map(id=>e.prokuh&&e.prokuh[id]?e.prokuh[id]:'').join(';');
-    csv+=[datum,zeit,e.molkerei?'Ja':'Nein',kuhWerte,e.gesamt||'',e.notiz||''].join(';')+'\n';
+  [...grupiertMap.values()].sort((a,b)=>a.datum-b.datum).forEach(g=>{
+    const datum=new Date(g.datum).toLocaleDateString('de-AT');
+    const zeit=g.zeit==='abend'?'Abends':'Morgens';
+    const kuhWerte=sortedKuehe.map(id=>{
+      const v = g.prokuh && g.prokuh[id];
+      return v ? _csvNum(Math.round(v*10)/10) : '';
+    }).join(';');
+    const gesamtVal = _csvNum(Math.round(g.gesamt*10)/10);
+    const notiz = _csvCell(g.notizen.join(' \u00b7 '));
+    csv+=[datum,zeit,g.molkerei?'Ja':'Nein',kuhWerte,gesamtVal,notiz].join(';')+'\n';
   });
   const a=document.createElement('a');
   a.href=URL.createObjectURL(new Blob(['\ufeff'+csv],{type:'text/csv;charset=utf-8'}));
