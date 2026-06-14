@@ -340,6 +340,170 @@ window.importSyncJSON = async function(input) {
 };
 
 // ══════════════════════════════════════════════════════════════
+//  MILCH CSV RE-IMPORT (Notfall: Daten aus früherem CSV-Export zurückspielen)
+// ══════════════════════════════════════════════════════════════
+window.importMilchCSV = async function(input) {
+  const file = input.files[0];
+  if(!file) return;
+  const statusEl = document.getElementById('milchcsv-status');
+  const setStatus = (msg, color) => {
+    if(statusEl) { statusEl.innerHTML = msg; statusEl.style.color = color || 'var(--text3)'; }
+  };
+
+  setStatus('⏳ CSV wird gelesen...');
+  try {
+    const text = await file.text();
+    // BOM entfernen
+    const clean = text.replace(/^﻿/, '');
+    // Zeilen splitten (CR/LF tolerant)
+    const lines = clean.split(/\r?\n/).filter(l => l.trim());
+    if(lines.length < 2) {
+      setStatus('✗ CSV leer oder ungültig', 'var(--red)');
+      alert('CSV enthält keine Datenzeilen.'); input.value=''; return;
+    }
+
+    // Auto-detect Trennzeichen: ; oder ,
+    const sep = lines[0].includes(';') ? ';' : ',';
+    const split = s => {
+      // Simple CSV split: berücksichtigt Quotes
+      const out = []; let cur = ''; let inQuote = false;
+      for(let i = 0; i < s.length; i++) {
+        const c = s[i];
+        if(c === '"') { inQuote = !inQuote; continue; }
+        if(c === sep && !inQuote) { out.push(cur); cur = ''; continue; }
+        cur += c;
+      }
+      out.push(cur);
+      return out;
+    };
+
+    const header = split(lines[0]).map(h => h.trim());
+    // Spalten-Indices
+    const colDatum    = header.findIndex(h => /^datum$/i.test(h));
+    const colZeit     = header.findIndex(h => /^zeit$/i.test(h));
+    const colMolkerei = header.findIndex(h => /molkerei/i.test(h));
+    const colGesamt   = header.findIndex(h => /^gesamt$/i.test(h));
+    const colNotiz    = header.findIndex(h => /^notiz$/i.test(h));
+
+    if(colDatum < 0) { setStatus('✗ Datum-Spalte fehlt', 'var(--red)'); alert('Spalte "Datum" nicht gefunden.'); input.value=''; return; }
+
+    // Kuh-Spalten: jedes Header das mit "#" beginnt
+    // Format: "#42 Bella" → Nr 42, Name "Bella"
+    const kuhCols = [];
+    header.forEach((h, idx) => {
+      const m = String(h).trim().match(/^#\s*(\d+)\s*(.*)$/);
+      if(m) {
+        kuhCols.push({ idx, nr: m[1].trim(), name: (m[2]||'').trim() });
+      }
+    });
+
+    if(kuhCols.length === 0) {
+      setStatus('✗ Keine Kuh-Spalten im Header (z.B. "#1 Gretl")', 'var(--red)');
+      alert('Konnte keine Kuh-Spalten erkennen. Erwartet werden Spalten wie "#1 Gretl", "#2 Tabea" etc.');
+      input.value=''; return;
+    }
+
+    // Aktuelle Kühe per Nr indexieren
+    const kuhByNr = {};
+    Object.entries(kuehe||{}).forEach(([id, k]) => {
+      if(k && k.nr != null) kuhByNr[String(k.nr).trim()] = id;
+    });
+
+    // Helper: "8,3" oder "8.3" → 8.3 (Number)
+    const parseNum = s => {
+      if(s == null) return 0;
+      const t = String(s).trim().replace(',', '.').replace(/[^\d.\-]/g, '');
+      if(!t) return 0;
+      const n = parseFloat(t);
+      return isNaN(n) ? 0 : n;
+    };
+
+    // Helper: "14.6.2026" oder "14.06.2026" oder "2026-06-14" → ms Timestamp
+    const parseDatum = s => {
+      if(!s) return null;
+      const t = String(s).trim();
+      // DD.MM.YYYY
+      let m = t.match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})$/);
+      if(m) return new Date(parseInt(m[3]), parseInt(m[2])-1, parseInt(m[1]), 12, 0, 0).getTime();
+      // YYYY-MM-DD
+      m = t.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+      if(m) return new Date(parseInt(m[1]), parseInt(m[2])-1, parseInt(m[3]), 12, 0, 0).getTime();
+      // Fallback
+      const d = new Date(t);
+      return isNaN(d.getTime()) ? null : d.getTime();
+    };
+
+    let imported = 0, skipped = 0;
+    const unbekannteKuehe = [];   // Nr-Liste für Warnung
+    const erkannteKuehe = new Set();
+
+    for(let li = 1; li < lines.length; li++) {
+      const row = split(lines[li]);
+      if(!row[colDatum] || !row[colDatum].trim()) { skipped++; continue; }
+      const datumTs = parseDatum(row[colDatum]);
+      if(!datumTs) { skipped++; continue; }
+      const zeitRaw = (colZeit >= 0 ? row[colZeit] : '').toLowerCase();
+      const zeit = zeitRaw.includes('abend') ? 'abend' : 'morgen';
+      const molkerei = colMolkerei >= 0 ? /ja|yes|true|1/i.test(row[colMolkerei]||'') : false;
+      const notiz    = colNotiz >= 0 ? (row[colNotiz]||'').trim() : '';
+
+      // Werte pro Kuh sammeln
+      const prokuh = {};
+      let gesamt = 0;
+      for(const kc of kuhCols) {
+        const wert = parseNum(row[kc.idx]);
+        if(wert > 0) {
+          const kuhId = kuhByNr[kc.nr];
+          if(kuhId) {
+            prokuh[kuhId] = wert;
+            gesamt += wert;
+            erkannteKuehe.add(kc.nr);
+          } else {
+            if(!unbekannteKuehe.includes(kc.nr)) unbekannteKuehe.push(kc.nr);
+          }
+        }
+      }
+
+      // Wenn keine Pro-Kuh-Werte: vielleicht nur Gesamt
+      let art = 'prokuh';
+      if(Object.keys(prokuh).length === 0) {
+        if(colGesamt >= 0) {
+          gesamt = parseNum(row[colGesamt]);
+          if(gesamt > 0) art = 'gesamt';
+          else { skipped++; continue; }
+        } else { skipped++; continue; }
+      }
+
+      await push(ref(db, 'milch'), {
+        datum: datumTs, art, zeit, gesamt: Math.round(gesamt*10)/10,
+        prokuh: art === 'prokuh' ? prokuh : null,
+        molkerei, notiz,
+        createdAt: Date.now(),
+        quelle: 'csv_reimport'
+      });
+      imported++;
+    }
+
+    const warnText = unbekannteKuehe.length
+      ? '\n\nNicht zugeordnete Kuh-Nummern: ' + unbekannteKuehe.slice(0,20).join(', ') +
+        (unbekannteKuehe.length > 20 ? '… ('+unbekannteKuehe.length+' insg.)' : '') +
+        '\n(Diese Kühe gibt es nicht in der App – Werte wurden übersprungen.)'
+      : '';
+
+    setStatus('✓ '+imported+' Einträge importiert · '+skipped+' übersprungen', 'var(--green)');
+    alert('✓ Milch-CSV importiert!\n\n' +
+          imported + ' Einträge gespeichert\n' +
+          skipped + ' Zeilen übersprungen' +
+          warnText);
+  } catch(e) {
+    setStatus('✗ Fehler: '+e.message, 'var(--red)');
+    alert('Fehler beim Import: '+e.message);
+    console.error(e);
+  }
+  input.value = '';
+};
+
+// ══════════════════════════════════════════════════════════════
 //  BACKUP RESTORE (Vollständiges Backup-JSON wiederherstellen)
 // ══════════════════════════════════════════════════════════════
 window.restoreBackup = async function(input) {
