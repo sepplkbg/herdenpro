@@ -950,8 +950,21 @@ function parseExcelDatum(val) {
 }
 
 window.showMilchDetail = function(id, e) {
-  if(!e) { e = milchEintraege[id]; if(!e) return; }
-  if(typeof e === 'string') { try { e = JSON.parse(e); } catch(x) { e = milchEintraege[id]; if(!e) return; } }
+  // Gruppen-ID? (mehrere Einträge derselben Schicht)
+  let groupInfo = null;
+  if(typeof id === 'string' && id.startsWith('group:')) {
+    const key = id.slice(6);
+    groupInfo = window._milchGruppen && window._milchGruppen[key];
+    if(!groupInfo) return;
+    e = {
+      datum: groupInfo.datum, zeit: groupInfo.zeit, art: 'prokuh',
+      gesamt: groupInfo.gesamt, prokuh: groupInfo.prokuh,
+      molkerei: groupInfo.molkerei, notiz: groupInfo.notizen.join(' · ')
+    };
+  } else {
+    if(!e) { e = milchEintraege[id]; if(!e) return; }
+    if(typeof e === 'string') { try { e = JSON.parse(e); } catch(x) { e = milchEintraege[id]; if(!e) return; } }
+  }
   const datum = new Date(e.datum).toLocaleDateString('de-AT', {weekday:'short',day:'numeric',month:'short',year:'numeric'});
   const zeit = e.zeit === 'abend' ? '🌇 Abends' : '🌅 Morgens';
   
@@ -983,19 +996,48 @@ window.showMilchDetail = function(id, e) {
   }
   
   window._milchDetailId = id;
+  // Bei Gruppen: Hinweis auf mehrere Melker, kein „Bearbeiten" (mehrere Einträge),
+  // sondern „Alle Einträge löschen" mit Sicherheitsabfrage.
+  const headerInfo = groupInfo
+    ? '<div style="font-size:.78rem;color:var(--text3)">' + zeit +
+        (groupInfo.molkerei ? ' · an Molkerei' : '') +
+        (groupInfo.anzahlMelker > 1 ? ' · 👥 '+groupInfo.anzahlMelker+' Melker zusammengeführt' : '') +
+      '</div>'
+    : '<div style="font-size:.78rem;color:var(--text3)">' + zeit + (e.molkerei ? ' · an Molkerei' : '') + '</div>';
+
+  const actions = groupInfo
+    ? '<button class="btn-secondary" style="flex:1" onclick="closePopup()">Schließen</button>' +
+      '<button class="btn-xs-danger" onclick="closePopup();deleteMilchGruppe(\''+id+'\')">Alle löschen</button>'
+    : '<button class="btn-secondary" style="flex:1" onclick="closePopup()">Schließen</button>' +
+      '<button class="btn-primary" onclick="closePopup();editMilchEintrag(window._milchDetailId)">✎ Bearbeiten</button>' +
+      '<button class="btn-xs-danger" onclick="closePopup();window.deleteMilch(window._milchDetailId)">Löschen</button>';
+
   showPopupHTML(
     '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:.5rem">' +
-    '<div><div style="font-weight:bold;font-size:1rem">' + datum + '</div>' +
-    '<div style="font-size:.78rem;color:var(--text3)">' + zeit + (e.molkerei ? ' · an Molkerei' : '') + '</div></div>' +
+    '<div><div style="font-weight:bold;font-size:1rem">' + datum + '</div>' + headerInfo + '</div>' +
     '<div style="font-size:1.4rem;color:var(--gold);font-weight:bold">' + Math.round(e.gesamt*10)/10 + ' L</div>' +
     '</div>' +
     kuhZeilen +
-    '<div style="margin-top:1rem;display:flex;gap:.5rem">' +
-    '<button class="btn-secondary" style="flex:1" onclick="closePopup()">Schließen</button>' +
-    '<button class="btn-primary" onclick="closePopup();editMilchEintrag(window._milchDetailId)">✎ Bearbeiten</button>' +
-    '<button class="btn-xs-danger" onclick="closePopup();window.deleteMilch(window._milchDetailId)">Löschen</button>' +
-    '</div>'
+    '<div style="margin-top:1rem;display:flex;gap:.5rem">' + actions + '</div>'
   );
+};
+
+// Alle Einträge einer Gruppe (Datum+Zeit) löschen
+window.deleteMilchGruppe = async function(groupId) {
+  if(typeof groupId !== 'string' || !groupId.startsWith('group:')) {
+    return window.deleteMilch(groupId);
+  }
+  const key = groupId.slice(6);
+  const g = window._milchGruppen && window._milchGruppen[key];
+  if(!g) return;
+  const txt = g.anzahlMelker > 1
+    ? 'Wirklich ALLE '+g.anzahlMelker+' Einträge für '+new Date(g.datum).toLocaleDateString('de-AT')+' ('+(g.zeit==='abend'?'abends':'morgens')+') löschen?'
+    : 'Eintrag wirklich löschen?';
+  if(!confirm(txt)) return;
+  for(const id of g.ids) {
+    try { await remove(ref(db, 'milch/'+id)); } catch(e) { console.error(e); }
+  }
+  window.showSaveToast && showSaveToast(g.ids.length+' Einträge gelöscht');
 };
 
 // ══════════════════════════════════════════════════════════════
@@ -1854,19 +1896,66 @@ window.addEventListener('load', () => {
 });
 function renderMilch() {
   const eintraege=Object.entries(milchEintraege).sort((a,b)=>b[1].datum-a[1].datum);
-  const letzten14=eintraege.slice(0,14);
-  const gesamtL14=letzten14.reduce((s,[,e])=>s+(e.gesamt||0),0);
-  const gesamtAll=eintraege.reduce((s,[,e])=>s+(e.gesamt||0),0);
-  const proMonat={};
-  eintraege.forEach(([,e])=>{if(!e.datum)return;const m=new Date(e.datum).toLocaleDateString('de-AT',{month:'short',year:'numeric'});proMonat[m]=(proMonat[m]||0)+(e.gesamt||0);});
-  const kueheOben=Object.entries(kuehe).sort((a,b)=>{const nA=parseInt(a[1].nr)||0,nB=parseInt(b[1].nr)||0;return nA-nB;});
 
-  // Saison-Chart Daten: Tagessummen chronologisch
-  const tagesMilch={};
-  [...eintraege].reverse().forEach(([,e])=>{
+  // ── Einträge nach Datum+Zeit gruppieren (mehrere Melker → 1 Anzeige-Zeile) ──
+  // Gruppen-Key: YYYY-MM-DD_zeit (z.B. "2026-06-08_morgen")
+  // Pro Gruppe werden alle prokuh-Maps verschmolzen und die Gesamtmenge summiert.
+  const grupiertMap = new Map();
+  eintraege.forEach(([id, e]) => {
     if(!e.datum) return;
-    const tag=new Date(e.datum).toISOString().slice(0,10);
-    tagesMilch[tag]=(tagesMilch[tag]||0)+(e.gesamt||0);
+    const tagKey = new Date(e.datum).toISOString().slice(0,10);
+    const key = tagKey + '_' + (e.zeit || 'morgen');
+    if(!grupiertMap.has(key)) {
+      grupiertMap.set(key, {
+        groupKey: key,
+        datum: e.datum,        // wir nehmen das früheste/letzte beibehaltene Datum (sort kommt später)
+        zeit: e.zeit || 'morgen',
+        art: e.art || 'prokuh',
+        gesamt: 0,
+        prokuh: {},
+        anzahlMelker: 0,
+        molkerei: false,
+        notizen: [],
+        ids: []
+      });
+    }
+    const g = grupiertMap.get(key);
+    g.gesamt += (e.gesamt || 0);
+    g.anzahlMelker++;
+    g.ids.push(id);
+    g.molkerei = g.molkerei || !!e.molkerei;
+    if(e.notiz) g.notizen.push(e.notiz);
+    if(e.prokuh) {
+      Object.entries(e.prokuh).forEach(([kuhId, l]) => {
+        g.prokuh[kuhId] = (g.prokuh[kuhId] || 0) + (parseFloat(l) || 0);
+      });
+    }
+    if(e.art === 'gesamt' && !e.prokuh) g.hatGesamtOnly = true;
+  });
+  const grupiert = [...grupiertMap.values()].sort((a,b) => b.datum - a.datum);
+
+  // Für showMilchDetail zugänglich machen
+  window._milchGruppen = {};
+  grupiert.forEach(g => { window._milchGruppen[g.groupKey] = g; });
+
+  const letzten14 = grupiert.slice(0, 14);
+  const gesamtL14 = letzten14.reduce((s, g) => s + (g.gesamt || 0), 0);
+  const gesamtAll = grupiert.reduce((s, g) => s + (g.gesamt || 0), 0);
+  const proMonat = {};
+  grupiert.forEach(g => {
+    const m = new Date(g.datum).toLocaleDateString('de-AT', {month:'short', year:'numeric'});
+    proMonat[m] = (proMonat[m] || 0) + (g.gesamt || 0);
+  });
+  const kueheOben = Object.entries(kuehe).sort((a,b) => {
+    const nA = parseInt(a[1].nr)||0, nB = parseInt(b[1].nr)||0; return nA - nB;
+  });
+
+  // Saison-Chart Daten: Tagessummen chronologisch (aus grupiert, summiert pro Tag)
+  const tagesMilch={};
+  grupiert.forEach(g=>{
+    if(!g.datum) return;
+    const tag=new Date(g.datum).toISOString().slice(0,10);
+    tagesMilch[tag]=(tagesMilch[tag]||0)+(g.gesamt||0);
   });
   const chartTage=Object.entries(tagesMilch).sort((a,b)=>a[0].localeCompare(b[0]));
 
@@ -1908,17 +1997,25 @@ function renderMilch() {
 
     <div class="section-title">Einträge <span style="color:var(--text3);font-size:.72rem;font-weight:400">· antippen für Details</span></div>
     <div class="card-list">
-      ${eintraege.length ? eintraege.slice(0,50).map(([id,e])=>`
-        <div class="list-card" onclick="showMilchDetail('${id}')" style="cursor:pointer;transition:background .15s" onpointerdown="this.style.background='rgba(212,168,75,.06)'" onpointerup="this.style.background=''" onpointerleave="this.style.background=''">
+      ${grupiert.length ? grupiert.slice(0,50).map(g=>{
+        const kuhCount = Object.keys(g.prokuh).length;
+        const subText = (g.art==='gesamt' && kuhCount===0 ? 'Gesamtmenge' : 'Pro Kuh') +
+          ' · ' + (g.zeit==='abend' ? '🌇 Abends' : '🌅 Morgens') +
+          (g.molkerei ? ' · 🏭 Molkerei' : '') +
+          (kuhCount ? ' · '+kuhCount+' Kühe' : '') +
+          (g.anzahlMelker > 1 ? ' · 👥 '+g.anzahlMelker+' Melker' : '');
+        return `
+        <div class="list-card" onclick="showMilchDetail('group:${g.groupKey}')" style="cursor:pointer;transition:background .15s" onpointerdown="this.style.background='rgba(212,168,75,.06)'" onpointerup="this.style.background=''" onpointerleave="this.style.background=''">
           <div class="list-card-left"><div>
-            <div class="list-card-title">${new Date(e.datum).toLocaleDateString('de-AT',{weekday:'short',day:'numeric',month:'short'})}</div>
-            <div class="list-card-sub">${e.art==='gesamt'?'Gesamtmenge':'Pro Kuh'} · ${e.zeit==='abend'?'🌇 Abends':'🌅 Morgens'}${e.molkerei?' · 🏭 Molkerei':''}${e.prokuh?' · '+Object.keys(e.prokuh).length+' Kühe':''}</div>
+            <div class="list-card-title">${new Date(g.datum).toLocaleDateString('de-AT',{weekday:'short',day:'numeric',month:'short'})}</div>
+            <div class="list-card-sub">${subText}</div>
           </div></div>
           <div class="list-card-right">
-            <span style="font-size:1.1rem;color:var(--gold);font-weight:bold">${e.gesamt} L</span>
-            <button class="btn-xs-danger" onclick="event.stopPropagation();deleteMilch('${id}')">✕</button>
+            <span style="font-size:1.1rem;color:var(--gold);font-weight:bold">${Math.round(g.gesamt*10)/10} L</span>
+            <button class="btn-xs-danger" onclick="event.stopPropagation();deleteMilchGruppe('group:${g.groupKey}')">✕</button>
           </div>
-        </div>`).join('') : `<div class="empty-state">Noch keine Einträge</div>`}
+        </div>`;
+      }).join('') : `<div class="empty-state">Noch keine Einträge</div>`}
     </div>
     <div id="milch-form-overlay" class="form-overlay" style="display:none">
       <div class="form-sheet" style="max-height:calc(100vh - var(--topbar-h,56px) - var(--nav-h,60px));overflow-y:auto">
