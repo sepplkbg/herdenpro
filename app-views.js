@@ -6137,10 +6137,29 @@ window.exportBehandlungenCSV = function() {
 };
 
 window.exportMilchCSV = function() {
-  const rows = Object.values(milchEintraege).sort((a,b)=>a.datum-b.datum).map(e=>[new Date(e.datum).toLocaleDateString('de-AT'),e.zeit==='abend'?'Abends':'Morgens',e.art==='gesamt'?'Gesamt':'Pro Kuh',e.gesamt,e.molkerei?'Ja':'Nein',e.notiz||'']);
+  // Zahlen mit Komma exportieren (Excel-DE interpretiert "8.3" sonst als 8. März)
+  const num = v => {
+    if(v === '' || v == null) return '';
+    const n = parseFloat(v);
+    return isNaN(n) ? '' : String(n).replace('.', ',');
+  };
+  const cell = v => {
+    const s = String(v == null ? '' : v);
+    return /[";\n\r]/.test(s) ? '"'+s.replace(/"/g,'""')+'"' : s;
+  };
+  const rows = Object.values(milchEintraege).sort((a,b)=>a.datum-b.datum).map(e=>[
+    new Date(e.datum).toLocaleDateString('de-AT'),
+    e.zeit==='abend'?'Abends':'Morgens',
+    e.art==='gesamt'?'Gesamt':'Pro Kuh',
+    num(e.gesamt),
+    e.molkerei?'Ja':'Nein',
+    cell(e.notiz||'')
+  ]);
   const csv = 'Datum;Zeit;Art;Liter;An Molkerei;Notiz\n' + rows.map(r=>r.join(';')).join('\n');
-  const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob(['﻿'+csv],{type:'text/csv;charset=utf-8'}));
-  a.download=`Milch_${isoDate(new Date())}.csv`; a.click();
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(new Blob(['﻿'+csv],{type:'text/csv;charset=utf-8'}));
+  a.download=`Milch_${isoDate(new Date())}.csv`;
+  a.click();
 };
 
 window.showJahresberichtDialog = function() {
