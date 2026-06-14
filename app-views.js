@@ -5996,6 +5996,24 @@ function renderBackup() {
       <div id="saisonstart-status" style="margin-top:.5rem;font-size:.78rem;color:var(--text3)"></div>
     </div>
 
+    <div class="section-title" style="color:#7acbff">🥛 Milch CSV Re-Import</div>
+    <div class="card-section" style="margin-bottom:.8rem;border-color:#7acbff">
+      <p style="font-size:.82rem;color:var(--text2);margin-bottom:.8rem;line-height:1.6">
+        Frühere Milch-Export-CSV zurück in die App spielen. Erkennt das Format
+        <b>Milch_ProKuh_*.csv</b> (Datum;Zeit;Molkerei;#1 Name;…;Gesamt;Notiz).
+        Kühe werden über die <b>#-Nr</b> matched. Akzeptiert Komma <i>und</i> Punkt als Dezimaltrennzeichen.
+      </p>
+      <div style="display:flex;flex-direction:column;gap:.5rem">
+        <label style="cursor:pointer;display:block">
+          <span class="btn-primary" style="display:block;text-align:center;padding:.6rem;border-radius:var(--radius-sm);cursor:pointer;background:linear-gradient(135deg,#3a8fd4,#7acbff);color:#0a1828">
+            🥛 Milch-CSV importieren
+          </span>
+          <input type="file" accept=".csv,.txt" style="display:none" onchange="importMilchCSV(this)" />
+        </label>
+      </div>
+      <div id="milchcsv-status" style="margin-top:.5rem;font-size:.78rem;color:var(--text3)"></div>
+    </div>
+
     <div class="section-title" style="color:var(--green)">📋 Rohdaten Import</div>
     <div class="card-section" style="margin-bottom:.8rem;border-color:var(--green)">
       <p style="font-size:.82rem;color:var(--text2);margin-bottom:.8rem;line-height:1.6">
