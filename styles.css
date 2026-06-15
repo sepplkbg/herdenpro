@@ -43,11 +43,17 @@
    Desktop (≥1024px Browser-Fenster): 16px – Standard-Größe.
    Width-only Detection weil pointer:fine/hover:hover auf User-Setup unzuverlässig ist. */
 html{
-  font-size:34px;
+  /* Responsive Basis: skaliert mit Viewport-Breite, mit min/max-Grenzen.
+     6.2vw → iPhone 14 (390px) ≈ 24px, Galaxy (360px) ≈ 22px (greift Min),
+     iPhone 14 Plus (430px) ≈ 26.7px, größere Phones bis 30px.
+     Lesbar auf allen Geräten, ohne aufgeblasen zu wirken. */
+  font-size:clamp(22px, 6.2vw, 30px);
   -webkit-text-size-adjust:100%;
   height:100%;
+  -webkit-tap-highlight-color:transparent;
 }
 @media (min-width: 1024px) {
+  /* Desktop: fixe 16px für klassische Web-Darstellung */
   html { font-size:16px; }
 }
 body{
