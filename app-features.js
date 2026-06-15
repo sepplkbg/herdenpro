@@ -1829,88 +1829,153 @@ window.editMilchEintrag = function(id) {
   ov.style.display = 'flex';
 };
 
-// saveMilch – handles both new entry and edit
+// saveMilch – bulletproof: try/catch, anti-race mit Auto-Save, klare Erfolgs/Fehler-Anzeige
 window.saveMilch = async function() {
-  const datum = document.getElementById('m-datum')?.value;
-  if(!datum) { alert('Datum fehlt'); return; }
-  const prokuhBlock = document.getElementById('m-prokuh-block');
-  const modus = prokuhBlock && prokuhBlock.style.display !== 'none' ? 'prokuh' : 'gesamt';
-  const zeit = document.getElementById('m-zeit')?.value || 'morgen';
-  const molkerei = document.getElementById('m-molkerei')?.checked || false;
-  const notiz = document.getElementById('m-notiz')?.value.trim() || '';
-  let gesamt = 0, prokuh = {};
-  if(modus === 'prokuh') {
-    document.querySelectorAll('.kuh-liter').forEach(inp => {
-      const l = parseFloat((inp.value||'').replace(',','.')) || 0;
-      if(l > 0) { prokuh[inp.dataset.id] = l; gesamt += l; }
-    });
-    if(Object.keys(prokuh).length === 0) { alert('Bitte mindestens eine Kuh eintragen'); return; }
-  } else {
-    gesamt = parseFloat((document.getElementById('m-gesamt')?.value||'').replace(',','.')) || 0;
-    if(!gesamt) { alert('Bitte Menge eingeben'); return; }
-  }
-  gesamt = Math.round(gesamt * 10) / 10;
-  const datumTs = new Date(datum + 'T12:00').getTime();
+  console.log('[saveMilch] START');
 
-  const editMilchId = document.getElementById('m-edit-id')?.value;
-  if(editMilchId && editMilchId.startsWith('group:')) {
-    // Gruppen-Edit: alle unterliegenden Einträge löschen, einen neuen aggregierten schreiben
-    const key = editMilchId.slice(6);
-    const g = window._milchGruppen && window._milchGruppen[key];
-    if(g && Array.isArray(g.ids)) {
-      for(const oldId of g.ids) {
-        try { await remove(ref(db, 'milch/' + oldId)); } catch(x) { console.error(x); }
+  // ── 1. Auto-Save sofort anhalten (Race-Schutz) ──
+  if(window._milchAutoSaveTimer) {
+    clearTimeout(window._milchAutoSaveTimer);
+    window._milchAutoSaveTimer = null;
+  }
+  // Warten bis ein laufender Auto-Save fertig ist (max. 3 Sekunden)
+  const wartenAufAutoSave = async () => {
+    let n = 0;
+    while(window._milchAutoSaveInFlight && n < 30) {
+      await new Promise(r => setTimeout(r, 100));
+      n++;
+    }
+  };
+  await wartenAufAutoSave();
+
+  // Save-Button visuell sperren während des Speicherns
+  const saveBtn = document.querySelector('#milch-form-overlay .btn-primary[onclick*="saveMilch"]');
+  const origLabel = saveBtn ? saveBtn.textContent : null;
+  if(saveBtn) { saveBtn.disabled = true; saveBtn.textContent = '⏳ Speichere…'; saveBtn.style.opacity = '.7'; }
+
+  const restoreBtn = () => { if(saveBtn) { saveBtn.disabled = false; saveBtn.textContent = origLabel || '💾 Speichern'; saveBtn.style.opacity = ''; } };
+
+  try {
+    // ── 2. Form-Werte einsammeln ──
+    const datum = document.getElementById('m-datum')?.value;
+    if(!datum) { alert('Datum fehlt'); restoreBtn(); return; }
+    const prokuhBlock = document.getElementById('m-prokuh-block');
+    const modus = prokuhBlock && prokuhBlock.style.display !== 'none' ? 'prokuh' : 'gesamt';
+    const zeit = document.getElementById('m-zeit')?.value || 'morgen';
+    const molkerei = document.getElementById('m-molkerei')?.checked || false;
+    const notiz = document.getElementById('m-notiz')?.value.trim() || '';
+
+    let gesamt = 0, prokuh = {};
+    if(modus === 'prokuh') {
+      document.querySelectorAll('.kuh-liter').forEach(inp => {
+        const l = parseFloat((inp.value||'').replace(',','.')) || 0;
+        if(l > 0) { prokuh[inp.dataset.id] = l; gesamt += l; }
+      });
+      if(Object.keys(prokuh).length === 0) {
+        alert('Bitte mindestens eine Kuh eintragen');
+        restoreBtn(); return;
+      }
+    } else {
+      gesamt = parseFloat((document.getElementById('m-gesamt')?.value||'').replace(',','.')) || 0;
+      if(!gesamt) { alert('Bitte Menge eingeben'); restoreBtn(); return; }
+    }
+    gesamt = Math.round(gesamt * 10) / 10;
+    const datumTs = new Date(datum + 'T12:00').getTime();
+
+    console.log('[saveMilch] Werte:', {datum, zeit, modus, gesamt, kuhCount: Object.keys(prokuh).length});
+
+    // ── 3. Persistieren ──
+    const editMilchId = document.getElementById('m-edit-id')?.value;
+    let savedKey = null;
+
+    if(editMilchId && editMilchId.startsWith('group:')) {
+      // Gruppen-Edit: zuerst NEU schreiben, dann alte löschen (sicher gegen Datenverlust)
+      const newRef = await push(ref(db, 'milch'), {
+        datum: datumTs, art: modus, zeit, gesamt,
+        prokuh: modus==='prokuh' ? prokuh : null,
+        molkerei, notiz,
+        createdAt: Date.now(), quelle: 'merged_edit'
+      });
+      savedKey = newRef.key;
+      console.log('[saveMilch] Group-Edit: neuer Eintrag', savedKey);
+
+      // Erst NACH erfolgreichem Push die alten löschen
+      const key = editMilchId.slice(6);
+      const g = window._milchGruppen && window._milchGruppen[key];
+      if(g && Array.isArray(g.ids)) {
+        for(const oldId of g.ids) {
+          if(oldId === savedKey) continue;  // sicherheitshalber nicht den neuen löschen
+          try { await remove(ref(db, 'milch/' + oldId)); console.log('[saveMilch] Alt-Eintrag gelöscht:', oldId); }
+          catch(x) { console.error('[saveMilch] Lösch-Fehler für '+oldId+':', x); }
+        }
+      }
+    } else if(editMilchId) {
+      // Single-Edit oder Auto-Save-Draft updaten
+      await update(ref(db, 'milch/' + editMilchId), {
+        datum: datumTs, art: modus, zeit, gesamt,
+        prokuh: modus==='prokuh' ? prokuh : null,
+        molkerei, notiz, updatedAt: Date.now()
+      });
+      savedKey = editMilchId;
+      console.log('[saveMilch] Update:', savedKey);
+    } else {
+      // Komplett neuer Eintrag
+      const newRef = await push(ref(db, 'milch'), {
+        datum: datumTs, art: modus, zeit, gesamt,
+        prokuh: modus==='prokuh' ? prokuh : null,
+        molkerei, notiz, createdAt: Date.now()
+      });
+      savedKey = newRef.key;
+      console.log('[saveMilch] Neu:', savedKey);
+    }
+
+    // ── 4. SUCCESS – Form-State + UI bereinigen ──
+    const eid = document.getElementById('m-edit-id'); if(eid) eid.value='';
+    const titleEl = document.getElementById('m-form-title'); if(titleEl) titleEl.textContent='🥛 Milch erfassen';
+    if(window.resetMilchAutoSaveState) window.resetMilchAutoSaveState();
+
+    // Warnsystem
+    if(modus === 'prokuh') {
+      const prozent = parseInt(localStorage.getItem('milchWarnProzent'))||50;
+      const warnungen = [];
+      Object.entries(prokuh).forEach(([kuhId, liter]) => {
+        const k = kuehe[kuhId];
+        if(k?.laktation === 'trocken' || k?.laktation === 'trockengestellt') return;
+        const schnitt = window.getMilchDurchschnitt(kuhId);
+        if(schnitt === null) return;
+        const unter = schnitt * (1 - prozent/100);
+        const ober  = schnitt * (1 + prozent/100);
+        if(liter < unter) warnungen.push({kuhId, kuhNr:k?.nr, kuhName:k?.name, liter, schnitt, typ:'wenig'});
+        if(liter > ober)  warnungen.push({kuhId, kuhNr:k?.nr, kuhName:k?.name, liter, schnitt, typ:'viel'});
+      });
+      if(warnungen.length > 0) {
+        localStorage.setItem('milchWarnungen', JSON.stringify({datum: datumTs, warnungen}));
+      } else {
+        localStorage.removeItem('milchWarnungen');
       }
     }
-    await push(ref(db, 'milch'), {
-      datum: datumTs, art: modus, zeit, gesamt,
-      prokuh: modus==='prokuh' ? prokuh : null,
-      molkerei, notiz,
-      createdAt: Date.now(),
-      quelle: 'merged_edit'
-    });
-    const eid = document.getElementById('m-edit-id'); if(eid) eid.value='';
-    const titleEl = document.getElementById('m-form-title'); if(titleEl) titleEl.textContent='🥛 Milch erfassen';
-  } else if(editMilchId) {
-    await update(ref(db, 'milch/' + editMilchId), {
-      datum: datumTs, art: modus, zeit, gesamt,
-      prokuh: modus==='prokuh' ? prokuh : null, molkerei, notiz, updatedAt: Date.now()
-    });
-    const eid = document.getElementById('m-edit-id'); if(eid) eid.value='';
-    const titleEl = document.getElementById('m-form-title'); if(titleEl) titleEl.textContent='🥛 Milch erfassen';
-  } else {
-    await push(ref(db,'milch'), {
-      datum: datumTs, art: modus, zeit, gesamt,
-      prokuh: modus==='prokuh' ? prokuh : null, molkerei, notiz, createdAt: Date.now()
-    });
-  }
-  window.showSaveToast && showSaveToast('Milch gespeichert');
-  if(navigator.vibrate) navigator.vibrate([30,10,30]);
-  // Auto-Save Draft-ID zurücksetzen damit beim nächsten Form-Open neu angelegt wird
-  if(window.resetMilchAutoSaveState) window.resetMilchAutoSaveState();
 
-  // Warnsystem: nach Speichern prüfen und im localStorage merken
-  if(modus === 'prokuh') {
-    const prozent = parseInt(localStorage.getItem('milchWarnProzent'))||50;
-    const warnungen = [];
-    Object.entries(prokuh).forEach(([kuhId, liter]) => {
-      const k = kuehe[kuhId];
-      if(k?.laktation === 'trocken' || k?.laktation === 'trockengestellt') return;
-      const schnitt = window.getMilchDurchschnitt(kuhId);
-      if(schnitt === null) return;
-      const unter = schnitt * (1 - prozent/100);
-      const ober  = schnitt * (1 + prozent/100);
-      if(liter < unter) warnungen.push({kuhId, kuhNr:k?.nr, kuhName:k?.name, liter, schnitt, typ:'wenig'});
-      if(liter > ober)  warnungen.push({kuhId, kuhNr:k?.nr, kuhName:k?.name, liter, schnitt, typ:'viel'});
-    });
-    if(warnungen.length > 0) {
-      localStorage.setItem('milchWarnungen', JSON.stringify({datum: datumTs, warnungen}));
-    } else {
-      localStorage.removeItem('milchWarnungen');
-    }
-  }
+    // ── 5. Klare Erfolgs-Bestätigung ──
+    window.showSaveToast && showSaveToast('✓ Milch gespeichert: '+gesamt+'L, '+Object.keys(prokuh).length+' Kühe');
+    if(navigator.vibrate) navigator.vibrate([30,10,30]);
+    console.log('[saveMilch] DONE', savedKey);
 
-  closeForm('milch-form-overlay');
+    // Notnetz-Entwurf löschen nach erfolgreichem Save
+    try { localStorage.removeItem('milchEntwurf'); } catch(e) {}
+
+    restoreBtn();
+    closeForm('milch-form-overlay');
+  } catch(err) {
+    // ── FEHLER: Form OFFEN lassen, Fehler zeigen ──
+    console.error('[saveMilch] FEHLER:', err);
+    restoreBtn();
+    alert('⚠ SPEICHERN FEHLGESCHLAGEN!\n\n'+
+          'Fehler: '+(err && err.message ? err.message : String(err))+'\n\n'+
+          'Die Werte sind NOCH IM FORMULAR. Bitte:\n'+
+          '1. Internet-Verbindung prüfen\n'+
+          '2. Nochmal auf "Speichern" tippen\n'+
+          '3. Falls weiterhin Fehler: Screenshot machen und Werte abschreiben');
+  }
 };
 
 window.loescheAlleDaten = async function() {
@@ -3229,6 +3294,40 @@ window.showMilchForm = function() {
   const titleEl = document.getElementById('m-form-title'); if(titleEl) titleEl.textContent='🥛 Milch erfassen';
   // Auto-Save State zurücksetzen für neue Session
   if(window.resetMilchAutoSaveState) window.resetMilchAutoSaveState();
+
+  // ── LocalStorage Notnetz prüfen: gibt es ungespeicherten Entwurf? ──
+  try {
+    const entwurfRaw = localStorage.getItem('milchEntwurf');
+    if(entwurfRaw) {
+      const entwurf = JSON.parse(entwurfRaw);
+      const alter = Date.now() - (entwurf.ts || 0);
+      // Nur anbieten wenn Entwurf max. 24 Stunden alt und Werte enthält
+      if(alter < 86400000 && entwurf.prokuh && Object.keys(entwurf.prokuh).length > 0) {
+        const cnt = Object.keys(entwurf.prokuh).length;
+        const dStr = entwurf.datum ? new Date(entwurf.datum+'T12:00').toLocaleDateString('de-AT') : '?';
+        const wann = Math.floor(alter/60000);
+        const ja = confirm(
+          '⚠ Ungespeicherter Entwurf gefunden!\n\n'+
+          'Vor '+wann+' Min hast du Werte für '+cnt+' Kühe ('+dStr+', '+
+          (entwurf.zeit==='abend'?'abends':'morgens')+') getippt, aber nicht final gespeichert.\n\n'+
+          'Werte JETZT wiederherstellen?'
+        );
+        if(ja) {
+          document.getElementById('m-datum').value = entwurf.datum || isoDate(new Date());
+          document.getElementById('m-zeit').value  = entwurf.zeit || 'morgen';
+          document.querySelector('#m-zeit-morgen')?.classList.toggle('active', entwurf.zeit !== 'abend');
+          document.querySelector('#m-zeit-abend')?.classList.toggle('active', entwurf.zeit === 'abend');
+          Object.entries(entwurf.prokuh).forEach(([kuhId, liter]) => {
+            const inp = document.querySelector('.kuh-liter[data-id="'+kuhId+'"]');
+            if(inp) { inp.value = liter; onMilchInput(inp); }
+          });
+        } else {
+          localStorage.removeItem('milchEntwurf');
+        }
+      }
+    }
+  } catch(e) { console.warn('Entwurf-Wiederherstellung fehlgeschlagen:', e); }
+
   ov.style.display='flex';
   setTimeout(()=>{ document.querySelector('.kuh-liter')?.focus(); }, 150);
 };
@@ -3756,7 +3855,22 @@ window.onMilchInput = function(inp) {
   const sumEl=document.getElementById('m-summe'); if(sumEl) sumEl.textContent=Math.round(sum*10)/10;
   const cntEl=document.getElementById('m-count'); if(cntEl) cntEl.textContent=count;
 
-  // ── Auto-Save (debounced) ──
+  // ── LocalStorage Notnetz: SOFORTIGE lokale Persistierung (kein Debounce!) ──
+  // Auch ohne Internet/Firebase landen die Werte auf dem Gerät.
+  try {
+    const datum = document.getElementById('m-datum')?.value || '';
+    const zeit  = document.getElementById('m-zeit')?.value || 'morgen';
+    const all = {};
+    document.querySelectorAll('.kuh-liter').forEach(i => {
+      const v = parseFloat((i.value||'').replace(',','.')) || 0;
+      if(v > 0) all[i.dataset.id] = v;
+    });
+    localStorage.setItem('milchEntwurf', JSON.stringify({
+      datum, zeit, prokuh: all, ts: Date.now()
+    }));
+  } catch(e) { console.warn('LocalStorage Notnetz fehlgeschlagen:', e); }
+
+  // ── Firebase Auto-Save (debounced) ──
   scheduleMilchAutoSave();
 };
 
