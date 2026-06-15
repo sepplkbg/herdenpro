@@ -1822,6 +1822,10 @@ window.editMilchEintrag = function(id) {
       : '✎ Milcheintrag bearbeiten';
   }
 
+  // Auto-Save State: bei Single-Edit nutzen wir die bestehende ID
+  if(window.resetMilchAutoSaveState) window.resetMilchAutoSaveState();
+  if(!isGroup) window._milchAutoSaveDraftId = id;
+
   ov.style.display = 'flex';
 };
 
@@ -1882,6 +1886,8 @@ window.saveMilch = async function() {
   }
   window.showSaveToast && showSaveToast('Milch gespeichert');
   if(navigator.vibrate) navigator.vibrate([30,10,30]);
+  // Auto-Save Draft-ID zurücksetzen damit beim nächsten Form-Open neu angelegt wird
+  if(window.resetMilchAutoSaveState) window.resetMilchAutoSaveState();
 
   // Warnsystem: nach Speichern prüfen und im localStorage merken
   if(modus === 'prokuh') {
@@ -2238,6 +2244,11 @@ function renderMilch() {
           <div style="display:flex;gap:.4rem;margin-bottom:.8rem">
             <button id="m-tab-prokuh" onclick="setMilchModus('prokuh')" style="flex:1;padding:.45rem;border-radius:var(--radius-sm);border:2px solid var(--gold);background:var(--gold);color:#000;font-weight:bold;font-family:inherit;font-size:.82rem;cursor:pointer">Pro Kuh</button>
             <button id="m-tab-gesamt" onclick="setMilchModus('gesamt')" style="flex:1;padding:.45rem;border-radius:var(--radius-sm);border:1px solid var(--border);background:transparent;color:var(--text3);font-family:inherit;font-size:.82rem;cursor:pointer">Gesamt</button>
+          </div>
+          <!-- Auto-Save Statusanzeige -->
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:.45rem .65rem;margin-bottom:.6rem;background:rgba(77,184,78,.08);border:1px solid rgba(77,184,78,.25);border-radius:var(--radius-sm)">
+            <span style="font-size:.74rem;color:var(--text2)">🛡 Auto-Speichern aktiv</span>
+            <span id="milch-autosave-indicator" style="font-size:.72rem;color:var(--text3);font-weight:600"></span>
           </div>
           <div id="m-prokuh-block">
             <div style="font-size:.72rem;color:var(--text3);margin-bottom:.5rem">Liter pro Kuh · 0 oder leer = nicht gemolken</div>
@@ -3216,6 +3227,8 @@ window.showMilchForm = function() {
   // Edit ID reset
   const eid = document.getElementById('m-edit-id'); if(eid) eid.value='';
   const titleEl = document.getElementById('m-form-title'); if(titleEl) titleEl.textContent='🥛 Milch erfassen';
+  // Auto-Save State zurücksetzen für neue Session
+  if(window.resetMilchAutoSaveState) window.resetMilchAutoSaveState();
   ov.style.display='flex';
   setTimeout(()=>{ document.querySelector('.kuh-liter')?.focus(); }, 150);
 };
@@ -3742,6 +3755,106 @@ window.onMilchInput = function(inp) {
   document.querySelectorAll('.kuh-liter').forEach(i => { const v=parseFloat(i.value)||0; if(v>0){sum+=v;count++;} });
   const sumEl=document.getElementById('m-summe'); if(sumEl) sumEl.textContent=Math.round(sum*10)/10;
   const cntEl=document.getElementById('m-count'); if(cntEl) cntEl.textContent=count;
+
+  // ── Auto-Save (debounced) ──
+  scheduleMilchAutoSave();
+};
+
+// ══════════════════════════════════════════════════════════════
+//  MILCH AUTO-SAVE – kein Datenverlust mehr durch vergessenen Speichern-Klick
+// ══════════════════════════════════════════════════════════════
+window._milchAutoSaveDraftId = null;
+window._milchAutoSaveTimer   = null;
+window._milchAutoSaveInFlight = false;
+
+function setMilchAutoSaveStatus(text, color) {
+  const el = document.getElementById('milch-autosave-indicator');
+  if(!el) return;
+  el.textContent = text;
+  el.style.color = color || 'var(--green)';
+}
+
+function scheduleMilchAutoSave() {
+  // Nur im Pro-Kuh-Modus
+  const prokuhBlock = document.getElementById('m-prokuh-block');
+  if(!prokuhBlock || prokuhBlock.style.display === 'none') return;
+  setMilchAutoSaveStatus('💾 Speichere…', 'var(--text3)');
+  if(window._milchAutoSaveTimer) clearTimeout(window._milchAutoSaveTimer);
+  // 600ms nach letzter Eingabe persistieren – schnell genug damit nichts verloren geht
+  window._milchAutoSaveTimer = setTimeout(doMilchAutoSave, 600);
+}
+
+async function doMilchAutoSave() {
+  if(window._milchAutoSaveInFlight) {
+    // Falls noch ein Save läuft, gleich neu planen
+    window._milchAutoSaveTimer = setTimeout(doMilchAutoSave, 300);
+    return;
+  }
+  try {
+    window._milchAutoSaveInFlight = true;
+    const datum = document.getElementById('m-datum')?.value;
+    if(!datum) { window._milchAutoSaveInFlight = false; return; }
+    const zeit  = document.getElementById('m-zeit')?.value || 'morgen';
+    const molkerei = document.getElementById('m-molkerei')?.checked || false;
+    const notiz = (document.getElementById('m-notiz')?.value || '').trim();
+
+    let gesamt = 0; const prokuh = {};
+    document.querySelectorAll('.kuh-liter').forEach(i => {
+      const l = parseFloat((i.value||'').replace(',','.')) || 0;
+      if(l > 0) { prokuh[i.dataset.id] = l; gesamt += l; }
+    });
+    if(Object.keys(prokuh).length === 0) {
+      // Nichts zu speichern – Indicator zurücksetzen
+      window._milchAutoSaveInFlight = false;
+      setMilchAutoSaveStatus('', 'var(--text3)');
+      return;
+    }
+    gesamt = Math.round(gesamt * 10) / 10;
+    const datumTs = new Date(datum + 'T12:00').getTime();
+
+    const payload = {
+      datum: datumTs, art: 'prokuh', zeit, gesamt,
+      prokuh, molkerei, notiz,
+      autosave: true,
+      updatedAt: Date.now()
+    };
+
+    // Edit-ID checken: bestehender Eintrag (kein "group:")
+    const editIdRaw = document.getElementById('m-edit-id')?.value || '';
+    const isGroupEdit = editIdRaw.startsWith('group:');
+
+    if(window._milchAutoSaveDraftId) {
+      // Bereits Draft angelegt – nur updaten
+      await update(ref(db, 'milch/' + window._milchAutoSaveDraftId), payload);
+    } else if(editIdRaw && !isGroupEdit) {
+      // Bearbeitung eines existierenden Einzel-Eintrags
+      window._milchAutoSaveDraftId = editIdRaw;
+      await update(ref(db, 'milch/' + editIdRaw), payload);
+    } else {
+      // Neu anlegen – wenn Gruppen-Edit erstmal nur Draft (alte Einträge erst beim finalen Save löschen)
+      payload.createdAt = Date.now();
+      const r = await push(ref(db, 'milch'), payload);
+      window._milchAutoSaveDraftId = r.key;
+      // m-edit-id auf den Draft setzen, damit finaler Save nur updated, nicht doppelt anlegt
+      const eid = document.getElementById('m-edit-id');
+      if(eid) eid.value = window._milchAutoSaveDraftId;
+    }
+
+    const t = new Date().toLocaleTimeString('de-AT', {hour:'2-digit', minute:'2-digit', second:'2-digit'});
+    setMilchAutoSaveStatus('✓ Gespeichert · '+t, 'var(--green)');
+  } catch(e) {
+    console.error('Auto-Save Fehler:', e);
+    setMilchAutoSaveStatus('⚠ Speichern fehlgeschlagen – nochmal probieren', 'var(--red)');
+  } finally {
+    window._milchAutoSaveInFlight = false;
+  }
+}
+
+// Reset wenn Form geöffnet/geschlossen wird
+window.resetMilchAutoSaveState = function() {
+  window._milchAutoSaveDraftId = null;
+  if(window._milchAutoSaveTimer) { clearTimeout(window._milchAutoSaveTimer); window._milchAutoSaveTimer = null; }
+  setMilchAutoSaveStatus('', 'var(--text3)');
 };
 
 window.selectMilchZeit = function(zeit, btn) {
