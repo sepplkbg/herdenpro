@@ -1909,7 +1909,15 @@ window.saveKalbung=async function(){const{bsid,kuhId}=_kalbungIds;const d=docume
 // ══════════════════════════════════════════════════════════════════════════════
 //  UTILS
 // ══════════════════════════════════════════════════════════════════════════════
-window.closeForm=function(id){const el=document.getElementById(id);if(el)el.style.display='none';};
+window.closeForm=function(id){
+  const el=document.getElementById(id);
+  if(el) el.style.display='none';
+  // Nach Schließen einer Form, die während offen den Render blockiert hat,
+  // einen frischen Render erzwingen damit Listen den aktuellen Stand zeigen.
+  if(id === 'milch-form-overlay' && typeof render === 'function') {
+    setTimeout(()=>{ try { render(); } catch(e){ console.warn('post-close render:', e); } }, 30);
+  }
+};
 window.switchTab=function(show,hide,btn){show.split(',').forEach(id=>{const el=document.getElementById(id);if(el)el.style.display='';});hide.split(',').forEach(id=>{const el=document.getElementById(id);if(el)el.style.display='none';});btn.closest('.detail-tabs').querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));btn.classList.add('active');};
 function attachListeners(){document.querySelectorAll('.form-overlay').forEach(el=>{el.onclick=e=>{if(e.target===el)closeForm(el.id);};});}
 function statusLabel(s){return{besamt:'Besamt',tragend:'Trächtig',leer:'Leer',kalbung:'Gekälbert'}[s]||s;}
