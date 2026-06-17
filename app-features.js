@@ -1824,7 +1824,14 @@ window.editMilchEintrag = function(id) {
 
   // Auto-Save State: bei Single-Edit nutzen wir die bestehende ID
   if(window.resetMilchAutoSaveState) window.resetMilchAutoSaveState();
-  if(!isGroup) window._milchAutoSaveDraftId = id;
+  if(!isGroup) {
+    window._milchAutoSaveDraftId = id;
+    window._milchOriginalGroupKey = null;
+  } else {
+    // Gruppen-Edit: separat tracken damit Auto-Save den Marker nicht überschreibt
+    window._milchOriginalGroupKey = id.slice(6); // "group:KEY" → "KEY"
+    window._milchAutoSaveDraftId = null;
+  }
 
   ov.style.display = 'flex';
 };
@@ -1885,11 +1892,15 @@ window.saveMilch = async function() {
     console.log('[saveMilch] Werte:', {datum, zeit, modus, gesamt, kuhCount: Object.keys(prokuh).length});
 
     // ── 3. Persistieren ──
+    // WICHTIG: Original-Gruppen-Key wird SEPARAT getrackt, damit der Auto-Save
+    // ihn nicht überschreiben kann. Bei Gruppen-Edits werden alle Original-Einträge
+    // sicher gelöscht und durch genau EINEN neuen Eintrag ersetzt.
     const editMilchId = document.getElementById('m-edit-id')?.value;
+    const originalGroupKey = window._milchOriginalGroupKey;
     let savedKey = null;
 
-    if(editMilchId && editMilchId.startsWith('group:')) {
-      // Gruppen-Edit: zuerst NEU schreiben, dann alte löschen (sicher gegen Datenverlust)
+    if(originalGroupKey || (editMilchId && editMilchId.startsWith('group:'))) {
+      // Gruppen-Edit: zuerst NEU schreiben, dann alle Original-Einträge löschen
       const newRef = await push(ref(db, 'milch'), {
         datum: datumTs, art: modus, zeit, gesamt,
         prokuh: modus==='prokuh' ? prokuh : null,
@@ -1899,16 +1910,18 @@ window.saveMilch = async function() {
       savedKey = newRef.key;
       console.log('[saveMilch] Group-Edit: neuer Eintrag', savedKey);
 
-      // Erst NACH erfolgreichem Push die alten löschen
-      const key = editMilchId.slice(6);
+      // Alle Original-IDs der Gruppe löschen
+      const key = originalGroupKey || editMilchId.slice(6);
       const g = window._milchGruppen && window._milchGruppen[key];
       if(g && Array.isArray(g.ids)) {
         for(const oldId of g.ids) {
-          if(oldId === savedKey) continue;  // sicherheitshalber nicht den neuen löschen
+          if(oldId === savedKey) continue;
           try { await remove(ref(db, 'milch/' + oldId)); console.log('[saveMilch] Alt-Eintrag gelöscht:', oldId); }
           catch(x) { console.error('[saveMilch] Lösch-Fehler für '+oldId+':', x); }
         }
       }
+      // Original-Gruppen-Key freigeben
+      window._milchOriginalGroupKey = null;
     } else if(editMilchId) {
       // Single-Edit oder Auto-Save-Draft updaten
       await update(ref(db, 'milch/' + editMilchId), {
@@ -3931,6 +3944,12 @@ function scheduleMilchAutoSave() {
   // Nur im Pro-Kuh-Modus
   const prokuhBlock = document.getElementById('m-prokuh-block');
   if(!prokuhBlock || prokuhBlock.style.display === 'none') return;
+  // Bei Gruppen-Bearbeitung KEIN Auto-Save (würde Drafts erzeugen die in
+  // der Anzeige zur Verdopplung führen). Status klar anzeigen.
+  if(window._milchOriginalGroupKey) {
+    setMilchAutoSaveStatus('⏸ Auto-Save pausiert – am Ende „Speichern" tippen', 'var(--gold)');
+    return;
+  }
   setMilchAutoSaveStatus('💾 Speichere…', 'var(--text3)');
   if(window._milchAutoSaveTimer) clearTimeout(window._milchAutoSaveTimer);
   // 600ms nach letzter Eingabe persistieren – schnell genug damit nichts verloren geht
@@ -4006,6 +4025,7 @@ async function doMilchAutoSave() {
 // Reset wenn Form geöffnet/geschlossen wird
 window.resetMilchAutoSaveState = function() {
   window._milchAutoSaveDraftId = null;
+  window._milchOriginalGroupKey = null;
   if(window._milchAutoSaveTimer) { clearTimeout(window._milchAutoSaveTimer); window._milchAutoSaveTimer = null; }
   setMilchAutoSaveStatus('', 'var(--text3)');
 };
