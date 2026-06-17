@@ -3295,6 +3295,45 @@ window.showMilchForm = function() {
   // Auto-Save State zurücksetzen für neue Session
   if(window.resetMilchAutoSaveState) window.resetMilchAutoSaveState();
 
+  // ── Duplikat-Schutz: existiert bereits ein Eintrag für heute+morgen/abends? ──
+  // Falls ja, statt neuem Formular den bestehenden Eintrag bearbeiten.
+  try {
+    const heuteStr = isoDate(new Date());
+    const heuteTs  = new Date(heuteStr + 'T12:00').getTime();
+    const aktuelleZeit = (new Date().getHours() < 13) ? 'morgen' : 'abend';
+    // Suche Einträge desselben Datums + Schicht, max. 6h alt
+    const treffer = Object.entries(milchEintraege).filter(([id, e]) => {
+      if(!e || !e.datum) return false;
+      const eDatum = new Date(e.datum); eDatum.setHours(0,0,0,0);
+      const ezDatum = new Date(heuteTs); ezDatum.setHours(0,0,0,0);
+      if(eDatum.getTime() !== ezDatum.getTime()) return false;
+      if((e.zeit||'morgen') !== aktuelleZeit) return false;
+      const alter = Date.now() - (e.createdAt || e.updatedAt || e.datum);
+      return alter < 6*3600000;
+    });
+    if(treffer.length > 0) {
+      // Den jüngsten Eintrag nehmen
+      treffer.sort((a,b) => (b[1].updatedAt||b[1].createdAt||0) - (a[1].updatedAt||a[1].createdAt||0));
+      const [bestehendId, bestehendE] = treffer[0];
+      const kuhCount = bestehendE.prokuh ? Object.keys(bestehendE.prokuh).length : 0;
+      const alterMin = Math.round((Date.now() - (bestehendE.updatedAt||bestehendE.createdAt||bestehendE.datum)) / 60000);
+      const ja = confirm(
+        'ℹ Du hast heute '+(aktuelleZeit==='abend'?'abends':'morgens')+' bereits einen Eintrag mit '+
+        kuhCount+' Kühen ('+bestehendE.gesamt+'L) angelegt (vor '+alterMin+' Min).\n\n'+
+        '➜ Bestehenden Eintrag FORTSETZEN (empfohlen, kein Duplikat)\n'+
+        '✕ Trotzdem NEU anlegen\n\n'+
+        'Fortsetzen?'
+      );
+      if(ja) {
+        // Statt neuer Form → Bearbeitungs-Form für den bestehenden Eintrag
+        ov.style.display = 'none';
+        setTimeout(()=>{ if(window.editMilchEintrag) editMilchEintrag(bestehendId); }, 50);
+        return;
+      }
+      // Wenn User auf "Neu" besteht: weitermachen mit leerem Formular
+    }
+  } catch(e) { console.warn('Duplikat-Check fehlgeschlagen:', e); }
+
   // ── LocalStorage Notnetz prüfen: gibt es ungespeicherten Entwurf? ──
   try {
     const entwurfRaw = localStorage.getItem('milchEntwurf');

@@ -334,6 +334,17 @@ function render() {
   const main=document.getElementById('main-content');
   if(!main) return;
 
+  // ── KRITISCH: Wenn das Milch-Formular gerade offen ist, NIEMALS re-rendern!
+  // Sonst wird das Formular zerstört, User landet auf der Startseite, und neue
+  // Eingaben erzeugen Duplikate die in der Gruppen-Ansicht aufsummiert werden.
+  // Stattdessen die Liste im Hintergrund einfach unverändert lassen – Auto-Save
+  // schreibt eh in Firebase. ──
+  const milchFormOpen = document.getElementById('milch-form-overlay');
+  if(milchFormOpen && milchFormOpen.style.display === 'flex') {
+    // Auch die Stallplan-Animation auf dem Stallplan ignorieren wenn Milch offen
+    return;
+  }
+
   // Richtung der Animation bestimmen
   // Forward = neue View auf Stack legen → slide-up + fade-in
   // Backward = wenn neue currentView eine Stufe vorher im Stack war → slide-down + fade-in
