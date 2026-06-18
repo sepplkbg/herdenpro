@@ -75,6 +75,7 @@ window.toggleMehrMenu = function(e) {
         {id:'kaese',icon:'🧀',label:'Käse'},{id:'bauern_menu',icon:'👥',label:'Bauern'},
         {id:'wartung',icon:'🔧',label:'Wartung'},{id:'lager',icon:'📦',label:'Lager'},
         {id:'aufgaben',icon:'✅',label:'Aufgaben'},
+        {id:'milchqualitaet',icon:'🧪',label:'Milchqualität'},
       ];
       var imMenu = allMods.filter(function(mod){ return !mainNav.includes(mod.id) && mod.id !== '__drucken__'; });
       grid.innerHTML = imMenu.map(function(mod){
@@ -167,6 +168,7 @@ window.FIREBASE_CONFIG = {
     {id:'wartung',    icon:'🔧',  label:'Wartung'},
     {id:'lager',      icon:'📦',  label:'Lager'},
     {id:'aufgaben',   icon:'✅',  label:'Aufgaben'},
+    {id:'milchqualitaet',icon:'🧪',label:'Milchqualität'},
     {id:'__drucken__',icon:'🖨',  label:'Drucken'},
   ];
   window.DEFAULT_MAIN_NAV = ['dashboard','herde','saison','milch'];

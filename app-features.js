@@ -5844,3 +5844,426 @@ window.addEventListener('beforeinstallprompt', function(e) {
   document.body.appendChild(btn);
   setTimeout(function(){ btn.remove(); }, 15000);
 });
+
+// ══════════════════════════════════════════════════════════════════════════════
+//  MILCHQUALITÄT / SCHALMTEST
+//  4-stufige Skala: negativ / + / ++ / +++  (grün/gelb/orange/rot)
+//  Pro Kuh primär – Viertel (VL/VR/HL/HR) optional via Long-Press
+//  Sofort-Save bei Tap – keine separate „Speichern"-Aktion nötig
+// ══════════════════════════════════════════════════════════════════════════════
+const SCHALM_SKALA = [
+  { wert: 'negativ', label: 'neg',  farbe: '#4db84e', text: '#fff' },
+  { wert: '+',       label: '+',    farbe: '#f1c40f', text: '#000' },
+  { wert: '++',      label: '++',   farbe: '#e67e22', text: '#fff' },
+  { wert: '+++',     label: '+++',  farbe: '#e74c3c', text: '#fff' }
+];
+
+window.getLetzterSchalmtest = function(kuhId) {
+  const tests = Object.entries(schalmtest||{})
+    .filter(([,t]) => t.kuhId === kuhId)
+    .sort((a,b) => b[1].datum - a[1].datum);
+  return tests.length ? tests[0][1] : null;
+};
+
+window.schalmtestFarbe = function(wert) {
+  const s = SCHALM_SKALA.find(x => x.wert === wert);
+  return s ? s.farbe : 'var(--border)';
+};
+
+function renderMilchqualitaet() {
+  const aktDatum = window._schalmDatum || isoDate(new Date());
+  const aktGruppe = window._schalmGruppe || '';
+  const modus = window._schalmModus || 'uebersicht'; // 'uebersicht' | 'erfassung'
+
+  // Tests gruppieren nach Datum
+  const datumKey = new Date(aktDatum + 'T12:00').getTime();
+  const startTag = new Date(datumKey); startTag.setHours(0,0,0,0);
+  const endeTag  = startTag.getTime() + 86400000;
+  const testsHeute = Object.entries(schalmtest||{}).filter(([,t]) =>
+    t.datum >= startTag.getTime() && t.datum < endeTag
+  );
+  const heuteByKuh = {};
+  testsHeute.forEach(([id,t]) => { heuteByKuh[t.kuhId] = {id, ...t}; });
+
+  // Alle Test-Tage (für Verlauf)
+  const testTageMap = {};
+  Object.values(schalmtest||{}).forEach(t => {
+    if(!t.datum) return;
+    const tag = new Date(t.datum); tag.setHours(0,0,0,0);
+    const key = tag.getTime();
+    if(!testTageMap[key]) testTageMap[key] = { datum: key, count: 0, negativ: 0, positiv: 0, stark: 0 };
+    testTageMap[key].count++;
+    if(t.wertGesamt === 'negativ') testTageMap[key].negativ++;
+    else if(t.wertGesamt === '+++') testTageMap[key].stark++;
+    else testTageMap[key].positiv++;
+  });
+  const testTage = Object.values(testTageMap).sort((a,b) => b.datum - a.datum);
+
+  // Kuh-Liste für Erfassung
+  const aktiveKuehe = Object.entries(kuehe)
+    .filter(([id,k]) => {
+      // Trockene Kühe ausblenden
+      if(k.laktation === 'trocken' || k.laktation === 'trockengestellt') return false;
+      // Gruppen-Filter
+      if(aktGruppe && !kuhInGruppe(k, aktGruppe, id)) return false;
+      return true;
+    })
+    .sort((a,b) => (parseInt(a[1].nr)||0) - (parseInt(b[1].nr)||0));
+
+  const getestetHeute = aktiveKuehe.filter(([id]) => heuteByKuh[id]).length;
+
+  const gruppenListe = Object.values(gruppen||{}).sort((a,b) => (a.name||'').localeCompare(b.name||''));
+
+  // ── Erfassungs-Modus ──
+  if(modus === 'erfassung') {
+    return `
+      <div class="page-header">
+        <h2>🧪 Schalmtest erfassen</h2>
+        <button class="btn-secondary" onclick="window._schalmModus='uebersicht';render()">← Zurück</button>
+      </div>
+
+      <!-- Datum + Gruppen-Filter -->
+      <div style="display:flex;gap:.4rem;align-items:center;margin-bottom:.6rem;flex-wrap:wrap">
+        <input type="date" id="schalm-datum" class="inp" value="${aktDatum}"
+          onchange="window._schalmDatum=this.value;render()"
+          style="width:auto;min-width:9rem" />
+        <span style="font-size:.78rem;color:var(--gold);font-weight:700">${getestetHeute} / ${aktiveKuehe.length} getestet</span>
+      </div>
+
+      <!-- Gruppen-Filter -->
+      ${gruppenListe.length ? `
+      <div style="display:flex;gap:.3rem;flex-wrap:wrap;margin-bottom:.7rem;padding:.2rem 0">
+        <button class="filter-chip ${!aktGruppe?'active':''}" onclick="window._schalmGruppe='';render()">Alle</button>
+        ${gruppenListe.map(g => `
+          <button class="filter-chip ${aktGruppe===g.name?'active':''}" onclick="window._schalmGruppe='${g.name}';render()">
+            <span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:${g.farbe||'#5ba85c'};margin-right:4px;vertical-align:middle"></span>${g.name}
+          </button>`).join('')}
+      </div>` : ''}
+
+      <!-- Skala-Legende -->
+      <div style="display:flex;gap:.3rem;justify-content:center;font-size:.7rem;color:var(--text3);margin-bottom:.6rem">
+        ${SCHALM_SKALA.map(s => `<span style="display:inline-flex;align-items:center;gap:.2rem">
+          <span style="width:10px;height:10px;border-radius:50%;background:${s.farbe};display:inline-block"></span>${s.label}
+        </span>`).join('<span>·</span>')}
+        <span>·</span><span style="font-style:italic">Long-Press = Viertel</span>
+      </div>
+
+      <!-- Kuh-Liste mit Schalmtest-Buttons -->
+      <div class="card-list" id="schalm-liste">
+        ${aktiveKuehe.map(([id,k]) => {
+          const heute = heuteByKuh[id];
+          const letzter = getLetzterSchalmtest(id);
+          const letzterText = letzter && (!heute || letzter.datum !== heute.datum)
+            ? '<span style="font-size:.65rem;color:var(--text3)">Letzter: '+letzter.wertGesamt+' ('+new Date(letzter.datum).toLocaleDateString('de-AT',{day:'numeric',month:'short'})+')</span>'
+            : '';
+          return `
+            <div class="list-card list-card-sm" style="display:flex;flex-direction:column;gap:.3rem;padding:.5rem .7rem;${heute?'border-left:4px solid '+schalmtestFarbe(heute.wertGesamt):''}">
+              <div style="display:flex;align-items:center;gap:.6rem">
+                <span class="nr-badge" style="min-width:38px;text-align:center">#${k.nr}</span>
+                <div style="flex:1;min-width:0">
+                  <div style="font-size:.85rem;font-weight:700">${k.name||'–'}</div>
+                  <div style="font-size:.66rem;color:var(--text3)">${k.bauer||''}</div>
+                </div>
+              </div>
+              <div style="display:flex;gap:.3rem;align-items:center">
+                ${SCHALM_SKALA.map(s => `
+                  <button class="schalm-btn"
+                    data-kuh="${id}" data-wert="${s.wert}"
+                    onclick="setSchalmtest('${id}','${s.wert}',this)"
+                    oncontextmenu="event.preventDefault();openSchalmViertel('${id}');return false"
+                    onpointerdown="schalmLongPressStart(event,'${id}')"
+                    onpointerup="schalmLongPressEnd()"
+                    onpointerleave="schalmLongPressEnd()"
+                    style="flex:1;padding:.55rem .2rem;border-radius:8px;font-weight:700;font-size:.78rem;cursor:pointer;border:2px solid ${s.farbe};font-family:inherit;
+                           background:${heute && heute.wertGesamt===s.wert ? s.farbe : 'transparent'};
+                           color:${heute && heute.wertGesamt===s.wert ? s.text : s.farbe};
+                           ${heute && heute.wertGesamt===s.wert ? 'box-shadow:0 0 8px '+s.farbe+'66' : ''}">
+                    ${s.label}
+                  </button>`).join('')}
+                ${heute ? `
+                  <button onclick="deleteSchalmtest('${heute.id}')" class="btn-xs-danger" style="padding:.4rem .5rem">✕</button>
+                ` : ''}
+              </div>
+              ${heute && heute.viertel ? `
+                <div style="font-size:.66rem;color:var(--text3);padding-left:.3rem">
+                  VL:${heute.viertel.vl||'-'} · VR:${heute.viertel.vr||'-'} · HL:${heute.viertel.hl||'-'} · HR:${heute.viertel.hr||'-'}
+                </div>
+              ` : ''}
+              ${letzterText ? '<div>'+letzterText+'</div>' : ''}
+            </div>`;
+        }).join('')}
+      </div>
+
+      ${aktiveKuehe.length === 0 ? '<div class="empty-state">Keine Kühe in diesem Filter</div>' : ''}
+    `;
+  }
+
+  // ── Übersichts-Modus ──
+  const auffaelligeKuehe = aktiveKuehe.filter(([id]) => {
+    const l = getLetzterSchalmtest(id);
+    return l && (l.wertGesamt === '++' || l.wertGesamt === '+++');
+  });
+
+  return `
+    <div class="page-header">
+      <h2>🧪 Milchqualität</h2>
+      <button class="btn-primary" onclick="window._schalmModus='erfassung';window._schalmDatum='${isoDate(new Date())}';render()">+ Test starten</button>
+    </div>
+
+    <!-- Stat-Cards -->
+    <div class="stats-grid" style="grid-template-columns:1fr 1fr 1fr">
+      <div class="stat-card">
+        <div class="stat-icon" style="color:var(--green)">✓</div>
+        <div class="stat-num" style="font-size:1.4rem">${aktiveKuehe.filter(([id])=>{const l=getLetzterSchalmtest(id);return l && l.wertGesamt==='negativ';}).length}</div>
+        <div class="stat-label">negativ</div>
+      </div>
+      <div class="stat-card" style="border-color:rgba(230,126,34,.4)">
+        <div class="stat-icon" style="color:#e67e22">⚠</div>
+        <div class="stat-num" style="font-size:1.4rem">${auffaelligeKuehe.length}</div>
+        <div class="stat-label">auffällig</div>
+      </div>
+      <div class="stat-card" style="border-color:rgba(150,150,150,.3)">
+        <div class="stat-icon" style="color:var(--text3)">?</div>
+        <div class="stat-num" style="font-size:1.4rem">${aktiveKuehe.filter(([id])=>!getLetzterSchalmtest(id)).length}</div>
+        <div class="stat-label">noch nie getestet</div>
+      </div>
+    </div>
+
+    <!-- Auffällige Kühe (++/+++) -->
+    ${auffaelligeKuehe.length > 0 ? `
+    <div class="section-title" style="color:#e67e22;margin-top:1rem">⚠ AUFFÄLLIGE KÜHE</div>
+    <div class="card-list" style="margin-bottom:.8rem">
+      ${auffaelligeKuehe.map(([id,k]) => {
+        const l = getLetzterSchalmtest(id);
+        const farbe = schalmtestFarbe(l.wertGesamt);
+        const tage = Math.floor((Date.now() - l.datum)/86400000);
+        return `<div class="list-card list-card-sm" onclick="showKuhDetail('${id}')" style="cursor:pointer;border-left:4px solid ${farbe}">
+          <span class="nr-badge">#${k.nr}</span>
+          <div style="flex:1;min-width:0">
+            <div style="font-weight:700">${k.name||'–'}</div>
+            <div style="font-size:.7rem;color:var(--text3)">${k.bauer||''} · vor ${tage===0?'heute':tage===1?'1 Tag':tage+' Tagen'}</div>
+          </div>
+          <span style="background:${farbe};color:${l.wertGesamt==='+'?'#000':'#fff'};padding:.25rem .7rem;border-radius:14px;font-weight:700;font-size:.85rem">${l.wertGesamt}</span>
+        </div>`;
+      }).join('')}
+    </div>` : ''}
+
+    <!-- Verlauf der Test-Sessions -->
+    <div class="section-title">Test-Sessions</div>
+    ${testTage.length ? `
+    <div class="card-list">
+      ${testTage.slice(0,30).map(t => {
+        const d = new Date(t.datum);
+        return `<div class="list-card list-card-sm" onclick="window._schalmModus='erfassung';window._schalmDatum='${isoDate(d)}';render()" style="cursor:pointer">
+          <div>
+            <div style="font-weight:700">${d.toLocaleDateString('de-AT',{weekday:'short',day:'numeric',month:'short',year:'numeric'})}</div>
+            <div style="font-size:.72rem;color:var(--text3)">${t.count} Kühe getestet</div>
+          </div>
+          <div style="display:flex;gap:.3rem;font-size:.75rem">
+            ${t.negativ>0?`<span style="background:rgba(77,184,78,.2);color:#4db84e;padding:.15rem .5rem;border-radius:10px;font-weight:700">✓ ${t.negativ}</span>`:''}
+            ${t.positiv>0?`<span style="background:rgba(230,126,34,.2);color:#e67e22;padding:.15rem .5rem;border-radius:10px;font-weight:700">+ ${t.positiv}</span>`:''}
+            ${t.stark>0?`<span style="background:rgba(231,76,60,.25);color:#e74c3c;padding:.15rem .5rem;border-radius:10px;font-weight:700">+++ ${t.stark}</span>`:''}
+          </div>
+        </div>`;
+      }).join('')}
+    </div>` : '<div class="empty-state">Noch keine Tests dokumentiert</div>'}
+
+    <!-- Viertel-Detail-Overlay -->
+    <div id="schalm-viertel-overlay" class="form-overlay" style="display:none">
+      <div class="form-sheet">
+        <div class="form-header">
+          <h3>🐄 Viertel-Details</h3>
+          <button class="close-btn" onclick="closeForm('schalm-viertel-overlay')">✕</button>
+        </div>
+        <div class="form-body">
+          <input type="hidden" id="sv-kuh-id" />
+          <div id="sv-kuh-info" style="text-align:center;margin-bottom:.8rem;font-size:.9rem;color:var(--text2)"></div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:.6rem">
+            ${['vl','vr','hl','hr'].map(pos => {
+              const label = {vl:'Vorne Links',vr:'Vorne Rechts',hl:'Hinten Links',hr:'Hinten Rechts'}[pos];
+              return `<div style="background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:.55rem">
+                <div style="font-size:.72rem;color:var(--text3);margin-bottom:.3rem;font-weight:700">${label}</div>
+                <div style="display:flex;gap:.2rem">
+                  ${SCHALM_SKALA.map(s => `
+                    <button class="sv-btn" data-pos="${pos}" data-wert="${s.wert}"
+                      onclick="setSchalmViertel('${pos}','${s.wert}',this)"
+                      style="flex:1;padding:.4rem .1rem;border-radius:6px;font-weight:700;font-size:.7rem;cursor:pointer;border:1.5px solid ${s.farbe};background:transparent;color:${s.farbe};font-family:inherit">
+                      ${s.label}
+                    </button>`).join('')}
+                </div>
+              </div>`;
+            }).join('')}
+          </div>
+          <div class="form-actions" style="margin-top:.8rem">
+            <button class="btn-secondary" onclick="closeForm('schalm-viertel-overlay')">Abbrechen</button>
+            <button class="btn-primary" onclick="saveSchalmViertel()">💾 Speichern</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+// ── Aktion: Schalmtest setzen (Sofort-Save) ──
+window.setSchalmtest = async function(kuhId, wert, btn) {
+  const datumStr = window._schalmDatum || isoDate(new Date());
+  const datumTs = new Date(datumStr + 'T12:00').getTime();
+
+  try {
+    // Existiert schon ein Eintrag für diese Kuh+Datum? → update
+    const startTag = new Date(datumTs); startTag.setHours(0,0,0,0);
+    const endeTag = startTag.getTime() + 86400000;
+    const existing = Object.entries(schalmtest||{}).find(([,t]) =>
+      t.kuhId === kuhId && t.datum >= startTag.getTime() && t.datum < endeTag
+    );
+
+    if(existing) {
+      await update(ref(db, 'schalmtest/' + existing[0]), {
+        wertGesamt: wert, updatedAt: Date.now()
+      });
+    } else {
+      await push(ref(db, 'schalmtest'), {
+        kuhId, datum: datumTs, wertGesamt: wert,
+        viertel: null, notiz: '',
+        createdAt: Date.now()
+      });
+    }
+    if(navigator.vibrate) navigator.vibrate(20);
+
+    // Bei +++ Behandlungs-Vorschlag
+    if(wert === '+++') {
+      const k = kuehe[kuhId];
+      setTimeout(() => {
+        if(confirm('⚠ #'+(k?.nr||'?')+' '+(k?.name||'')+' hat +++ (stark positiv).\n\nMastitis-Behandlung anlegen?')) {
+          if(window.showBehandlungForm) showBehandlungForm(kuhId);
+        }
+      }, 200);
+    }
+    window.showSaveToast && showSaveToast('✓ Gespeichert: '+wert);
+  } catch(e) {
+    console.error('Schalmtest Save Fehler:', e);
+    alert('Speichern fehlgeschlagen: '+e.message);
+  }
+};
+
+window.deleteSchalmtest = async function(id) {
+  if(!confirm('Test-Eintrag löschen?')) return;
+  try {
+    await remove(ref(db, 'schalmtest/' + id));
+    window.showSaveToast && showSaveToast('Eintrag gelöscht');
+  } catch(e) { alert('Fehler: '+e.message); }
+};
+
+// ── Long-Press für Viertel-Details ──
+window._schalmLongPressTimer = null;
+window._schalmLongPressKuh = null;
+window.schalmLongPressStart = function(ev, kuhId) {
+  window._schalmLongPressKuh = kuhId;
+  window._schalmLongPressTimer = setTimeout(() => {
+    if(navigator.vibrate) navigator.vibrate([20,40,30]);
+    openSchalmViertel(kuhId);
+  }, 550);
+};
+window.schalmLongPressEnd = function() {
+  if(window._schalmLongPressTimer) {
+    clearTimeout(window._schalmLongPressTimer);
+    window._schalmLongPressTimer = null;
+  }
+};
+
+window.openSchalmViertel = function(kuhId) {
+  const k = kuehe[kuhId];
+  if(!k) return;
+  const ov = document.getElementById('schalm-viertel-overlay');
+  if(!ov) return;
+  document.getElementById('sv-kuh-id').value = kuhId;
+  document.getElementById('sv-kuh-info').innerHTML =
+    '<b style="color:var(--gold);font-size:1rem">#'+(k.nr||'?')+' '+(k.name||'')+'</b>';
+
+  // Bestehende Viertel-Werte laden
+  const datumStr = window._schalmDatum || isoDate(new Date());
+  const datumTs = new Date(datumStr + 'T12:00').getTime();
+  const startTag = new Date(datumTs); startTag.setHours(0,0,0,0);
+  const endeTag = startTag.getTime() + 86400000;
+  const existing = Object.values(schalmtest||{}).find(t =>
+    t.kuhId === kuhId && t.datum >= startTag.getTime() && t.datum < endeTag
+  );
+  const viertel = (existing && existing.viertel) || {};
+
+  // Buttons zurücksetzen + bestehende markieren
+  ov.querySelectorAll('.sv-btn').forEach(b => {
+    const pos = b.dataset.pos;
+    const wert = b.dataset.wert;
+    const aktiv = viertel[pos] === wert;
+    const s = SCHALM_SKALA.find(x => x.wert === wert);
+    b.style.background = aktiv ? s.farbe : 'transparent';
+    b.style.color = aktiv ? (s.text||'#fff') : s.farbe;
+    b.dataset.aktiv = aktiv ? '1' : '0';
+  });
+
+  ov.style.display = 'flex';
+};
+
+window.setSchalmViertel = function(pos, wert, btn) {
+  // Innerhalb der Gruppe (pos) andere abwählen
+  const ov = document.getElementById('schalm-viertel-overlay');
+  ov.querySelectorAll('.sv-btn[data-pos="'+pos+'"]').forEach(b => {
+    const w = b.dataset.wert;
+    const s = SCHALM_SKALA.find(x => x.wert === w);
+    b.style.background = 'transparent';
+    b.style.color = s.farbe;
+    b.dataset.aktiv = '0';
+  });
+  const s = SCHALM_SKALA.find(x => x.wert === wert);
+  btn.style.background = s.farbe;
+  btn.style.color = s.text || '#fff';
+  btn.dataset.aktiv = '1';
+};
+
+window.saveSchalmViertel = async function() {
+  const kuhId = document.getElementById('sv-kuh-id').value;
+  if(!kuhId) return;
+  const ov = document.getElementById('schalm-viertel-overlay');
+
+  // Viertel-Werte einsammeln
+  const viertel = {};
+  ['vl','vr','hl','hr'].forEach(pos => {
+    const aktivBtn = ov.querySelector('.sv-btn[data-pos="'+pos+'"][data-aktiv="1"]');
+    if(aktivBtn) viertel[pos] = aktivBtn.dataset.wert;
+  });
+
+  // Gesamt-Wert = schlechtester der Viertel
+  const reihenfolge = ['negativ','+','++','+++'];
+  let gesamtIdx = -1;
+  Object.values(viertel).forEach(w => {
+    const idx = reihenfolge.indexOf(w);
+    if(idx > gesamtIdx) gesamtIdx = idx;
+  });
+  const wertGesamt = gesamtIdx >= 0 ? reihenfolge[gesamtIdx] : null;
+
+  const datumStr = window._schalmDatum || isoDate(new Date());
+  const datumTs = new Date(datumStr + 'T12:00').getTime();
+  const startTag = new Date(datumTs); startTag.setHours(0,0,0,0);
+  const endeTag = startTag.getTime() + 86400000;
+  const existing = Object.entries(schalmtest||{}).find(([,t]) =>
+    t.kuhId === kuhId && t.datum >= startTag.getTime() && t.datum < endeTag
+  );
+
+  try {
+    if(existing) {
+      await update(ref(db, 'schalmtest/' + existing[0]), {
+        viertel, wertGesamt, updatedAt: Date.now()
+      });
+    } else if(wertGesamt) {
+      await push(ref(db, 'schalmtest'), {
+        kuhId, datum: datumTs, wertGesamt,
+        viertel, notiz: '',
+        createdAt: Date.now()
+      });
+    }
+    closeForm('schalm-viertel-overlay');
+    window.showSaveToast && showSaveToast('✓ Viertel-Details gespeichert');
+  } catch(e) {
+    alert('Speichern fehlgeschlagen: '+e.message);
+  }
+};
