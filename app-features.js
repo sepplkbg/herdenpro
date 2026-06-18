@@ -5941,11 +5941,11 @@ function renderMilchqualitaet() {
       </div>` : ''}
 
       <!-- Skala-Legende -->
-      <div style="display:flex;gap:.3rem;justify-content:center;font-size:.7rem;color:var(--text3);margin-bottom:.6rem">
+      <div style="display:flex;gap:.3rem;justify-content:center;font-size:.7rem;color:var(--text3);margin-bottom:.6rem;flex-wrap:wrap">
         ${SCHALM_SKALA.map(s => `<span style="display:inline-flex;align-items:center;gap:.2rem">
           <span style="width:10px;height:10px;border-radius:50%;background:${s.farbe};display:inline-block"></span>${s.label}
         </span>`).join('<span>·</span>')}
-        <span>·</span><span style="font-style:italic">Long-Press = Viertel</span>
+        <span>·</span><span style="font-style:italic"><span style="color:var(--gold);font-weight:700">⊞</span> = Viertel-Details</span>
       </div>
 
       <!-- Kuh-Liste mit Schalmtest-Buttons -->
@@ -5980,6 +5980,12 @@ function renderMilchqualitaet() {
                            ${heute && heute.wertGesamt===s.wert ? 'box-shadow:0 0 8px '+s.farbe+'66' : ''}">
                     ${s.label}
                   </button>`).join('')}
+                <!-- Expliziter Viertel-Button (für Desktop + bessere Auffindbarkeit) -->
+                <button onclick="openSchalmViertel('${id}')"
+                  title="Viertel-Details (VL/VR/HL/HR)"
+                  style="padding:.5rem .55rem;border-radius:8px;border:1.5px dashed var(--gold2);background:transparent;color:var(--gold);cursor:pointer;font-family:inherit;font-size:.78rem;font-weight:700">
+                  ⊞
+                </button>
                 ${heute ? `
                   <button onclick="deleteSchalmtest('${heute.id}')" class="btn-xs-danger" style="padding:.4rem .5rem">✕</button>
                 ` : ''}
@@ -5995,6 +6001,40 @@ function renderMilchqualitaet() {
       </div>
 
       ${aktiveKuehe.length === 0 ? '<div class="empty-state">Keine Kühe in diesem Filter</div>' : ''}
+
+      <!-- Viertel-Detail-Overlay (auch im Erfassungs-Modus verfügbar) -->
+      <div id="schalm-viertel-overlay" class="form-overlay" style="display:none">
+        <div class="form-sheet">
+          <div class="form-header">
+            <h3>🐄 Viertel-Details</h3>
+            <button class="close-btn" onclick="closeForm('schalm-viertel-overlay')">✕</button>
+          </div>
+          <div class="form-body">
+            <input type="hidden" id="sv-kuh-id" />
+            <div id="sv-kuh-info" style="text-align:center;margin-bottom:.8rem;font-size:.9rem;color:var(--text2)"></div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:.6rem">
+              ${['vl','vr','hl','hr'].map(pos => {
+                const label = {vl:'Vorne Links',vr:'Vorne Rechts',hl:'Hinten Links',hr:'Hinten Rechts'}[pos];
+                return `<div style="background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:.55rem">
+                  <div style="font-size:.72rem;color:var(--text3);margin-bottom:.3rem;font-weight:700">${label}</div>
+                  <div style="display:flex;gap:.2rem">
+                    ${SCHALM_SKALA.map(s => `
+                      <button class="sv-btn" data-pos="${pos}" data-wert="${s.wert}"
+                        onclick="setSchalmViertel('${pos}','${s.wert}',this)"
+                        style="flex:1;padding:.4rem .1rem;border-radius:6px;font-weight:700;font-size:.7rem;cursor:pointer;border:1.5px solid ${s.farbe};background:transparent;color:${s.farbe};font-family:inherit">
+                        ${s.label}
+                      </button>`).join('')}
+                  </div>
+                </div>`;
+              }).join('')}
+            </div>
+            <div class="form-actions" style="margin-top:.8rem">
+              <button class="btn-secondary" onclick="closeForm('schalm-viertel-overlay')">Abbrechen</button>
+              <button class="btn-primary" onclick="saveSchalmViertel()">💾 Speichern</button>
+            </div>
+          </div>
+        </div>
+      </div>
     `;
   }
 
@@ -6104,30 +6144,60 @@ function renderMilchqualitaet() {
   `;
 }
 
-// ── Aktion: Schalmtest setzen (Sofort-Save) ──
+// ── Aktion: Schalmtest setzen (Sofort-Save mit Optimistic Update) ──
 window.setSchalmtest = async function(kuhId, wert, btn) {
+  console.log('[setSchalmtest] START', {kuhId, wert});
   const datumStr = window._schalmDatum || isoDate(new Date());
   const datumTs = new Date(datumStr + 'T12:00').getTime();
+
+  // ── OPTIMISTIC UPDATE: Button-Farbe sofort anpassen, kein Warten auf Firebase ──
+  if(btn) {
+    const row = btn.closest('.list-card');
+    if(row) {
+      const s = SCHALM_SKALA.find(x => x.wert === wert);
+      if(s) {
+        row.style.borderLeft = '4px solid '+s.farbe;
+        // Alle Buttons in dieser Zeile zurücksetzen
+        row.querySelectorAll('.schalm-btn').forEach(b => {
+          const w = b.dataset.wert;
+          const sk = SCHALM_SKALA.find(x => x.wert === w);
+          if(sk) {
+            b.style.background = (w === wert) ? sk.farbe : 'transparent';
+            b.style.color = (w === wert) ? (sk.text||'#fff') : sk.farbe;
+            b.style.boxShadow = (w === wert) ? '0 0 8px '+sk.farbe+'66' : '';
+          }
+        });
+      }
+    }
+  }
 
   try {
     // Existiert schon ein Eintrag für diese Kuh+Datum? → update
     const startTag = new Date(datumTs); startTag.setHours(0,0,0,0);
     const endeTag = startTag.getTime() + 86400000;
-    const existing = Object.entries(schalmtest||{}).find(([,t]) =>
-      t.kuhId === kuhId && t.datum >= startTag.getTime() && t.datum < endeTag
+    const schalmData = window.schalmtest || schalmtest || {};
+    console.log('[setSchalmtest] schalmData hat '+Object.keys(schalmData).length+' Einträge');
+    const existing = Object.entries(schalmData).find(([,t]) =>
+      t && t.kuhId === kuhId && t.datum >= startTag.getTime() && t.datum < endeTag
     );
 
+    let savedKey;
     if(existing) {
+      console.log('[setSchalmtest] UPDATE existierender Eintrag', existing[0]);
       await update(ref(db, 'schalmtest/' + existing[0]), {
         wertGesamt: wert, updatedAt: Date.now()
       });
+      savedKey = existing[0];
     } else {
-      await push(ref(db, 'schalmtest'), {
+      console.log('[setSchalmtest] PUSH neuer Eintrag an /schalmtest');
+      const r = await push(ref(db, 'schalmtest'), {
         kuhId, datum: datumTs, wertGesamt: wert,
         viertel: null, notiz: '',
         createdAt: Date.now()
       });
+      savedKey = r && r.key;
     }
+    console.log('[setSchalmtest] DONE, key=', savedKey);
     if(navigator.vibrate) navigator.vibrate(20);
 
     // Bei +++ Behandlungs-Vorschlag
@@ -6141,8 +6211,29 @@ window.setSchalmtest = async function(kuhId, wert, btn) {
     }
     window.showSaveToast && showSaveToast('✓ Gespeichert: '+wert);
   } catch(e) {
-    console.error('Schalmtest Save Fehler:', e);
-    alert('Speichern fehlgeschlagen: '+e.message);
+    console.error('[setSchalmtest] FEHLER:', e);
+    // Optimistic Update zurückrollen
+    if(btn) {
+      const row = btn.closest('.list-card');
+      if(row) {
+        row.style.borderLeft = '';
+        row.querySelectorAll('.schalm-btn').forEach(b => {
+          const w = b.dataset.wert;
+          const sk = SCHALM_SKALA.find(x => x.wert === w);
+          if(sk) {
+            b.style.background = 'transparent';
+            b.style.color = sk.farbe;
+            b.style.boxShadow = '';
+          }
+        });
+      }
+    }
+    alert('⚠ Speichern fehlgeschlagen!\n\n'+
+          'Fehler: '+(e && e.message ? e.message : String(e))+'\n\n'+
+          'Prüfen:\n'+
+          '1. Internet-Verbindung\n'+
+          '2. Firebase-Rules: muss "schalmtest" enthalten\n'+
+          '3. DevTools-Konsole (F12) für Details');
   }
 };
 
