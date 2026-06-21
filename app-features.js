@@ -1837,7 +1837,14 @@ window.editMilchEintrag = function(id) {
 };
 
 // saveMilch – bulletproof: try/catch, anti-race mit Auto-Save, klare Erfolgs/Fehler-Anzeige
+window._milchSaveInProgress = false;
 window.saveMilch = async function() {
+  // ── 0. Re-Entry-Guard: verhindert dass Doppelklick Duplikate erzeugt ──
+  if(window._milchSaveInProgress) {
+    console.warn('[saveMilch] Bereits in Bearbeitung, Doppelklick ignoriert');
+    return;
+  }
+  window._milchSaveInProgress = true;
   console.log('[saveMilch] START');
 
   // ── 1. Auto-Save sofort anhalten (Race-Schutz) ──
@@ -1932,14 +1939,30 @@ window.saveMilch = async function() {
       savedKey = editMilchId;
       console.log('[saveMilch] Update:', savedKey);
     } else {
-      // Komplett neuer Eintrag
-      const newRef = await push(ref(db, 'milch'), {
-        datum: datumTs, art: modus, zeit, gesamt,
-        prokuh: modus==='prokuh' ? prokuh : null,
-        molkerei, notiz, createdAt: Date.now()
-      });
-      savedKey = newRef.key;
-      console.log('[saveMilch] Neu:', savedKey);
+      // ── ANTI-DUPLIKAT auch hier: erst nach existierendem Eintrag suchen ──
+      const startTag = new Date(datumTs); startTag.setHours(0,0,0,0);
+      const endeTag  = startTag.getTime() + 86400000;
+      const existingEntry = Object.entries(milchEintraege||{}).find(([id, e]) =>
+        e && e.datum >= startTag.getTime() && e.datum < endeTag &&
+        (e.zeit||'morgen') === zeit
+      );
+      if(existingEntry) {
+        await update(ref(db, 'milch/' + existingEntry[0]), {
+          datum: datumTs, art: modus, zeit, gesamt,
+          prokuh: modus==='prokuh' ? prokuh : null,
+          molkerei, notiz, updatedAt: Date.now()
+        });
+        savedKey = existingEntry[0];
+        console.log('[saveMilch] Existierenden Eintrag übernommen statt PUSH:', savedKey);
+      } else {
+        const newRef = await push(ref(db, 'milch'), {
+          datum: datumTs, art: modus, zeit, gesamt,
+          prokuh: modus==='prokuh' ? prokuh : null,
+          molkerei, notiz, createdAt: Date.now()
+        });
+        savedKey = newRef.key;
+        console.log('[saveMilch] Neu:', savedKey);
+      }
     }
 
     // ── 4. SUCCESS – Form-State + UI bereinigen ──
@@ -1988,6 +2011,8 @@ window.saveMilch = async function() {
           '1. Internet-Verbindung prüfen\n'+
           '2. Nochmal auf "Speichern" tippen\n'+
           '3. Falls weiterhin Fehler: Screenshot machen und Werte abschreiben');
+  } finally {
+    window._milchSaveInProgress = false;
   }
 };
 
@@ -4003,11 +4028,27 @@ async function doMilchAutoSave() {
       window._milchAutoSaveDraftId = editIdRaw;
       await update(ref(db, 'milch/' + editIdRaw), payload);
     } else {
-      // Neu anlegen – wenn Gruppen-Edit erstmal nur Draft (alte Einträge erst beim finalen Save löschen)
-      payload.createdAt = Date.now();
-      const r = await push(ref(db, 'milch'), payload);
-      window._milchAutoSaveDraftId = r.key;
-      // m-edit-id auf den Draft setzen, damit finaler Save nur updated, nicht doppelt anlegt
+      // ── ANTI-DUPLIKAT: Statt blind PUSH, erst nach existierendem Eintrag suchen ──
+      // Ohne diese Suche entstand bei jedem Form-Öffnen ein neuer Draft, der
+      // in der Aggregation als Doppel/Tripel/Quadrupel auftauchte.
+      const startTag = new Date(datumTs); startTag.setHours(0,0,0,0);
+      const endeTag  = startTag.getTime() + 86400000;
+      const existingEntry = Object.entries(milchEintraege||{}).find(([id, e]) =>
+        e && e.datum >= startTag.getTime() && e.datum < endeTag &&
+        (e.zeit||'morgen') === zeit
+      );
+      if(existingEntry) {
+        // Existierenden Eintrag als Auto-Save-Ziel übernehmen
+        console.log('[autoSave] Existierenden Eintrag fortsetzen statt neu anlegen:', existingEntry[0]);
+        window._milchAutoSaveDraftId = existingEntry[0];
+        await update(ref(db, 'milch/' + existingEntry[0]), payload);
+      } else {
+        // Echter Neueintrag
+        payload.createdAt = Date.now();
+        const r = await push(ref(db, 'milch'), payload);
+        window._milchAutoSaveDraftId = r.key;
+      }
+      // m-edit-id mit dem nun gültigen Draft füllen
       const eid = document.getElementById('m-edit-id');
       if(eid) eid.value = window._milchAutoSaveDraftId;
     }
