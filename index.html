@@ -77,6 +77,7 @@ window.toggleMehrMenu = function(e) {
         {id:'aufgaben',icon:'✅',label:'Aufgaben'},
         {id:'milchqualitaet',icon:'🧪',label:'Milchqualität'},
         {id:'darstellung',icon:'📐',label:'Darstellung'},
+        {id:'spiel',icon:'🎮',label:'Alm-Renner'},
       ];
       var imMenu = allMods.filter(function(mod){ return !mainNav.includes(mod.id) && mod.id !== '__drucken__'; });
       grid.innerHTML = imMenu.map(function(mod){
@@ -171,6 +172,7 @@ window.FIREBASE_CONFIG = {
     {id:'aufgaben',   icon:'✅',  label:'Aufgaben'},
     {id:'milchqualitaet',icon:'🧪',label:'Milchqualität'},
     {id:'darstellung',icon:'📐',  label:'Darstellung'},
+    {id:'spiel',     icon:'🎮',  label:'Alm-Renner'},
     {id:'__drucken__',icon:'🖨',  label:'Drucken'},
   ];
   window.DEFAULT_MAIN_NAV = ['dashboard','herde','saison','milch'];
