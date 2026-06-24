@@ -42,19 +42,25 @@
    Mobile (User-Phone hat CSS-Width ~945px): 32px – größer für Stall-Lesbarkeit
    Desktop (≥1024px Browser-Fenster): 16px – Standard-Größe.
    Width-only Detection weil pointer:fine/hover:hover auf User-Setup unzuverlässig ist. */
+:root{
+  /* User-Multiplikator für Schriftgröße – via Aa-Icon im Topbar setzbar
+     Werte: 0.80 (xs) · 0.90 (s) · 1.00 (m, default) · 1.15 (l) · 1.30 (xl) */
+  --schrift-skala: 1;
+}
 html{
-  /* Responsive Basis: skaliert mit Viewport-Breite, mit min/max-Grenzen.
-     6.2vw → iPhone 14 (390px) ≈ 24px, Galaxy (360px) ≈ 22px (greift Min),
-     iPhone 14 Plus (430px) ≈ 26.7px, größere Phones bis 30px.
-     Lesbar auf allen Geräten, ohne aufgeblasen zu wirken. */
-  font-size:clamp(22px, 6.2vw, 30px);
+  /* Phone (Default): 20-24px je nach Viewport-Breite × User-Skala */
+  font-size:calc(clamp(20px, 5.5vw, 24px) * var(--schrift-skala));
   -webkit-text-size-adjust:100%;
   height:100%;
   -webkit-tap-highlight-color:transparent;
 }
+@media (min-width: 600px) and (max-width: 1023.98px) {
+  /* Tablet: deutlich kleiner als Phone weil viel mehr Platz */
+  html { font-size:calc(clamp(15px, 2.3vw, 19px) * var(--schrift-skala)); }
+}
 @media (min-width: 1024px) {
-  /* Desktop: fixe 16px für klassische Web-Darstellung */
-  html { font-size:16px; }
+  /* Desktop: fixe 16px × User-Skala */
+  html { font-size:calc(16px * var(--schrift-skala)); }
 }
 body{
   height:100%;
