@@ -415,6 +415,7 @@ function render() {
     aufgaben:     function(){return renderAufgaben();},
     milchqualitaet: function(){return renderMilchqualitaet();},
     darstellung:  function(){return renderDarstellung();},
+    spiel:        function(){return renderSpiel();},
   };
   main.innerHTML = (map[currentView]||renderDashboard)();
   attachListeners();

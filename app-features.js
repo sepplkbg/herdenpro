@@ -5887,6 +5887,349 @@ window.addEventListener('beforeinstallprompt', function(e) {
 });
 
 // ══════════════════════════════════════════════════════════════════════════════
+//  ALM-RENNER – Endless-Runner mit Kuh, Heuballen, Zäunen, Firebase-Bestenliste
+// ══════════════════════════════════════════════════════════════════════════════
+window._spielState = null;
+window._spielBestenliste = [];
+
+function renderSpiel() {
+  const best = parseInt(localStorage.getItem('spielBest')||'0');
+  return `
+    <div class="page-header">
+      <h2>🎮 Alm-Renner</h2>
+      <button class="btn-xs" onclick="startSpiel()">↻ Neustart</button>
+    </div>
+
+    <!-- Score-Anzeige -->
+    <div style="display:flex;gap:1rem;justify-content:space-around;margin-bottom:.5rem;padding:.4rem .6rem;background:var(--bg3);border-radius:8px">
+      <div style="text-align:center">
+        <div style="font-size:.65rem;color:var(--text3);font-weight:700;letter-spacing:.05em">SCORE</div>
+        <div id="spiel-score" style="font-size:1.4rem;color:var(--gold);font-weight:700;line-height:1">0</div>
+      </div>
+      <div style="text-align:center">
+        <div style="font-size:.65rem;color:var(--text3);font-weight:700;letter-spacing:.05em">HIGHSCORE</div>
+        <div id="spiel-best" style="font-size:1.4rem;color:var(--green);font-weight:700;line-height:1">${best}</div>
+      </div>
+      <div style="text-align:center">
+        <div style="font-size:.65rem;color:var(--text3);font-weight:700;letter-spacing:.05em">TEMPO</div>
+        <div id="spiel-speed" style="font-size:1.4rem;color:#7acbff;font-weight:700;line-height:1">1×</div>
+      </div>
+    </div>
+
+    <!-- Canvas -->
+    <div style="position:relative;border:2px solid var(--gold2);border-radius:10px;overflow:hidden;background:#87CEEB">
+      <canvas id="spiel-canvas" width="600" height="220"
+        style="display:block;width:100%;height:auto;touch-action:none;cursor:pointer"
+        onclick="spielSpring()"></canvas>
+      <!-- Start-Overlay -->
+      <div id="spiel-start" style="position:absolute;inset:0;background:rgba(0,0,0,.5);display:flex;flex-direction:column;align-items:center;justify-content:center;color:#fff;text-align:center;cursor:pointer" onclick="startSpiel()">
+        <div style="font-size:3rem">🐄</div>
+        <div style="font-size:1.2rem;font-weight:700;margin:.4rem">Bereit?</div>
+        <div style="font-size:.85rem;opacity:.8">Tippen oder Leertaste = Springen</div>
+        <button class="btn-primary" style="margin-top:.6rem">▶ START</button>
+      </div>
+      <!-- Game-Over-Overlay -->
+      <div id="spiel-over" style="display:none;position:absolute;inset:0;background:rgba(0,0,0,.7);flex-direction:column;align-items:center;justify-content:center;color:#fff;text-align:center">
+        <div style="font-size:2rem">💥</div>
+        <div style="font-size:1.3rem;font-weight:700;color:var(--red)">Aua!</div>
+        <div id="spiel-final" style="font-size:1rem;margin:.4rem"></div>
+        <div id="spiel-rank" style="font-size:.85rem;color:var(--gold);margin-bottom:.6rem"></div>
+        <button class="btn-primary" onclick="startSpiel()">↻ Nochmal</button>
+      </div>
+    </div>
+
+    <div style="text-align:center;font-size:.78rem;color:var(--text3);margin-top:.6rem;line-height:1.5">
+      🐄 die Kuh muss über <span style="font-size:1rem">🌾</span> Heuballen, <span style="font-size:1rem">🚧</span> Zäune und <span style="font-size:1rem">🐦</span> Schwalben springen.<br>
+      <b>Tippen</b> oder <b>Leertaste</b> = springen
+    </div>
+
+    <!-- Bestenliste -->
+    <div class="section-title" style="margin-top:1.2rem">🏆 Bestenliste (alle Almpersonen)</div>
+    <div id="spiel-bestenliste" class="card-list">
+      <div class="empty-state">Lade Bestenliste…</div>
+    </div>
+  `;
+}
+window.renderSpiel = renderSpiel;
+
+// ── Game Engine ──
+window.startSpiel = function() {
+  const canvas = document.getElementById('spiel-canvas');
+  if(!canvas) return;
+  const ctx = canvas.getContext('2d');
+
+  // State zurücksetzen
+  window._spielState = {
+    running: true,
+    cow: { x: 50, y: 0, vy: 0, jumping: false, anim: 0 },
+    obstacles: [],
+    score: 0,
+    speed: 4,
+    ground: 165,        // y-Pos für Kuh-Boden
+    nextSpawnAt: 80,
+    ctx, canvas,
+    lastTime: performance.now(),
+    submitted: false
+  };
+  window._spielState.cow.y = window._spielState.ground;
+
+  document.getElementById('spiel-start').style.display = 'none';
+  document.getElementById('spiel-over').style.display = 'none';
+
+  // Bestenliste laden
+  ladeBestenliste();
+
+  // Loop starten
+  requestAnimationFrame(spielLoop);
+};
+
+function spielLoop(now) {
+  const g = window._spielState;
+  if(!g || !g.running) return;
+
+  // Skalierungs-Faktor: 60fps-Basis
+  const dt = Math.min(50, now - g.lastTime) / 16.67;
+  g.lastTime = now;
+
+  // Physik: Schwerkraft
+  g.cow.vy += 0.7 * dt;
+  g.cow.y += g.cow.vy * dt;
+  if(g.cow.y >= g.ground) {
+    g.cow.y = g.ground;
+    g.cow.vy = 0;
+    g.cow.jumping = false;
+  }
+  g.cow.anim += 0.3 * dt;
+
+  // Hindernisse spawnen
+  if(g.score >= g.nextSpawnAt) {
+    const typen = ['bale','fence','bird'];
+    const typ = typen[Math.floor(Math.random() * typen.length)];
+    g.obstacles.push({
+      x: g.canvas.width,
+      typ,
+      y: typ === 'bird' ? g.ground - 50 : g.ground
+    });
+    // Nächster Spawn: weiter wenn schneller, zufällig
+    const lueckeMin = Math.max(40, 110 - g.speed * 3);
+    g.nextSpawnAt = g.score + lueckeMin + Math.random() * 80;
+  }
+
+  // Hindernisse bewegen
+  g.obstacles.forEach(o => o.x -= g.speed * dt);
+  g.obstacles = g.obstacles.filter(o => o.x > -60);
+
+  // Kollision
+  for(const o of g.obstacles) {
+    const cowLeft = g.cow.x + 6;
+    const cowRight = g.cow.x + 28;
+    const cowTop = g.cow.y - 26;
+    const cowBottom = g.cow.y;
+    const oLeft = o.x + 5;
+    const oRight = o.x + 27;
+    const oTop = o.y - 26;
+    const oBottom = o.y;
+    if(cowRight > oLeft && cowLeft < oRight && cowBottom > oTop && cowTop < oBottom) {
+      spielGameOver();
+      return;
+    }
+  }
+
+  // Score + Tempo
+  g.score += dt;
+  if(Math.floor(g.score) % 200 === 0 && g.score > 1) {
+    g.speed = Math.min(12, 4 + Math.floor(g.score / 200) * 0.5);
+  }
+
+  spielDraw();
+  requestAnimationFrame(spielLoop);
+}
+
+function spielDraw() {
+  const g = window._spielState;
+  if(!g) return;
+  const ctx = g.ctx;
+  const w = g.canvas.width;
+  const h = g.canvas.height;
+
+  // Himmel
+  const skyGrad = ctx.createLinearGradient(0, 0, 0, h * 0.7);
+  skyGrad.addColorStop(0, '#87CEEB');
+  skyGrad.addColorStop(1, '#B0E0E6');
+  ctx.fillStyle = skyGrad;
+  ctx.fillRect(0, 0, w, h * 0.7);
+
+  // Berge im Hintergrund (statisch)
+  ctx.fillStyle = '#6B8E5A';
+  ctx.beginPath();
+  ctx.moveTo(0, h * 0.7);
+  for(let x = 0; x <= w; x += 80) {
+    const y = h * 0.5 + Math.sin((x + g.score * 0.3) * 0.03) * 25;
+    ctx.lineTo(x, y);
+  }
+  ctx.lineTo(w, h * 0.7);
+  ctx.closePath();
+  ctx.fill();
+
+  // Wiese
+  ctx.fillStyle = '#7CB342';
+  ctx.fillRect(0, h * 0.7, w, h * 0.3);
+
+  // Boden-Linie
+  ctx.fillStyle = '#558B2F';
+  ctx.fillRect(0, h * 0.7, w, 3);
+
+  // Bewegende Wiesen-Punkte (Tempo-Effekt)
+  ctx.fillStyle = '#5A7A2B';
+  const offset = Math.floor(g.score) % 40;
+  for(let x = -offset; x < w; x += 40) {
+    ctx.fillRect(x, h * 0.7 + 15, 6, 2);
+    ctx.fillRect(x + 20, h * 0.7 + 30, 5, 2);
+  }
+
+  // Hindernisse
+  ctx.font = '28px sans-serif';
+  ctx.textBaseline = 'bottom';
+  g.obstacles.forEach(o => {
+    const emoji = o.typ === 'bale' ? '🌾' : o.typ === 'fence' ? '🚧' : '🐦';
+    ctx.fillText(emoji, o.x, o.y);
+  });
+
+  // Kuh
+  ctx.font = '32px sans-serif';
+  // Beim Springen leicht rotieren
+  if(g.cow.jumping) {
+    ctx.save();
+    ctx.translate(g.cow.x + 16, g.cow.y - 16);
+    ctx.rotate(-0.2);
+    ctx.fillText('🐄', -16, 16);
+    ctx.restore();
+  } else {
+    // Lauf-Animation: leichte Vertikal-Bewegung
+    const bounce = Math.sin(g.cow.anim) * 1.5;
+    ctx.fillText('🐄', g.cow.x, g.cow.y + bounce);
+  }
+
+  // Score-Display oben
+  const scoreEl = document.getElementById('spiel-score');
+  if(scoreEl) scoreEl.textContent = Math.floor(g.score / 5);
+  const speedEl = document.getElementById('spiel-speed');
+  if(speedEl) speedEl.textContent = (g.speed / 4).toFixed(1) + '×';
+}
+
+window.spielSpring = function() {
+  const g = window._spielState;
+  if(!g || !g.running) return;
+  if(!g.cow.jumping) {
+    g.cow.vy = -12.5;
+    g.cow.jumping = true;
+    if(navigator.vibrate) navigator.vibrate(15);
+  }
+};
+
+// Leertaste & Pfeil-oben für Sprung
+window._spielKeyHandler = function(e) {
+  if(e.code === 'Space' || e.code === 'ArrowUp') {
+    e.preventDefault();
+    if(window._spielState && window._spielState.running) {
+      spielSpring();
+    } else if(document.getElementById('spiel-start') && currentView === 'spiel') {
+      startSpiel();
+    }
+  }
+};
+document.addEventListener('keydown', window._spielKeyHandler);
+
+async function spielGameOver() {
+  const g = window._spielState;
+  if(!g) return;
+  g.running = false;
+  const score = Math.floor(g.score / 5);
+
+  document.getElementById('spiel-final').textContent = 'Score: ' + score;
+
+  // Highscore prüfen
+  const best = parseInt(localStorage.getItem('spielBest')||'0');
+  const istNeuerBest = score > best;
+  if(istNeuerBest) {
+    localStorage.setItem('spielBest', String(score));
+    const bestEl = document.getElementById('spiel-best');
+    if(bestEl) bestEl.textContent = score;
+  }
+
+  // Score zu Firebase
+  if(!g.submitted && score > 5) {
+    g.submitted = true;
+    try {
+      const user = window._currentUser || {};
+      const name = user.displayName || user.name || (user.email ? user.email.split('@')[0] : 'Anonym');
+      await push(ref(db, 'spielScores'), {
+        email: user.email || 'anonym',
+        name,
+        score,
+        ts: Date.now()
+      });
+    } catch(e) { console.warn('Bestenliste-Submit fehlgeschlagen:', e); }
+  }
+
+  // Bestenliste neu laden + Platzierung
+  await ladeBestenliste();
+  const meinPlatz = window._spielBestenliste.findIndex(s => s.score === score && s.ts > Date.now() - 5000);
+  const rankEl = document.getElementById('spiel-rank');
+  if(rankEl) {
+    if(istNeuerBest) rankEl.innerHTML = '🎉 <b>Neuer persönlicher Highscore!</b>';
+    else if(meinPlatz >= 0 && meinPlatz < 10) rankEl.innerHTML = '🏆 Platz #' + (meinPlatz+1) + ' in der Bestenliste';
+    else rankEl.textContent = '';
+  }
+
+  document.getElementById('spiel-over').style.display = 'flex';
+
+  if(navigator.vibrate) navigator.vibrate([60, 30, 60]);
+}
+
+async function ladeBestenliste() {
+  try {
+    const snap = await ref(db, 'spielScores').once('value');
+    const scores = Object.values(snap.val() || {});
+    // Bester Score pro Email behalten
+    const byUser = {};
+    scores.forEach(sc => {
+      if(!sc || typeof sc.score !== 'number') return;
+      const key = sc.email || sc.name || '?';
+      if(!byUser[key] || byUser[key].score < sc.score) byUser[key] = sc;
+    });
+    const top = Object.values(byUser).sort((a,b) => b.score - a.score).slice(0, 10);
+    window._spielBestenliste = top;
+
+    const el = document.getElementById('spiel-bestenliste');
+    if(el) {
+      if(top.length === 0) {
+        el.innerHTML = '<div class="empty-state">Noch keine Scores – sei der erste! 🐄</div>';
+      } else {
+        const myEmail = (window._currentUser && window._currentUser.email) || '';
+        el.innerHTML = top.map((sc, i) => {
+          const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : '#'+(i+1);
+          const istIch = sc.email === myEmail;
+          const bgColor = istIch ? 'rgba(212,168,75,.12)' : 'var(--bg2)';
+          return `<div class="list-card list-card-sm" style="background:${bgColor};${istIch?'border-left:3px solid var(--gold)':''}">
+            <span style="font-size:1.1rem;min-width:2.2rem;text-align:center;font-weight:700">${medal}</span>
+            <div style="flex:1;min-width:0">
+              <div style="font-weight:700;${istIch?'color:var(--gold)':''}">${sc.name||'Anonym'}${istIch?' (du)':''}</div>
+              <div style="font-size:.7rem;color:var(--text3)">${new Date(sc.ts).toLocaleDateString('de-AT')}</div>
+            </div>
+            <div style="color:var(--gold);font-weight:700;font-size:1.1rem">${sc.score}</div>
+          </div>`;
+        }).join('');
+      }
+    }
+  } catch(e) {
+    console.warn('Bestenliste laden fehlgeschlagen:', e);
+    const el = document.getElementById('spiel-bestenliste');
+    if(el) el.innerHTML = '<div class="empty-state">Bestenliste nicht erreichbar (Firebase-Rules?)</div>';
+  }
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
 //  SCHRIFTGRÖSSE – User-Multiplikator (Aa-Icon im Topbar + Darstellung-Kachel)
 // ══════════════════════════════════════════════════════════════════════════════
 window.setSchriftSkala = function(skala) {
