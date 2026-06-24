@@ -5887,6 +5887,122 @@ window.addEventListener('beforeinstallprompt', function(e) {
 });
 
 // ══════════════════════════════════════════════════════════════════════════════
+//  SCHRIFTGRÖSSE – User-Multiplikator (Aa-Icon im Topbar + Darstellung-Kachel)
+// ══════════════════════════════════════════════════════════════════════════════
+window.setSchriftSkala = function(skala) {
+  const s = String(skala);
+  document.documentElement.style.setProperty('--schrift-skala', s);
+  try { localStorage.setItem('schriftSkala', s); } catch(e) {}
+  // Buttons im Popup highlighten
+  document.querySelectorAll('#schrift-buttons button, .schrift-skala-btn').forEach(b => {
+    const aktiv = b.dataset.skala === s;
+    b.style.background = aktiv ? 'var(--gold)' : 'var(--bg)';
+    b.style.color = aktiv ? '#0a0800' : 'var(--text2)';
+    b.style.borderColor = aktiv ? 'var(--gold)' : 'var(--border)';
+  });
+  // Popup auto-schließen nach kurzer Pause
+  const pop = document.getElementById('schrift-popup');
+  if(pop && pop.style.display !== 'none') {
+    setTimeout(() => { if(pop) pop.style.display = 'none'; }, 400);
+  }
+};
+
+window.toggleSchriftPopup = function() {
+  const pop = document.getElementById('schrift-popup');
+  if(!pop) return;
+  const sichtbar = pop.style.display !== 'none';
+  pop.style.display = sichtbar ? 'none' : 'block';
+  if(!sichtbar) {
+    // Aktiven Wert markieren
+    const aktuell = localStorage.getItem('schriftSkala') || '1.00';
+    document.querySelectorAll('#schrift-buttons button').forEach(b => {
+      const aktiv = b.dataset.skala === aktuell;
+      b.style.background = aktiv ? 'var(--gold)' : 'var(--bg)';
+      b.style.color = aktiv ? '#0a0800' : 'var(--text2)';
+      b.style.borderColor = aktiv ? 'var(--gold)' : 'var(--border)';
+    });
+    // Click-outside zum Schließen
+    setTimeout(() => {
+      document.addEventListener('click', schriftPopupOutsideHandler, true);
+    }, 100);
+  }
+};
+
+function schriftPopupOutsideHandler(e) {
+  const pop = document.getElementById('schrift-popup');
+  const btn = document.getElementById('schrift-quick-btn');
+  if(!pop || !btn) return;
+  if(!pop.contains(e.target) && !btn.contains(e.target)) {
+    pop.style.display = 'none';
+    document.removeEventListener('click', schriftPopupOutsideHandler, true);
+  }
+}
+
+// Beim App-Start: gespeicherte Skala wiederherstellen
+(function loadSchriftSkala(){
+  try {
+    const s = localStorage.getItem('schriftSkala');
+    if(s) document.documentElement.style.setProperty('--schrift-skala', s);
+  } catch(e) {}
+})();
+
+// ── Render-Funktion für die "Darstellung"-Kachel im Mehr-Menü ──
+function renderDarstellung() {
+  const aktuell = localStorage.getItem('schriftSkala') || '1.00';
+  const stufen = [
+    {skala:'0.80', label:'Sehr klein', beispiel:'Klein und kompakt'},
+    {skala:'0.90', label:'Klein',      beispiel:'Etwas kleiner'},
+    {skala:'1.00', label:'Normal',     beispiel:'Standard-Größe'},
+    {skala:'1.15', label:'Groß',       beispiel:'Etwas größer'},
+    {skala:'1.30', label:'Sehr groß',  beispiel:'Maximal lesbar'}
+  ];
+  return `
+    <div class="page-header">
+      <h2>📐 Darstellung</h2>
+    </div>
+
+    <div class="card-section" style="margin-bottom:.8rem">
+      <div class="section-label" style="margin-bottom:.5rem">SCHRIFTGRÖSSE</div>
+      <p style="font-size:.82rem;color:var(--text2);margin-bottom:.8rem;line-height:1.5">
+        Wie groß soll die Schrift auf diesem Gerät dargestellt werden?
+        Die Einstellung gilt nur für dieses Gerät – jeder Nutzer kann sich seine
+        eigene Größe wählen. Das Aa-Icon oben rechts macht dasselbe schneller.
+      </p>
+      <div style="display:flex;flex-direction:column;gap:.5rem">
+        ${stufen.map(s => `
+          <button class="schrift-skala-btn"
+            data-skala="${s.skala}"
+            onclick="setSchriftSkala('${s.skala}')"
+            style="padding:.7rem .9rem;border-radius:10px;cursor:pointer;font-family:inherit;text-align:left;display:flex;align-items:center;justify-content:space-between;gap:.6rem;
+              background:${aktuell===s.skala?'var(--gold)':'var(--bg)'};
+              color:${aktuell===s.skala?'#0a0800':'var(--text2)'};
+              border:2px solid ${aktuell===s.skala?'var(--gold)':'var(--border)'}">
+            <div>
+              <div style="font-weight:700;font-size:.95rem">${s.label}</div>
+              <div style="font-size:.75rem;opacity:.7">${s.beispiel}</div>
+            </div>
+            <span style="font-family:Georgia,serif;font-weight:700;font-size:${Math.round(20*parseFloat(s.skala))}px;line-height:1">A</span>
+          </button>
+        `).join('')}
+      </div>
+    </div>
+
+    <div class="card-section" style="margin-bottom:.8rem">
+      <div class="section-label" style="margin-bottom:.5rem">HINWEIS</div>
+      <p style="font-size:.78rem;color:var(--text3);line-height:1.5">
+        Die App nutzt drei Voreinstellungen je nach Bildschirm:<br>
+        • <b>Smartphone</b> (&lt;600px breit): touch-freundlich groß<br>
+        • <b>Tablet</b> (600–1024px): mittlere Größe<br>
+        • <b>Desktop</b> (≥1024px): kompakte Web-Darstellung<br><br>
+        Mit dem oben gewählten Wert wird diese Voreinstellung multipliziert –
+        z.B. „Groß" macht alles 15% größer als die Voreinstellung.
+      </p>
+    </div>
+  `;
+}
+window.renderDarstellung = renderDarstellung;
+
+// ══════════════════════════════════════════════════════════════════════════════
 //  MILCHQUALITÄT / SCHALMTEST
 //  4-stufige Skala: negativ / + / ++ / +++  (grün/gelb/orange/rot)
 //  Pro Kuh primär – Viertel (VL/VR/HL/HR) optional via Long-Press

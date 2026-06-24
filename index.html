@@ -76,6 +76,7 @@ window.toggleMehrMenu = function(e) {
         {id:'wartung',icon:'🔧',label:'Wartung'},{id:'lager',icon:'📦',label:'Lager'},
         {id:'aufgaben',icon:'✅',label:'Aufgaben'},
         {id:'milchqualitaet',icon:'🧪',label:'Milchqualität'},
+        {id:'darstellung',icon:'📐',label:'Darstellung'},
       ];
       var imMenu = allMods.filter(function(mod){ return !mainNav.includes(mod.id) && mod.id !== '__drucken__'; });
       grid.innerHTML = imMenu.map(function(mod){
@@ -169,6 +170,7 @@ window.FIREBASE_CONFIG = {
     {id:'lager',      icon:'📦',  label:'Lager'},
     {id:'aufgaben',   icon:'✅',  label:'Aufgaben'},
     {id:'milchqualitaet',icon:'🧪',label:'Milchqualität'},
+    {id:'darstellung',icon:'📐',  label:'Darstellung'},
     {id:'__drucken__',icon:'🖨',  label:'Drucken'},
   ];
   window.DEFAULT_MAIN_NAV = ['dashboard','herde','saison','milch'];
@@ -270,7 +272,30 @@ window.FIREBASE_CONFIG = {
       <span id="topbar-title">🐄 HerdenPro</span>
       <span style="font-size:.48rem;color:var(--text3);letter-spacing:.06em;opacity:.8">Engineering by LN Machinery</span>
     </div>
-    <div class="sync-indicator" id="sync-dot" title="Verbunden"></div>
+    <div style="display:flex;align-items:center;gap:.5rem">
+      <!-- Schriftgröße-Schnellzugriff -->
+      <button id="schrift-quick-btn" onclick="toggleSchriftPopup()"
+        title="Schriftgröße anpassen"
+        style="background:transparent;border:1.5px solid var(--border2);border-radius:8px;padding:.15rem .45rem;color:var(--text2);font-family:Georgia,serif;font-weight:700;cursor:pointer;line-height:1;display:inline-flex;align-items:baseline;gap:1px">
+        <span style="font-size:.85em">A</span><span style="font-size:1.1em">A</span>
+      </button>
+      <div class="sync-indicator" id="sync-dot" title="Verbunden"></div>
+    </div>
+  </div>
+
+  <!-- Schriftgröße-Popup (overlay) -->
+  <div id="schrift-popup" style="display:none;position:fixed;top:calc(var(--topbar-h,56px) + 6px);right:.6rem;z-index:9999;background:var(--bg2);border:1px solid var(--gold2);border-radius:14px;padding:.6rem;box-shadow:0 8px 32px rgba(0,0,0,.6)">
+    <div style="font-size:11px;color:var(--text3);text-align:center;margin-bottom:.4rem;letter-spacing:.05em;font-weight:700">SCHRIFTGRÖSSE</div>
+    <div style="display:flex;gap:.3rem;align-items:flex-end" id="schrift-buttons">
+      <button data-skala="0.80" onclick="setSchriftSkala('0.80')" style="padding:.4rem .55rem;background:var(--bg);border:2px solid var(--border);border-radius:8px;color:var(--text2);cursor:pointer;font-family:Georgia,serif;font-weight:700;font-size:11px">A</button>
+      <button data-skala="0.90" onclick="setSchriftSkala('0.90')" style="padding:.4rem .55rem;background:var(--bg);border:2px solid var(--border);border-radius:8px;color:var(--text2);cursor:pointer;font-family:Georgia,serif;font-weight:700;font-size:13px">A</button>
+      <button data-skala="1.00" onclick="setSchriftSkala('1.00')" style="padding:.4rem .55rem;background:var(--bg);border:2px solid var(--border);border-radius:8px;color:var(--text2);cursor:pointer;font-family:Georgia,serif;font-weight:700;font-size:15px">A</button>
+      <button data-skala="1.15" onclick="setSchriftSkala('1.15')" style="padding:.4rem .55rem;background:var(--bg);border:2px solid var(--border);border-radius:8px;color:var(--text2);cursor:pointer;font-family:Georgia,serif;font-weight:700;font-size:17px">A</button>
+      <button data-skala="1.30" onclick="setSchriftSkala('1.30')" style="padding:.4rem .55rem;background:var(--bg);border:2px solid var(--border);border-radius:8px;color:var(--text2);cursor:pointer;font-family:Georgia,serif;font-weight:700;font-size:19px">A</button>
+    </div>
+    <div style="display:flex;justify-content:space-between;font-size:9px;color:var(--text3);margin-top:.25rem;padding:0 .2rem">
+      <span>Sehr klein</span><span>Sehr groß</span>
+    </div>
   </div>
 
   <!-- Main Content -->

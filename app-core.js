@@ -414,6 +414,7 @@ function render() {
     lager:        function(){return renderLager();},
     aufgaben:     function(){return renderAufgaben();},
     milchqualitaet: function(){return renderMilchqualitaet();},
+    darstellung:  function(){return renderDarstellung();},
   };
   main.innerHTML = (map[currentView]||renderDashboard)();
   attachListeners();
