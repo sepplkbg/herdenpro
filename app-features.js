@@ -3830,11 +3830,18 @@ window._auth = null;
 function initAuth() {
   if(!firebase.auth) { console.error('Auth not loaded'); return; }
   window._auth = firebase.auth();
-  
-  // Show login screen immediately
-  document.getElementById('login-screen').style.display = 'flex';
+
+  // Persistente Anmeldung explizit setzen (Standard, aber sicherheitshalber)
+  firebase.auth().setPersistence(firebase.auth.Auth.Persistence.LOCAL)
+    .catch(e => console.warn('Auth-Persistence konnte nicht gesetzt werden:', e));
+
+  // ── Anti-Flash: NICHT die Login-Maske sofort zeigen ──
+  // Stattdessen kurzer Lade-Screen während Firebase die persistente Session prüft.
+  // Wenn jemand bereits angemeldet ist (Normalfall), springt's direkt zur App.
+  document.getElementById('login-screen').style.display = 'none';
   document.getElementById('root').style.display = 'none';
-  
+  zeigeAuthLadeBildschirm();
+
   firebase.auth().onAuthStateChanged(async function(user) {
     if(user) {
       // Load role from DB
@@ -3843,37 +3850,68 @@ function initAuth() {
         const userData = snap.val() || {};
         window._currentUser = {...user, ...userData};
         window._currentRole = userData.rolle || 'hirte';
-        
+
         // Check if approved
         if(userData.aktiv === false) {
           await firebase.auth().signOut();
+          versteckeAuthLadeBildschirm();
+          document.getElementById('login-screen').style.display = 'flex';
           showLoginError('Dein Konto wurde noch nicht freigegeben. Bitte Admin kontaktieren.');
           return;
         }
-        
+
         // Show app
+        versteckeAuthLadeBildschirm();
         document.getElementById('login-screen').style.display = 'none';
         document.getElementById('root').style.display = '';
-        
+
         // Update topbar with user info
         updateUserDisplay();
-        
+
         // Init app
         if(typeof initApp === 'function' && !window._appInitialized) {
           window._appInitialized = true;
-        
           initApp();
         }
       } catch(e) {
         console.error('Role load error:', e);
+        versteckeAuthLadeBildschirm();
+        document.getElementById('login-screen').style.display = 'flex';
         showLoginError && showLoginError('Fehler beim Laden. Bitte neu laden.');
       }
     } else {
+      // Niemand angemeldet → erst jetzt die Login-Maske zeigen
+      versteckeAuthLadeBildschirm();
       document.getElementById('login-screen').style.display = 'flex';
       document.getElementById('root').style.display = 'none';
       window._appInitialized = false;
     }
   });
+}
+
+function zeigeAuthLadeBildschirm() {
+  let el = document.getElementById('auth-lade-screen');
+  if(!el) {
+    el = document.createElement('div');
+    el.id = 'auth-lade-screen';
+    el.style.cssText = 'position:fixed;inset:0;z-index:99999;background:linear-gradient(160deg,#0a1a04 0%,#1a3a0a 50%,#0d2e03 100%);display:flex;flex-direction:column;align-items:center;justify-content:center;color:#D4A84B;font-family:Georgia,serif';
+    el.innerHTML =
+      '<div style="font-size:4rem;animation:authPulse 1.4s ease-in-out infinite">🐄</div>'+
+      '<div style="font-size:1.2rem;font-weight:700;margin-top:.8rem;letter-spacing:.5px">HerdenPro</div>'+
+      '<div style="font-size:.8rem;color:#98b078;margin-top:.4rem">Anmeldung wird geprüft…</div>'+
+      '<style>@keyframes authPulse{0%,100%{transform:scale(1);opacity:.7}50%{transform:scale(1.1);opacity:1}}</style>';
+    document.body.appendChild(el);
+  }
+  el.style.display = 'flex';
+}
+
+function versteckeAuthLadeBildschirm() {
+  const el = document.getElementById('auth-lade-screen');
+  if(el) {
+    el.style.transition = 'opacity .25s';
+    el.style.opacity = '0';
+    setTimeout(()=>{ if(el && el.parentNode) el.parentNode.removeChild(el); }, 280);
+  }
 }
 
 window.alleAuftreiben = async function() {
