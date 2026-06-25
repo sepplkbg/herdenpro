@@ -286,9 +286,9 @@ window.FIREBASE_CONFIG = {
   </div>
 
   <!-- Schriftgröße-Popup (overlay) -->
-  <div id="schrift-popup" style="display:none;position:fixed;top:calc(var(--topbar-h,56px) + 6px);right:.6rem;z-index:9999;background:var(--bg2);border:1px solid var(--gold2);border-radius:14px;padding:.6rem;box-shadow:0 8px 32px rgba(0,0,0,.6)">
+  <div id="schrift-popup" style="display:none;position:fixed;top:calc(var(--topbar-h,56px) + 6px);right:.6rem;z-index:9999;background:var(--bg2);border:1px solid var(--gold2);border-radius:14px;padding:.6rem;box-shadow:0 8px 32px rgba(0,0,0,.6);min-width:14rem">
     <div style="font-size:11px;color:var(--text3);text-align:center;margin-bottom:.4rem;letter-spacing:.05em;font-weight:700">SCHRIFTGRÖSSE</div>
-    <div style="display:flex;gap:.3rem;align-items:flex-end" id="schrift-buttons">
+    <div style="display:flex;gap:.3rem;align-items:flex-end;justify-content:center" id="schrift-buttons">
       <button data-skala="0.80" onclick="setSchriftSkala('0.80')" style="padding:.4rem .55rem;background:var(--bg);border:2px solid var(--border);border-radius:8px;color:var(--text2);cursor:pointer;font-family:Georgia,serif;font-weight:700;font-size:11px">A</button>
       <button data-skala="0.90" onclick="setSchriftSkala('0.90')" style="padding:.4rem .55rem;background:var(--bg);border:2px solid var(--border);border-radius:8px;color:var(--text2);cursor:pointer;font-family:Georgia,serif;font-weight:700;font-size:13px">A</button>
       <button data-skala="1.00" onclick="setSchriftSkala('1.00')" style="padding:.4rem .55rem;background:var(--bg);border:2px solid var(--border);border-radius:8px;color:var(--text2);cursor:pointer;font-family:Georgia,serif;font-weight:700;font-size:15px">A</button>
@@ -297,6 +297,13 @@ window.FIREBASE_CONFIG = {
     </div>
     <div style="display:flex;justify-content:space-between;font-size:9px;color:var(--text3);margin-top:.25rem;padding:0 .2rem">
       <span>Sehr klein</span><span>Sehr groß</span>
+    </div>
+    <!-- App-Update / Cache-Reset (für alle Rollen erreichbar) -->
+    <div style="border-top:1px solid var(--border);margin-top:.6rem;padding-top:.5rem">
+      <button onclick="clearCache()" style="width:100%;padding:.5rem;background:var(--bg);border:1px solid var(--border2);border-radius:8px;color:var(--text2);cursor:pointer;font-family:inherit;font-size:.78rem;font-weight:600;display:flex;align-items:center;justify-content:center;gap:.4rem">
+        <span>↺</span>App aktualisieren
+      </button>
+      <div style="font-size:9px;color:var(--text3);text-align:center;margin-top:.25rem">Lädt die neueste Version</div>
     </div>
   </div>
 
