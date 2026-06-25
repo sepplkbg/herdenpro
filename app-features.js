@@ -5522,18 +5522,28 @@ window.deleteBenutzer = async function(uid, email) {
       return !mainNavIds.includes(m.id) && m.id !== '__drucken__'; 
     });
 
-    // Apply saved order
+    // Apply saved order – aber NEUE Module (die nach letztem Speichern hinzugekommen sind)
+    // müssen sichtbar werden. Werden am Ende angehängt + Order wird aktualisiert.
     var savedOrder = JSON.parse(localStorage.getItem('mehrOrder')||'null');
     if(savedOrder) {
       var ordered = [];
+      var savedSet = new Set(savedOrder);
       savedOrder.forEach(function(id){
         var m = imMenu.find(function(x){ return x.id===id; });
         if(m) ordered.push(m);
       });
+      var anyNeu = false;
       imMenu.forEach(function(m){
-        if(!ordered.find(function(x){ return x.id===m.id; })) ordered.push(m);
+        if(!ordered.find(function(x){ return x.id===m.id; })) {
+          ordered.push(m);
+          if(!savedSet.has(m.id)) anyNeu = true;
+        }
       });
       imMenu = ordered;
+      // Wenn neue Module hinzugekommen sind, Order speichern damit User sie nicht jedes Mal anhängen muss
+      if(anyNeu) {
+        try { localStorage.setItem('mehrOrder', JSON.stringify(ordered.map(function(m){return m.id;}))); } catch(e) {}
+      }
     }
 
     grid.innerHTML = imMenu.map(function(m) {
@@ -6328,6 +6338,15 @@ function renderDarstellung() {
           </button>
         `).join('')}
       </div>
+    </div>
+
+    <div class="card-section" style="margin-bottom:.8rem">
+      <div class="section-label" style="margin-bottom:.5rem">APP AKTUALISIEREN</div>
+      <p style="font-size:.78rem;color:var(--text3);line-height:1.5;margin-bottom:.6rem">
+        Wenn die App eine veraltete Version anzeigt oder neue Funktionen fehlen –
+        Cache leeren und frisch laden.
+      </p>
+      <button class="btn-secondary" style="width:100%" onclick="clearCache()">↺ Cache leeren & neu laden</button>
     </div>
 
     <div class="card-section" style="margin-bottom:.8rem">
