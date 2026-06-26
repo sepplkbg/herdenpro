@@ -425,6 +425,16 @@ function render() {
 
   // After-render hooks
   requestAnimationFrame(function(){
+    // Scroll-Position der Herde wiederherstellen wenn von Kuh-Detail zurück
+    if(currentView==='herde' && typeof window._herdeScroll === 'number') {
+      var mainEl = document.getElementById('main-content');
+      if(mainEl) mainEl.scrollTop = window._herdeScroll;
+      window._herdeScroll = null;
+    }
+    // Swipe-Handler für Kuh-Detail einrichten (zwischen Kühen blättern)
+    if(currentView==='kuh-detail' && typeof window.attachKuhDetailSwipe === 'function') {
+      window.attachKuhDetailSwipe();
+    }
     // Milch Saison Chart
     if(currentView==='milch') {
       var mc=document.getElementById('milch-saison-canvas');
