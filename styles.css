@@ -43,24 +43,24 @@
    Desktop (≥1024px Browser-Fenster): 16px – Standard-Größe.
    Width-only Detection weil pointer:fine/hover:hover auf User-Setup unzuverlässig ist. */
 :root{
-  /* User-Multiplikator für Schriftgröße – via Aa-Icon im Topbar setzbar
-     Werte: 0.80 (xs) · 0.90 (s) · 1.00 (m, default) · 1.15 (l) · 1.30 (xl) */
+  /* User-Multiplikator für Schriftgröße – 9 Stufen von 0.60 (sehr klein) bis 1.70 (sehr groß)
+     Setzbar via Aa-Icon im Topbar oder Mehr → Darstellung */
   --schrift-skala: 1;
 }
 html{
-  /* Phone (Default): 20-24px je nach Viewport-Breite × User-Skala */
-  font-size:calc(clamp(20px, 5.5vw, 24px) * var(--schrift-skala));
+  /* FIXE Basisgrößen pro Geräteklasse – keine vw-basierte Skalierung mehr.
+     Das macht die Darstellung VORHERSAGBAR auf allen Geräten. Wenn was
+     trotzdem nicht passt, regelt der User es per Multiplikator. */
+  font-size:calc(22px * var(--schrift-skala));    /* Phone (<600px) */
   -webkit-text-size-adjust:100%;
   height:100%;
   -webkit-tap-highlight-color:transparent;
 }
 @media (min-width: 600px) and (max-width: 1023.98px) {
-  /* Tablet: deutlich kleiner als Phone weil viel mehr Platz */
-  html { font-size:calc(clamp(15px, 2.3vw, 19px) * var(--schrift-skala)); }
+  html { font-size:calc(17px * var(--schrift-skala)); }   /* Tablet */
 }
 @media (min-width: 1024px) {
-  /* Desktop: fixe 16px × User-Skala */
-  html { font-size:calc(16px * var(--schrift-skala)); }
+  html { font-size:calc(16px * var(--schrift-skala)); }   /* Desktop */
 }
 body{
   height:100%;
