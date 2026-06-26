@@ -6006,15 +6006,15 @@ window.startSpiel = function() {
   if(!canvas) return;
   const ctx = canvas.getContext('2d');
 
-  // State zurücksetzen
+  // State zurücksetzen – schwierigere Werte
   window._spielState = {
     running: true,
     cow: { x: 50, y: 0, vy: 0, jumping: false, anim: 0 },
     obstacles: [],
     score: 0,
-    speed: 4,
+    speed: 5.5,         // war 4 – startet flotter
     ground: 165,        // y-Pos für Kuh-Boden
-    nextSpawnAt: 80,
+    nextSpawnAt: 60,    // war 80 – erstes Hindernis kommt früher
     ctx, canvas,
     lastTime: performance.now(),
     submitted: false
@@ -6039,8 +6039,8 @@ function spielLoop(now) {
   const dt = Math.min(50, now - g.lastTime) / 16.67;
   g.lastTime = now;
 
-  // Physik: Schwerkraft
-  g.cow.vy += 0.7 * dt;
+  // Physik: stärkere Schwerkraft → schnellere Landung, weniger Schummel-Zeit
+  g.cow.vy += 0.85 * dt;
   g.cow.y += g.cow.vy * dt;
   if(g.cow.y >= g.ground) {
     g.cow.y = g.ground;
@@ -6049,7 +6049,7 @@ function spielLoop(now) {
   }
   g.cow.anim += 0.3 * dt;
 
-  // Hindernisse spawnen
+  // Hindernisse spawnen – tighter, mit Combo-Möglichkeit
   if(g.score >= g.nextSpawnAt) {
     const typen = ['bale','fence','bird'];
     const typ = typen[Math.floor(Math.random() * typen.length)];
@@ -6058,9 +6058,23 @@ function spielLoop(now) {
       typ,
       y: typ === 'bird' ? g.ground - 50 : g.ground
     });
-    // Nächster Spawn: weiter wenn schneller, zufällig
-    const lueckeMin = Math.max(40, 110 - g.speed * 3);
-    g.nextSpawnAt = g.score + lueckeMin + Math.random() * 80;
+
+    // 25% Chance auf zweites Hindernis kurz dahinter (Combo-Sprung erforderlich)
+    // Aber erst ab Score 300 und nur wenn das erste am Boden ist
+    if(g.score > 300 && typ !== 'bird' && Math.random() < 0.25) {
+      const typ2 = Math.random() < 0.5 ? 'bale' : 'fence';
+      g.obstacles.push({
+        x: g.canvas.width + 55 + Math.random() * 25, // 55-80px hinter dem ersten
+        typ: typ2,
+        y: g.ground
+      });
+    }
+
+    // Nächster Spawn: aggressiver. Tempo-abhängig + Score-abhängig.
+    const tempoFaktor = Math.max(25, 90 - g.speed * 4);     // war 40, 110-speed*3
+    const scoreFaktor = Math.max(0, 60 - g.score * 0.02);   // mit Score immer enger
+    const lueckeMin = tempoFaktor + scoreFaktor;
+    g.nextSpawnAt = g.score + lueckeMin + Math.random() * 50; // war *80
   }
 
   // Hindernisse bewegen
@@ -6083,10 +6097,12 @@ function spielLoop(now) {
     }
   }
 
-  // Score + Tempo
+  // Score + Tempo – schneller Anstieg, höhere Maximalgeschwindigkeit
   g.score += dt;
-  if(Math.floor(g.score) % 200 === 0 && g.score > 1) {
-    g.speed = Math.min(12, 4 + Math.floor(g.score / 200) * 0.5);
+  if(Math.floor(g.score) % 120 === 0 && g.score > 1) {
+    // war: alle 200 → +0.5, max 12
+    // jetzt: alle 120 → +0.6, max 15
+    g.speed = Math.min(15, 5.5 + Math.floor(g.score / 120) * 0.6);
   }
 
   spielDraw();
@@ -6162,7 +6178,7 @@ function spielDraw() {
   const scoreEl = document.getElementById('spiel-score');
   if(scoreEl) scoreEl.textContent = Math.floor(g.score / 5);
   const speedEl = document.getElementById('spiel-speed');
-  if(speedEl) speedEl.textContent = (g.speed / 4).toFixed(1) + '×';
+  if(speedEl) speedEl.textContent = (g.speed / 5.5).toFixed(1) + '×';
 }
 
 window.spielSpring = function() {
