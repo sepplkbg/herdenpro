@@ -1102,10 +1102,18 @@ window.showQRCode = function(kuhId, nr, name) {
 
 function renderZaehlung() {
   const _zaehG=window._zaehGruppe||'';
+  const anwesendInit=zaehlSession?.anwesend||{};
+  // Fehlende OBEN, erfasste UNTEN. Innerhalb jeder Gruppe nach Nr sortiert.
   const kuhListe=Object.entries(kuehe)
     .filter(([id,k])=>kuhInGruppe(k,_zaehG,id))
-    .sort((a,b)=>{const nA=parseInt(a[1].nr)||0,nB=parseInt(b[1].nr)||0;return nA-nB;});
-  const anwesend=zaehlSession?.anwesend||{};
+    .sort((a,b)=>{
+      const aDa = !!anwesendInit[a[0]];
+      const bDa = !!anwesendInit[b[0]];
+      if(aDa !== bDa) return aDa ? 1 : -1;     // erfasst → ans Ende
+      const nA=parseInt(a[1].nr)||0, nB=parseInt(b[1].nr)||0;
+      return nA-nB;
+    });
+  const anwesend=anwesendInit;
   const total=kuhListe.length;const anwCount=kuhListe.filter(([id])=>anwesend[id]).length;
   const voll=total>0&&anwCount===total;
   const zaehTab=window._zaehTab||'alle';
@@ -1150,21 +1158,32 @@ function renderZaehlung() {
     </div>
     <!-- Vollständige Liste -->
     <div class="card-list" id="zaeh-list">
-      ${kuhListe.map(([id,k])=>{
-        const da=!!anwesend[id];
-        if(zaehTab==='fehlend'&&da) return '';
-        if(zaehTab==='anwesend'&&!da) return '';
-        return `<div class="list-card list-card-sm zaeh-item" data-search="${(k.nr+' '+(k.name||'')+' '+(k.bauer||'')).toLowerCase()}" style="border-left:3px solid ${da?'var(--green)':'var(--border)'}">
-          <span class="nr-badge">#${k.nr}</span>
-          <div style="flex:1;min-width:0">
-            <div style="font-size:.88rem;color:${da?'var(--text)':'var(--text2)'}">${k.name||'–'}</div>
-            <div style="font-size:.7rem;color:var(--text3)">${k.bauer||''} ${k.gruppe?'· '+k.gruppe:''}</div>
-          </div>
-          ${da
-            ? `<span style="color:var(--green);font-size:1rem">✓</span><button class="remove-btn" onclick="entferneZaehlung('${id}')">✕</button>`
-            : `<button class="btn-xs" onclick="zaehlKuhById('${id}')">+ erfassen</button>`}
-        </div>`;
-      }).join('')}
+      ${(() => {
+        let trennerEingefuegt = false;
+        return kuhListe.map(([id,k])=>{
+          const da=!!anwesend[id];
+          if(zaehTab==='fehlend'&&da) return '';
+          if(zaehTab==='anwesend'&&!da) return '';
+          // Trenner einfügen, sobald wir von „fehlend" zu „anwesend" wechseln
+          let header = '';
+          if(da && !trennerEingefuegt && zaehTab==='alle') {
+            trennerEingefuegt = true;
+            header = `<div style="display:flex;align-items:center;gap:.5rem;padding:.7rem 0 .3rem;margin-top:.3rem;border-top:1px solid var(--border);color:var(--green);font-size:.75rem;font-weight:700;letter-spacing:.05em">
+              <span>✓ BEREITS ERFASST (${kuhListe.filter(([kid])=>anwesend[kid]).length})</span>
+            </div>`;
+          }
+          return header + `<div class="list-card list-card-sm zaeh-item" data-search="${(k.nr+' '+(k.name||'')+' '+(k.bauer||'')).toLowerCase()}" style="border-left:3px solid ${da?'var(--green)':'var(--border)'};${da?'opacity:.7':''}">
+            <span class="nr-badge">#${k.nr}</span>
+            <div style="flex:1;min-width:0">
+              <div style="font-size:.88rem;color:${da?'var(--text)':'var(--text2)'}">${k.name||'–'}</div>
+              <div style="font-size:.7rem;color:var(--text3)">${k.bauer||''} ${k.gruppe?'· '+k.gruppe:''}</div>
+            </div>
+            ${da
+              ? `<span style="color:var(--green);font-size:1rem">✓</span><button class="remove-btn" onclick="entferneZaehlung('${id}')">✕</button>`
+              : `<button class="btn-xs" onclick="zaehlKuhById('${id}')">+ erfassen</button>`}
+          </div>`;
+        }).join('');
+      })()}
     </div>`}
   `;
 }
