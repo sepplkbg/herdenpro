@@ -6355,14 +6355,20 @@ function schriftPopupOutsideHandler(e) {
 
 // ── Render-Funktion für die "Darstellung"-Kachel im Mehr-Menü ──
 function renderDarstellung() {
-  const aktuell = localStorage.getItem('schriftSkala') || '1.00';
+  const aktuell = parseFloat(localStorage.getItem('schriftSkala') || '1.00');
   const stufen = [
-    {skala:'0.80', label:'Sehr klein', beispiel:'Klein und kompakt'},
-    {skala:'0.90', label:'Klein',      beispiel:'Etwas kleiner'},
-    {skala:'1.00', label:'Normal',     beispiel:'Standard-Größe'},
+    {skala:'0.60', label:'Mini',       beispiel:'Sehr kompakt – viel auf den Schirm'},
+    {skala:'0.75', label:'Sehr klein', beispiel:'Klein und übersichtlich'},
+    {skala:'0.90', label:'Klein',      beispiel:'Etwas kleiner als Standard'},
+    {skala:'1.00', label:'Normal',     beispiel:'Standard-Größe (Empfehlung)'},
     {skala:'1.15', label:'Groß',       beispiel:'Etwas größer'},
-    {skala:'1.30', label:'Sehr groß',  beispiel:'Maximal lesbar'}
+    {skala:'1.30', label:'Sehr groß',  beispiel:'Gut lesbar mit Brille'},
+    {skala:'1.50', label:'Riesig',     beispiel:'Maximal lesbar – Senioren-Modus'}
   ];
+  // Aktuelle Stufe finden (nähester Match)
+  const aktuellStr = stufen.reduce((best, s) =>
+    Math.abs(parseFloat(s.skala) - aktuell) < Math.abs(parseFloat(best) - aktuell) ? s.skala : best
+  , '1.00');
   return `
     <div class="page-header">
       <h2>📐 Darstellung</h2>
@@ -6371,24 +6377,41 @@ function renderDarstellung() {
     <div class="card-section" style="margin-bottom:.8rem">
       <div class="section-label" style="margin-bottom:.5rem">SCHRIFTGRÖSSE</div>
       <p style="font-size:.82rem;color:var(--text2);margin-bottom:.8rem;line-height:1.5">
-        Wie groß soll die Schrift auf diesem Gerät dargestellt werden?
-        Die Einstellung gilt nur für dieses Gerät – jeder Nutzer kann sich seine
-        eigene Größe wählen. Das Aa-Icon oben rechts macht dasselbe schneller.
+        Wie groß soll die Schrift auf <b>diesem Gerät</b> dargestellt werden?
+        Jedes Gerät und jeder User merkt sich seine eigene Einstellung.
       </p>
-      <div style="display:flex;flex-direction:column;gap:.5rem">
+
+      <!-- Slider für stufenlose Feineinstellung -->
+      <div style="background:var(--bg3);border:1px solid var(--border);border-radius:10px;padding:.7rem .9rem;margin-bottom:.7rem">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.4rem">
+          <span style="font-size:.75rem;color:var(--text3);font-weight:600">FEINEINSTELLUNG</span>
+          <span id="schrift-slider-wert" style="font-size:.85rem;color:var(--gold);font-weight:700">${Math.round(aktuell*100)}%</span>
+        </div>
+        <input type="range" id="schrift-slider"
+          min="50" max="200" step="5" value="${Math.round(aktuell*100)}"
+          oninput="setSchriftSkala((this.value/100).toFixed(2));document.getElementById('schrift-slider-wert').textContent=this.value+'%'"
+          style="width:100%;accent-color:var(--gold)" />
+        <div style="display:flex;justify-content:space-between;font-size:.65rem;color:var(--text3);margin-top:.2rem">
+          <span>50%</span><span>100%</span><span>200%</span>
+        </div>
+      </div>
+
+      <!-- Voreinstellungs-Buttons -->
+      <div style="font-size:.72rem;color:var(--text3);margin-bottom:.4rem;font-weight:600">SCHNELLAUSWAHL</div>
+      <div style="display:flex;flex-direction:column;gap:.4rem">
         ${stufen.map(s => `
           <button class="schrift-skala-btn"
             data-skala="${s.skala}"
-            onclick="setSchriftSkala('${s.skala}')"
-            style="padding:.7rem .9rem;border-radius:10px;cursor:pointer;font-family:inherit;text-align:left;display:flex;align-items:center;justify-content:space-between;gap:.6rem;
-              background:${aktuell===s.skala?'var(--gold)':'var(--bg)'};
-              color:${aktuell===s.skala?'#0a0800':'var(--text2)'};
-              border:2px solid ${aktuell===s.skala?'var(--gold)':'var(--border)'}">
+            onclick="setSchriftSkala('${s.skala}');render()"
+            style="padding:.65rem .85rem;border-radius:10px;cursor:pointer;font-family:inherit;text-align:left;display:flex;align-items:center;justify-content:space-between;gap:.6rem;
+              background:${aktuellStr===s.skala?'var(--gold)':'var(--bg)'};
+              color:${aktuellStr===s.skala?'#0a0800':'var(--text2)'};
+              border:2px solid ${aktuellStr===s.skala?'var(--gold)':'var(--border)'}">
             <div>
-              <div style="font-weight:700;font-size:.95rem">${s.label}</div>
-              <div style="font-size:.75rem;opacity:.7">${s.beispiel}</div>
+              <div style="font-weight:700;font-size:.92rem">${s.label} <span style="opacity:.6;font-weight:500">(${Math.round(parseFloat(s.skala)*100)}%)</span></div>
+              <div style="font-size:.72rem;opacity:.7">${s.beispiel}</div>
             </div>
-            <span style="font-family:Georgia,serif;font-weight:700;font-size:${Math.round(20*parseFloat(s.skala))}px;line-height:1">A</span>
+            <span style="font-family:Georgia,serif;font-weight:700;font-size:${Math.round(20*parseFloat(s.skala))}px;line-height:1;min-width:1.5rem;text-align:center">A</span>
           </button>
         `).join('')}
       </div>
@@ -6404,14 +6427,15 @@ function renderDarstellung() {
     </div>
 
     <div class="card-section" style="margin-bottom:.8rem">
-      <div class="section-label" style="margin-bottom:.5rem">HINWEIS</div>
-      <p style="font-size:.78rem;color:var(--text3);line-height:1.5">
-        Die App nutzt drei Voreinstellungen je nach Bildschirm:<br>
-        • <b>Smartphone</b> (&lt;600px breit): touch-freundlich groß<br>
-        • <b>Tablet</b> (600–1024px): mittlere Größe<br>
-        • <b>Desktop</b> (≥1024px): kompakte Web-Darstellung<br><br>
-        Mit dem oben gewählten Wert wird diese Voreinstellung multipliziert –
-        z.B. „Groß" macht alles 15% größer als die Voreinstellung.
+      <div class="section-label" style="margin-bottom:.5rem">FUNKTIONSWEISE</div>
+      <p style="font-size:.76rem;color:var(--text3);line-height:1.5">
+        Die App nutzt feste Basisgrößen je nach Bildschirm:<br>
+        • <b>Smartphone</b> (&lt;600px breit): 22px<br>
+        • <b>Tablet</b> (600–1024px): 17px<br>
+        • <b>Desktop</b> (≥1024px): 16px<br><br>
+        Dein Multiplikator (Slider oben) wirkt auf diese Basis. Beispiel:
+        100% auf Smartphone = 22px, 150% = 33px. Die Einstellung wird
+        pro Gerät gespeichert und überlebt App-Neustart und Browser-Schluss.
       </p>
     </div>
   `;
