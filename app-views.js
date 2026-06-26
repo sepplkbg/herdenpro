@@ -1614,7 +1614,34 @@ window.saveKuh=async function(){
   closeForm('kuh-form-overlay');
 };
 window.deleteKuh=async function(id){if(confirm('Kuh löschen?'))await remove(ref(db,'kuehe/'+id));navigate('herde');};
-window.showKuhDetail=function(id){editId=id;currentView='kuh-detail';render();};
+window.showKuhDetail=function(id){
+  // Scroll-Position der aktuellen Liste merken (für Zurück)
+  if(currentView === 'herde') {
+    const main = document.getElementById('main-content');
+    window._herdeScroll = main ? main.scrollTop : 0;
+  }
+  // Sortierte Liste für Swipe-Navigation aufbauen (gleiche Logik wie renderHerde)
+  try {
+    const sortBy = window._herdeSortBy || 'nr';
+    const sortFn = {
+      nr:     (a,b) => (parseInt(a[1].nr)||0)-(parseInt(b[1].nr)||0),
+      name:   (a,b) => (a[1].name||'').localeCompare(b[1].name||'', 'de'),
+      bauer:  (a,b) => (a[1].bauer||'').localeCompare(b[1].bauer||'', 'de') || (parseInt(a[1].nr)||0)-(parseInt(b[1].nr)||0),
+      gruppe: (a,b) => (a[1].gruppe||'').localeCompare(b[1].gruppe||'', 'de') || (parseInt(a[1].nr)||0)-(parseInt(b[1].nr)||0),
+      status: (a,b) => {
+        const ord = {oben:0, vorzeitig:1, unten:2};
+        const sa = ord[a[1].almStatus]??2, sb = ord[b[1].almStatus]??2;
+        return sa-sb || (parseInt(a[1].nr)||0)-(parseInt(b[1].nr)||0);
+      }
+    };
+    window._kuhDetailListe = Object.entries(kuehe).sort(sortFn[sortBy]||sortFn.nr).map(([kid])=>kid);
+  } catch(e) {
+    window._kuhDetailListe = Object.keys(kuehe||{});
+  }
+  editId=id;
+  currentView='kuh-detail';
+  render();
+};
 window.filterKuehe=q=>document.querySelectorAll('#kuh-list .list-card').forEach(c=>c.style.display=c.textContent.toLowerCase().includes(q.toLowerCase())?'':'none');
 window.filterBauer=function(b,btn){document.querySelectorAll('.filter-chip').forEach(c=>c.classList.remove('active'));btn.classList.add('active');document.querySelectorAll('#kuh-list .list-card').forEach(c=>c.style.display=b===''||c.dataset.bauer===b?'':'none');};
 window.filterHerde=function(f,btn){
@@ -7833,3 +7860,125 @@ window.onMedInput = function(inp) {
   dd.style.display = 'block';
 };
 
+
+// ══════════════════════════════════════════════════════════════════════════════
+//  KUH-DETAIL: SWIPE-NAVIGATION zwischen Kühen
+//  Wischen ← (links) → nächste Kuh,  Wischen → (rechts) → vorige Kuh
+// ══════════════════════════════════════════════════════════════════════════════
+window.attachKuhDetailSwipe = function() {
+  const main = document.getElementById('main-content');
+  if(!main) return;
+  // Mehrfach-Anbringung verhindern
+  if(main._kuhSwipeAttached) return;
+  main._kuhSwipeAttached = true;
+
+  let touchStartX = 0, touchStartY = 0, touchStartT = 0;
+  let isDragging = false, suppressClick = false;
+
+  main.addEventListener('touchstart', function(e) {
+    if(currentView !== 'kuh-detail') return;
+    if(e.touches.length !== 1) return;
+    touchStartX = e.touches[0].clientX;
+    touchStartY = e.touches[0].clientY;
+    touchStartT = Date.now();
+    isDragging = false;
+  }, {passive: true});
+
+  main.addEventListener('touchmove', function(e) {
+    if(currentView !== 'kuh-detail') return;
+    if(!touchStartT) return;
+    const dx = e.touches[0].clientX - touchStartX;
+    const dy = e.touches[0].clientY - touchStartY;
+    // Nur horizontale Swipes (mehr X als Y Bewegung) als Drag erkennen
+    if(!isDragging && Math.abs(dx) > 10 && Math.abs(dx) > Math.abs(dy) * 1.5) {
+      isDragging = true;
+    }
+    if(isDragging) {
+      // Visuelles Feedback: leichter Versatz und Schatten
+      main.style.transform = 'translateX(' + (dx * 0.4) + 'px)';
+      main.style.transition = 'none';
+    }
+  }, {passive: true});
+
+  main.addEventListener('touchend', function(e) {
+    if(currentView !== 'kuh-detail') return;
+    if(!touchStartT) return;
+    const dx = (e.changedTouches[0]?.clientX || touchStartX) - touchStartX;
+    const dy = (e.changedTouches[0]?.clientY || touchStartY) - touchStartY;
+    const dt = Date.now() - touchStartT;
+    touchStartT = 0;
+
+    // Reset Transform
+    main.style.transition = 'transform .15s ease-out';
+    main.style.transform = '';
+    setTimeout(()=>{ if(main) main.style.transition = ''; }, 200);
+
+    // Swipe-Schwellen: mind. 60px horizontal, klar horizontal-dominant,
+    // dt < 600ms (schnell) ODER dx > 120px (lang)
+    if(!isDragging) return;
+    if(Math.abs(dx) < 60) return;
+    if(Math.abs(dx) < Math.abs(dy) * 1.2) return;
+    if(dt > 600 && Math.abs(dx) < 120) return;
+
+    // Richtung bestimmen
+    const liste = window._kuhDetailListe || [];
+    const aktId = editId;
+    const idx = liste.indexOf(aktId);
+    if(idx === -1) return;
+
+    let neuIdx = -1;
+    if(dx < 0) {
+      // Wischen nach links → nächste Kuh
+      neuIdx = idx + 1;
+    } else {
+      // Wischen nach rechts → vorige Kuh
+      neuIdx = idx - 1;
+    }
+    if(neuIdx < 0 || neuIdx >= liste.length) {
+      // Wackel-Animation als Hinweis dass keine weitere Kuh da ist
+      main.style.transition = 'transform .12s';
+      main.style.transform = 'translateX(' + (dx > 0 ? 12 : -12) + 'px)';
+      setTimeout(()=>{ main.style.transform = ''; }, 130);
+      if(navigator.vibrate) navigator.vibrate(20);
+      return;
+    }
+    // Zur neuen Kuh wechseln – kurzes Slide-out, dann render
+    if(navigator.vibrate) navigator.vibrate(15);
+    const neuId = liste[neuIdx];
+    editId = neuId;
+    render();
+    // Slide-in von der Gegenrichtung
+    const newMain = document.getElementById('main-content');
+    if(newMain) {
+      newMain.style.transition = 'none';
+      newMain.style.transform = 'translateX(' + (dx < 0 ? '40px' : '-40px') + ')';
+      newMain.style.opacity = '.5';
+      requestAnimationFrame(()=>{
+        newMain.style.transition = 'transform .2s ease-out, opacity .2s';
+        newMain.style.transform = '';
+        newMain.style.opacity = '';
+        setTimeout(()=>{ if(newMain) newMain.style.transition = ''; }, 220);
+      });
+    }
+  }, {passive: true});
+
+  // Pfeil-Tasten auf Desktop
+  if(!main._kuhKeyAttached) {
+    main._kuhKeyAttached = true;
+    document.addEventListener('keydown', function(e) {
+      if(currentView !== 'kuh-detail') return;
+      if(e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) return;
+      const liste = window._kuhDetailListe || [];
+      const idx = liste.indexOf(editId);
+      if(idx === -1) return;
+      if(e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
+        e.preventDefault();
+        const neuIdx = e.key === 'ArrowRight' ? idx + 1 : idx - 1;
+        if(neuIdx >= 0 && neuIdx < liste.length) {
+          editId = liste[neuIdx];
+          render();
+        }
+      }
+    });
+  }
+};
