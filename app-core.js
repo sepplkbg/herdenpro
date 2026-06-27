@@ -598,34 +598,49 @@ window.drawMilchSaisonChart = function(canvas, zeitFilter) {
     ctx.fillText('Prognose →', lastIst.x+gW*0.15, pad.t+8);
   }
 
-  // Letzter Ist-Punkt
-  var lp=pts[pts.length-1];
-  ctx.beginPath(); ctx.arc(lp.x,lp.y,5,0,Math.PI*2);
-  ctx.fillStyle=farbeMarker; ctx.fill();
-  ctx.beginPath(); ctx.arc(lp.x,lp.y,3,0,Math.PI*2);
-  ctx.fillStyle=farbeHaupt; ctx.fill();
+  // Alle Datenpunkte als sichtbare Dots
+  pts.forEach(function(p, i){
+    var istLetzter = i === pts.length-1;
+    ctx.beginPath(); ctx.arc(p.x, p.y, istLetzter ? 6 : 4, 0, Math.PI*2);
+    ctx.fillStyle = farbeMarker; ctx.fill();
+    ctx.beginPath(); ctx.arc(p.x, p.y, istLetzter ? 4 : 2.5, 0, Math.PI*2);
+    ctx.fillStyle = farbeHaupt; ctx.fill();
+    ctx.beginPath(); ctx.arc(p.x-.7, p.y-.7, istLetzter ? 1.2 : .9, 0, Math.PI*2);
+    ctx.fillStyle = 'rgba(255,255,255,.6)'; ctx.fill();
+  });
 
   // Touch-Tooltip
   var allPts = pts.concat(progPts);
   if(!canvas._milchTouch) {
     canvas._milchTouch=true;
-    canvas.addEventListener('touchstart',function(e){
-      e.preventDefault();
+    var showSaisonTooltip = function(clientX) {
       var rect=canvas.getBoundingClientRect();
-      var tx=(e.touches[0].clientX-rect.left)*(W/rect.width);
+      var tx=(clientX-rect.left)*(W/rect.width);
       var closest=allPts[0],minD=Infinity;
       allPts.forEach(function(p){var d=Math.abs(p.x-tx);if(d<minD){minD=d;closest=p;}});
-      ctx.clearRect(0,0,W,H); window.drawMilchSaisonChart(canvas, zeitFilter);
-      var tw=80,th=22,tx2=Math.min(W-tw-4,Math.max(4,closest.x-tw/2));
+      // Chart neu zeichnen (clear via re-call)
+      window.drawMilchSaisonChart(canvas, zeitFilter);
+      var label=(closest.istPrognose?'~':'')+closest.l+'L · '+new Date(closest.d).toLocaleDateString('de-AT',{day:'numeric',month:'short'});
+      var tw=Math.max(80,label.length*6),th=24;
+      var tx2=Math.min(W-tw-4,Math.max(4,closest.x-tw/2));
+      var ty=closest.y-th-10;
+      if(ty<4) ty=closest.y+12;
       var tipFarbe = zeitFilter === 'abend' ? 'rgba(230,126,34,.95)' : 'rgba(122,203,255,.95)';
       ctx.fillStyle=closest.istPrognose?'rgba(212,168,75,.95)':tipFarbe;
       ctx.beginPath();
-      if(ctx.roundRect)ctx.roundRect(tx2,closest.y-th-8,tw,th,5);else ctx.rect(tx2,closest.y-th-8,tw,th);
+      if(ctx.roundRect)ctx.roundRect(tx2,ty,tw,th,5);else ctx.rect(tx2,ty,tw,th);
       ctx.fill();
-      ctx.fillStyle='#060e05'; ctx.font='bold 10px sans-serif'; ctx.textAlign='center';
-      var label=new Date(closest.d).toLocaleDateString('de-AT',{day:'numeric',month:'short'});
-      ctx.fillText((closest.istPrognose?'~':'')+closest.l+'L · '+label, tx2+tw/2, closest.y-th/2-4);
-    },{passive:false});
+      ctx.fillStyle=closest.istPrognose?'#0a0800':'#fff'; ctx.font='bold 11px sans-serif'; ctx.textAlign='center';
+      ctx.fillText(label, tx2+tw/2, ty+th/2+4);
+      // Marker am Punkt
+      ctx.beginPath(); ctx.arc(closest.x, closest.y, 9, 0, Math.PI*2);
+      ctx.strokeStyle = closest.istPrognose ? 'rgba(212,168,75,.8)' : farbeHaupt;
+      ctx.lineWidth = 2; ctx.stroke();
+    };
+    canvas.addEventListener('touchstart',function(e){e.preventDefault();showSaisonTooltip(e.touches[0].clientX);},{passive:false});
+    canvas.addEventListener('touchmove', function(e){e.preventDefault();showSaisonTooltip(e.touches[0].clientX);},{passive:false});
+    canvas.addEventListener('mousemove', function(e){showSaisonTooltip(e.clientX);});
+    canvas.addEventListener('mouseleave',function(){window.drawMilchSaisonChart(canvas, zeitFilter);});
   }
 };
 
