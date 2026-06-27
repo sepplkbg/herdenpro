@@ -476,12 +476,12 @@ function renderKuhDetail() {
   const statusColor = k.almStatus==='oben'?'#4db84e':k.almStatus==='vorzeitig'?'#d4844b':'#4e6840';
   const statusText  = k.almStatus==='oben'?'⛰ Auf der Alm':k.almStatus==='vorzeitig'?'⚠ Vorzeitig':'🏠 Unten';
 
-  // Canvas chart data encoded as JSON for JS
-  const chartJson = JSON.stringify(chartDaten.slice(-30));
+  // Canvas chart data encoded as JSON for JS — ALLE Einträge (kein Limit)
+  const chartJson = JSON.stringify(chartDaten);
 
   // ⚠ WICHTIG: Chart-Daten und Draw-Trigger MÜSSEN vor dem return stehen,
   // sonst sind sie unreachable code und der Chart bleibt leer.
-  window._kdChartData = chartDaten.slice(-30);
+  window._kdChartData = chartDaten;
   setTimeout(function(){ window.kdDrawWithRetry && window.kdDrawWithRetry(0); }, 50);
 
   return `
@@ -846,10 +846,12 @@ window._kdChartData = null;
 // Retry-Zeichnung: versucht bis zu 20x alle 60ms
 window.kdDrawWithRetry = function(attempt) {
   attempt = attempt || 0;
-  var canvas = document.getElementById('kd-chart-canvas');
+  // Auf die neuen geteilten Canvas warten (eines reicht für den Width-Check)
+  var canvas = document.getElementById('kd-chart-canvas-morgens') ||
+               document.getElementById('kd-chart-canvas-abends');
   if(!canvas) { if(attempt < 20) setTimeout(function(){ window.kdDrawWithRetry(attempt+1); }, 60); return; }
   var data = window._kdChartData;
-  if(!data || data.length < 2) return;
+  if(!data || data.length < 1) return;
   if(canvas.offsetWidth < 10) { if(attempt < 20) setTimeout(function(){ window.kdDrawWithRetry(attempt+1); }, 60); return; }
   window.drawKdChart();
 };
