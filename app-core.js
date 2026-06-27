@@ -342,7 +342,12 @@ function render() {
   // schreibt eh in Firebase. ──
   const milchFormOpen = document.getElementById('milch-form-overlay');
   if(milchFormOpen && milchFormOpen.style.display === 'flex') {
-    // Auch die Stallplan-Animation auf dem Stallplan ignorieren wenn Milch offen
+    // Form ist offen – Re-Render würde es zerstören.
+    // Aber: Kollisions-Hinweise (anderer Melker) live aktualisieren – das ist ungefährlich,
+    // weil nur einzelne DOM-Elemente angepasst werden, nicht das ganze Formular.
+    if(typeof window.updateAndereMelkerHinweise === 'function') {
+      try { window.updateAndereMelkerHinweise(); } catch(e) { console.warn('updateAndereMelkerHinweise:', e); }
+    }
     return;
   }
 
@@ -435,10 +440,12 @@ function render() {
     if(currentView==='kuh-detail' && typeof window.attachKuhDetailSwipe === 'function') {
       window.attachKuhDetailSwipe();
     }
-    // Milch Saison Chart
+    // Milch Saison Charts (Morgens + Abends getrennt)
     if(currentView==='milch') {
-      var mc=document.getElementById('milch-saison-canvas');
-      if(mc) drawMilchSaisonChart(mc);
+      var mcM=document.getElementById('milch-saison-canvas-morgens');
+      if(mcM && typeof drawMilchSaisonChart === 'function') drawMilchSaisonChart(mcM, 'morgen');
+      var mcA=document.getElementById('milch-saison-canvas-abends');
+      if(mcA && typeof drawMilchSaisonChart === 'function') drawMilchSaisonChart(mcA, 'abend');
     }
     // Kuh Detail Chart
     if(currentView==='kuh-detail' && window._kdChartData) {
@@ -469,17 +476,25 @@ function render() {
 // ══════════════════════════════════════════════════════════════
 //  MILCH SAISON CHART (Canvas)
 // ══════════════════════════════════════════════════════════════
-window.drawMilchSaisonChart = function(canvas) {
+window.drawMilchSaisonChart = function(canvas, zeitFilter) {
   if(!canvas) return;
   var tage={};
   Object.values(milchEintraege).forEach(function(e){
     if(!e.datum) return;
+    // Wenn Zeit-Filter angegeben, nur passende Schicht
+    if(zeitFilter && (e.zeit||'morgen') !== zeitFilter) return;
     var tag=new Date(e.datum).toISOString().slice(0,10);
     tage[tag]=(tage[tag]||0)+(e.gesamt||0);
   });
   var data=Object.entries(tage).sort(function(a,b){return a[0].localeCompare(b[0]);})
     .map(function(d){return {d:new Date(d[0]+'T12:00').getTime(), l:Math.round(d[1]*10)/10};});
   if(data.length<2){canvas.style.display='none';return;}
+
+  // Schicht-spezifische Farben
+  var farbeHaupt   = zeitFilter === 'abend' ? '#e67e22' : '#7acbff';
+  var farbeAreaHi  = zeitFilter === 'abend' ? 'rgba(230,126,34,.30)' : 'rgba(122,203,255,.30)';
+  var farbeAreaLo  = zeitFilter === 'abend' ? 'rgba(230,126,34,.02)' : 'rgba(122,203,255,.02)';
+  var farbeMarker  = zeitFilter === 'abend' ? 'rgba(230,126,34,.25)' : 'rgba(122,203,255,.25)';
 
   // ── Lineare Regression für Prognose ──
   var zeigPrognose = window._milchPrognoseSaison;
@@ -546,9 +561,9 @@ window.drawMilchSaisonChart = function(canvas) {
     ctx.fillText(Math.round(minV+range*f)+'L', pad.l-3, y+3);
   });
 
-  // Area (nur Ist-Daten)
+  // Area (nur Ist-Daten) – Farbe je nach Schicht
   var g=ctx.createLinearGradient(0,pad.t,0,pad.t+gH);
-  g.addColorStop(0,'rgba(77,184,78,.3)'); g.addColorStop(1,'rgba(77,184,78,.02)');
+  g.addColorStop(0, farbeAreaHi); g.addColorStop(1, farbeAreaLo);
   ctx.beginPath(); ctx.moveTo(pts[0].x,pad.t+gH);
   pts.forEach(function(p){ctx.lineTo(p.x,p.y);}); ctx.lineTo(pts[pts.length-1].x,pad.t+gH);
   ctx.closePath(); ctx.fillStyle=g; ctx.fill();
@@ -556,7 +571,7 @@ window.drawMilchSaisonChart = function(canvas) {
   // Ist-Linie
   ctx.beginPath();
   pts.forEach(function(p,i){if(i===0)ctx.moveTo(p.x,p.y);else ctx.lineTo(p.x,p.y);});
-  ctx.strokeStyle='#4db84e'; ctx.lineWidth=2; ctx.lineJoin='round'; ctx.lineCap='round'; ctx.stroke();
+  ctx.strokeStyle=farbeHaupt; ctx.lineWidth=2; ctx.lineJoin='round'; ctx.lineCap='round'; ctx.stroke();
 
   // Prognose-Linie (gestrichelt, gold)
   if(zeigPrognose && progPts.length) {
@@ -586,9 +601,9 @@ window.drawMilchSaisonChart = function(canvas) {
   // Letzter Ist-Punkt
   var lp=pts[pts.length-1];
   ctx.beginPath(); ctx.arc(lp.x,lp.y,5,0,Math.PI*2);
-  ctx.fillStyle='rgba(77,184,78,.25)'; ctx.fill();
+  ctx.fillStyle=farbeMarker; ctx.fill();
   ctx.beginPath(); ctx.arc(lp.x,lp.y,3,0,Math.PI*2);
-  ctx.fillStyle='#4db84e'; ctx.fill();
+  ctx.fillStyle=farbeHaupt; ctx.fill();
 
   // Touch-Tooltip
   var allPts = pts.concat(progPts);
@@ -600,9 +615,10 @@ window.drawMilchSaisonChart = function(canvas) {
       var tx=(e.touches[0].clientX-rect.left)*(W/rect.width);
       var closest=allPts[0],minD=Infinity;
       allPts.forEach(function(p){var d=Math.abs(p.x-tx);if(d<minD){minD=d;closest=p;}});
-      ctx.clearRect(0,0,W,H); window.drawMilchSaisonChart(canvas);
+      ctx.clearRect(0,0,W,H); window.drawMilchSaisonChart(canvas, zeitFilter);
       var tw=80,th=22,tx2=Math.min(W-tw-4,Math.max(4,closest.x-tw/2));
-      ctx.fillStyle=closest.istPrognose?'rgba(212,168,75,.95)':'rgba(77,184,78,.95)';
+      var tipFarbe = zeitFilter === 'abend' ? 'rgba(230,126,34,.95)' : 'rgba(122,203,255,.95)';
+      ctx.fillStyle=closest.istPrognose?'rgba(212,168,75,.95)':tipFarbe;
       ctx.beginPath();
       if(ctx.roundRect)ctx.roundRect(tx2,closest.y-th-8,tw,th,5);else ctx.rect(tx2,closest.y-th-8,tw,th);
       ctx.fill();
