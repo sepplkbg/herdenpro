@@ -131,21 +131,26 @@ function renderDashboard() {
   naechsteTermine.sort((a,b)=>a.ts-b.ts);
   const top3Termine = naechsteTermine.slice(0,3);
 
-  // ── Mini Saison-Kurve: Milchleistung letzte 7 Tage ─────────────
-  function tagesMilch(ts) {
+  // ── Mini Saison-Kurve: Milchleistung letzte 7 Tage – Morgens + Abends getrennt ─
+  function tagesMilchZeit(ts, zeit) {
     const tagStart = new Date(ts); tagStart.setHours(0,0,0,0);
     const tagEnde = tagStart.getTime() + 86400000;
     return Object.values(milchEintraege)
-      .filter(m => m.datum >= tagStart.getTime() && m.datum < tagEnde)
+      .filter(m => m.datum >= tagStart.getTime() && m.datum < tagEnde && (m.zeit||'morgen') === zeit)
       .reduce((s,m)=>s+(m.gesamt||0),0);
   }
-  const last7 = [];
+  const last7Morgens = [];
+  const last7Abends  = [];
   for(let i=6;i>=0;i--){
     const ts = heute - i*86400000;
-    last7.push({ ts, l: tagesMilch(ts) });
+    last7Morgens.push({ ts, l: tagesMilchZeit(ts, 'morgen') });
+    last7Abends.push({  ts, l: tagesMilchZeit(ts, 'abend') });
   }
-  const last7Max = Math.max(...last7.map(d=>d.l), 1);
-  const last7Trend = last7[6].l - last7[0].l;
+  const maxMorgens = Math.max(...last7Morgens.map(d=>d.l), 1);
+  const maxAbends  = Math.max(...last7Abends.map(d=>d.l), 1);
+  const trendMorgens = last7Morgens[6].l - last7Morgens[0].l;
+  const trendAbends  = last7Abends[6].l - last7Abends[0].l;
+  const hatDaten = last7Morgens.some(d=>d.l>0) || last7Abends.some(d=>d.l>0);
 
   return `
     <!-- Saison Banner -->
@@ -304,30 +309,36 @@ function renderDashboard() {
       }).join('')}
     </div>` : ''}
 
-    <!-- Mini Saison-Kurve: Milchleistung letzte 7 Tage (Phase A6) -->
-    ${last7.some(d=>d.l>0) ? `
-    <div style="background:linear-gradient(135deg,rgba(74,184,232,.06),rgba(74,184,232,.01));border:1px solid rgba(74,184,232,.18);border-radius:var(--radius-sm);padding:.7rem .9rem;margin-top:1rem;cursor:pointer" onclick="navigate('milch')">
-      <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:.5rem">
-        <div style="font-size:.7rem;color:#7acbff;letter-spacing:.06em;font-weight:600">📈 MILCH 7 TAGE</div>
-        <div style="font-size:.74rem;color:${last7Trend>=0?'var(--green)':'var(--orange)'}">
-          ${last7Trend>=0?'↗':'↘'} ${last7Trend>=0?'+':''}${Math.round(last7Trend)}L
-        </div>
-      </div>
-      <div style="display:flex;align-items:flex-end;gap:.25rem;height:5rem;padding-top:.4rem">
-        ${last7.map((d,i) => {
-          const pct = last7Max ? Math.max(8, Math.round(d.l/last7Max*100)) : 8;
-          const istHeute = i===6;
-          const hatWert = d.l>0;
-          const datum = new Date(d.ts);
-          const tag = ['So','Mo','Di','Mi','Do','Fr','Sa'][datum.getDay()];
-          return `<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:.2rem;height:100%;justify-content:flex-end">
-            <div style="font-size:.55rem;color:${istHeute?'#7acbff':'var(--text3)'};font-weight:${istHeute?'700':'500'};line-height:1;min-height:.7rem">${hatWert?Math.round(d.l):''}</div>
-            <div style="width:100%;min-height:6px;background:linear-gradient(180deg,${istHeute?'#7acbff':'#4a88b8'} 0%,${istHeute?'#4a88b8':'#2d5a7a'} 100%);height:${pct}%;border-radius:3px 3px 0 0;${istHeute?'box-shadow:0 0 8px rgba(122,203,255,.5)':''};${hatWert?'':'opacity:.25'}" title="${d.l}L"></div>
-            <div style="font-size:.6rem;color:${istHeute?'var(--gold)':'var(--text3)'};font-weight:${istHeute?'700':'400'};line-height:1">${tag}</div>
-          </div>`;
-        }).join('')}
-      </div>
-    </div>` : ''}
+    <!-- Mini Saison-Kurven: Milchleistung letzte 7 Tage (Morgens + Abends getrennt) -->
+    ${hatDaten ? (() => {
+      const renderChart = (daten, max, trend, titel, accent, accentDark) => `
+        <div style="background:linear-gradient(135deg,${accent}10,${accent}02);border:1px solid ${accent}30;border-radius:var(--radius-sm);padding:.6rem .8rem;cursor:pointer" onclick="navigate('milch')">
+          <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:.4rem">
+            <div style="font-size:.7rem;color:${accent};letter-spacing:.05em;font-weight:600">${titel}</div>
+            <div style="font-size:.7rem;color:${trend>=0?'var(--green)':'var(--orange)'}">
+              ${trend>=0?'↗':'↘'} ${trend>=0?'+':''}${Math.round(trend)}L
+            </div>
+          </div>
+          <div style="display:flex;align-items:flex-end;gap:.2rem;height:4.2rem;padding-top:.3rem">
+            ${daten.map((d,i) => {
+              const pct = max ? Math.max(8, Math.round(d.l/max*100)) : 8;
+              const istHeute = i===6;
+              const hatWert = d.l>0;
+              const datum = new Date(d.ts);
+              const tag = ['So','Mo','Di','Mi','Do','Fr','Sa'][datum.getDay()];
+              return `<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:.15rem;height:100%;justify-content:flex-end">
+                <div style="font-size:.5rem;color:${istHeute?accent:'var(--text3)'};font-weight:${istHeute?'700':'500'};line-height:1;min-height:.6rem">${hatWert?Math.round(d.l):''}</div>
+                <div style="width:100%;min-height:5px;background:linear-gradient(180deg,${istHeute?accent:accentDark} 0%,${accentDark} 100%);height:${pct}%;border-radius:3px 3px 0 0;${istHeute?'box-shadow:0 0 6px '+accent+'66':''};${hatWert?'':'opacity:.25'}" title="${d.l}L"></div>
+                <div style="font-size:.58rem;color:${istHeute?'var(--gold)':'var(--text3)'};font-weight:${istHeute?'700':'400'};line-height:1">${tag}</div>
+              </div>`;
+            }).join('')}
+          </div>
+        </div>`;
+      return `<div style="display:grid;grid-template-columns:1fr 1fr;gap:.5rem;margin-top:1rem">
+        ${renderChart(last7Morgens, maxMorgens, trendMorgens, '🌅 MORGENS', '#7acbff', '#2d5a7a')}
+        ${renderChart(last7Abends,  maxAbends,  trendAbends,  '🌇 ABENDS',  '#e67e22', '#7a4a1a')}
+      </div>`;
+    })() : ''}
   `;
 }
 function renderHerde() {
@@ -766,16 +777,22 @@ function renderKuhDetail() {
       </div>
     </div>
 
-    <!-- Canvas Chart -->
+    <!-- Canvas Charts: Morgens und Abends getrennt -->
+    <div style="background:var(--bg3);border:1px solid var(--border);border-radius:12px;padding:.7rem .7rem .4rem;margin-bottom:.5rem">
+      <div style="font-size:.68rem;color:#7acbff;font-weight:600;letter-spacing:.05em;margin-bottom:.35rem">🌅 MORGENS — VERLAUF</div>
+      <canvas id="kd-chart-canvas-morgens" height="100"></canvas>
+    </div>
     <div style="background:var(--bg3);border:1px solid var(--border);border-radius:12px;padding:.7rem .7rem .4rem;margin-bottom:.7rem">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.4rem">
-        <div style="font-size:.68rem;color:var(--text3);font-weight:600;letter-spacing:.05em">📈 MILCHLEISTUNGSVERLAUF</div>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.35rem">
+        <div style="font-size:.68rem;color:#e67e22;font-weight:600;letter-spacing:.05em">🌇 ABENDS — VERLAUF</div>
         <button onclick="window._kdPrognose=!window._kdPrognose;kdDrawWithRetry(0)"
           style="font-size:.6rem;background:${window._kdPrognose?'rgba(212,168,75,.2)':'var(--bg2)'};border:1px solid ${window._kdPrognose?'var(--gold)':'var(--border)'};color:${window._kdPrognose?'var(--gold)':'var(--text3)'};border-radius:8px;padding:2px 6px;cursor:pointer">
           ${window._kdPrognose?'✓':'+'} Prognose
         </button>
       </div>
-      <canvas id="kd-chart-canvas" height="130"></canvas>
+      <canvas id="kd-chart-canvas-abends" height="100"></canvas>
+      <!-- Versteckter Original-Canvas (für Kompatibilität wenn von anderen Stellen aufgerufen) -->
+      <canvas id="kd-chart-canvas" style="display:none"></canvas>
       ${window._kdPrognose?`<div id="kd-prognose-info" style="margin-top:.4rem;padding:.4rem .6rem;background:rgba(212,168,75,.06);border:1px solid rgba(212,168,75,.2);border-radius:8px;font-size:.7rem;color:var(--text3)">Wird berechnet…</div>`:''}
 
       <div class="kd-chart-label">
@@ -839,17 +856,33 @@ window.kdDrawWithRetry = function(attempt) {
 
 // Canvas Milch Chart (pro Kuh)
 window.drawKdChart = function() {
-  var canvas = document.getElementById('kd-chart-canvas');
+  // Beide Canvas nacheinander zeichnen, gefiltert nach Schicht
+  var allData = window._kdChartData;
+  if(!allData) return;
+  var datenMorgens = allData.filter(function(d){return (d.z||'morgen') === 'morgen';});
+  var datenAbends  = allData.filter(function(d){return (d.z||'morgen') === 'abend';});
+  _drawKdChartSingle('kd-chart-canvas-morgens', datenMorgens, '#7acbff', 'rgba(122,203,255,.3)', 'rgba(122,203,255,.02)');
+  _drawKdChartSingle('kd-chart-canvas-abends',  datenAbends,  '#e67e22', 'rgba(230,126,34,.3)',  'rgba(230,126,34,.02)');
+};
+
+function _drawKdChartSingle(canvasId, data, hauptFarbe, areaHi, areaLo) {
+  var canvas = document.getElementById(canvasId);
   if(!canvas) return;
-  var data = window._kdChartData;
   if(!data || data.length < 2) {
-    if(canvas.width > 0) canvas.getContext('2d').clearRect(0,0,canvas.width,canvas.height);
+    var ctxClear = canvas.getContext('2d');
+    var rect = canvas.getBoundingClientRect();
+    canvas.width = rect.width * (window.devicePixelRatio||1);
+    canvas.height = 100 * (window.devicePixelRatio||1);
+    ctxClear.fillStyle = 'rgba(255,255,255,.3)';
+    ctxClear.font = '12px sans-serif';
+    ctxClear.textAlign = 'center';
+    ctxClear.fillText('Noch keine Daten', canvas.width/2/(window.devicePixelRatio||1), 50);
     return;
   }
   var W = canvas.offsetWidth;
   if(W < 10) return;
 
-  // ── Prognose berechnen ──
+  // ── Prognose (nur Abends-Chart steuert die Anzeige, gilt für beide) ──
   var zeigPrognose = window._kdPrognose;
   var progPts = [];
   if(zeigPrognose && data.length >= 4) {
@@ -860,34 +893,26 @@ window.drawKdChart = function() {
     for(var j=1;j<=30;j++){
       progPts.push({l:Math.max(0,Math.round((intercept+slope*(n-1+j))*10)/10), istPrognose:true});
     }
-    var trend=slope>0.05?'📈 Steigend':slope<-0.05?'📉 Sinkend':'➡ Stabil';
-    setTimeout(function(){
-      var el=document.getElementById('kd-prognose-info');
-      if(el) el.innerHTML=
-        'In 14 Tagen: <b style="color:var(--gold)">~'+progPts[13].l+'L</b> · '+
-        'In 30 Tagen: <b style="color:var(--gold)">~'+progPts[29].l+'L</b> · Trend: <b>'+trend+'</b>';
-    },50);
   }
 
   var allData = zeigPrognose ? data.concat(progPts) : data;
   var ctx = canvas.getContext('2d');
   var dpr = window.devicePixelRatio||1;
-  var H = 130;
+  var H = 100;
   canvas.width = W*dpr; canvas.height = H*dpr;
   ctx.scale(dpr,dpr);
-  var pad = {t:12,r:8,b:8,l:30};
+  var pad = {t:10,r:8,b:6,l:30};
   var gW = W-pad.l-pad.r, gH = H-pad.t-pad.b;
   var maxV = Math.max.apply(null, allData.map(function(d){return d.l;}));
   maxV = Math.max(maxV, 1);
-  var minV = Math.min.apply(null, data.map(function(d){return d.l;}));
-  minV = Math.min(minV, 0);
+  var minV = 0;
   var range = maxV-minV||1;
   var totalN = allData.length;
 
   var pts = data.map(function(d,i){return {
     x: pad.l + i*(gW/(totalN-1)),
     y: pad.t + gH - ((d.l-minV)/range)*gH,
-    l: d.l, z: d.z, istPrognose: false
+    l: d.l, istPrognose: false
   };});
   var pPts = progPts.map(function(d,j){return {
     x: pad.l + (data.length+j)*(gW/(totalN-1)),
@@ -896,7 +921,7 @@ window.drawKdChart = function() {
   };});
 
   // Grid
-  [0.25,0.5,0.75,1].forEach(function(f){
+  [0.33,0.66,1].forEach(function(f){
     var y=pad.t+gH*(1-f);
     ctx.strokeStyle='rgba(255,255,255,.05)'; ctx.lineWidth=1;
     ctx.beginPath(); ctx.moveTo(pad.l,y); ctx.lineTo(pad.l+gW,y); ctx.stroke();
@@ -905,7 +930,7 @@ window.drawKdChart = function() {
   });
   // Area
   var grad=ctx.createLinearGradient(0,pad.t,0,pad.t+gH);
-  grad.addColorStop(0,'rgba(74,184,232,.3)'); grad.addColorStop(1,'rgba(74,184,232,.02)');
+  grad.addColorStop(0,areaHi); grad.addColorStop(1,areaLo);
   ctx.beginPath(); ctx.moveTo(pts[0].x,pad.t+gH);
   pts.forEach(function(p){ctx.lineTo(p.x,p.y);});
   ctx.lineTo(pts[pts.length-1].x,pad.t+gH);
@@ -913,7 +938,7 @@ window.drawKdChart = function() {
   // Ist-Linie
   ctx.beginPath();
   pts.forEach(function(p,i){if(i===0)ctx.moveTo(p.x,p.y);else ctx.lineTo(p.x,p.y);});
-  ctx.strokeStyle='#4ab8e8'; ctx.lineWidth=2.5;
+  ctx.strokeStyle=hauptFarbe; ctx.lineWidth=2.5;
   ctx.lineJoin='round'; ctx.lineCap='round'; ctx.stroke();
   // Prognose-Linie
   if(zeigPrognose && pPts.length) {
@@ -922,52 +947,23 @@ window.drawKdChart = function() {
     pPts.forEach(function(p){ctx.lineTo(p.x,p.y);});
     ctx.strokeStyle='rgba(212,168,75,.8)'; ctx.lineWidth=2;
     ctx.setLineDash([5,4]); ctx.stroke(); ctx.setLineDash([]);
-    // Trennlinie
     ctx.strokeStyle='rgba(212,168,75,.3)'; ctx.lineWidth=1;
     ctx.setLineDash([2,3]);
     ctx.beginPath(); ctx.moveTo(lastP.x,pad.t); ctx.lineTo(lastP.x,pad.t+gH); ctx.stroke();
     ctx.setLineDash([]);
-    ctx.fillStyle='rgba(212,168,75,.7)'; ctx.font='bold 8px sans-serif'; ctx.textAlign='center';
-    ctx.fillText('Prognose', lastP.x+gW*0.12, pad.t+8);
-    // Endpunkt
-    var ep=pPts[pPts.length-1];
-    ctx.beginPath(); ctx.arc(ep.x,ep.y,3,0,Math.PI*2);
-    ctx.fillStyle='#d4a84b'; ctx.fill();
   }
-  // Dots
+  // Dots auf Ist-Daten
   pts.forEach(function(p){
-    ctx.beginPath(); ctx.arc(p.x,p.y, p.z==='morgen'?3.5:2.5, 0, Math.PI*2);
-    ctx.fillStyle=p.z==='morgen'?'#d4a84b':'#4ab8e8'; ctx.fill();
-    if(p.z==='morgen'){ctx.strokeStyle='rgba(212,168,75,.4)';ctx.lineWidth=1;ctx.stroke();}
+    ctx.beginPath(); ctx.arc(p.x,p.y, 2.5, 0, Math.PI*2);
+    ctx.fillStyle=hauptFarbe; ctx.fill();
   });
-  // Letzter Punkt
+  // Letzter Punkt-Highlight
   var lp=pts[pts.length-1];
-  ctx.beginPath(); ctx.arc(lp.x,lp.y,6,0,Math.PI*2);
-  ctx.fillStyle='rgba(74,184,232,.2)'; ctx.fill();
+  ctx.beginPath(); ctx.arc(lp.x,lp.y,5,0,Math.PI*2);
+  ctx.fillStyle=areaHi; ctx.fill();
   ctx.beginPath(); ctx.arc(lp.x,lp.y,3,0,Math.PI*2);
-  ctx.fillStyle='#4ab8e8'; ctx.fill();
-  // Touch-Tooltip
-  var allPts=pts.concat(pPts);
-  if(!canvas._kdTouch) {
-    canvas._kdTouch = true;
-    canvas.addEventListener('touchstart', function(e){
-      e.preventDefault();
-      var rect=canvas.getBoundingClientRect();
-      var tx=(e.touches[0].clientX-rect.left)*(W/rect.width);
-      var closest=allPts[0], minD=Infinity;
-      allPts.forEach(function(p){var d=Math.abs(p.x-tx);if(d<minD){minD=d;closest=p;}});
-      ctx.clearRect(0,0,W,H); window.drawKdChart();
-      var tw=54,th=22,tx2=Math.min(W-tw-4,Math.max(4,closest.x-tw/2));
-      ctx.fillStyle='rgba(212,168,75,.95)';
-      ctx.beginPath();
-      if(ctx.roundRect) ctx.roundRect(tx2,closest.y-th-8,tw,th,5);
-      else ctx.rect(tx2,closest.y-th-8,tw,th);
-      ctx.fill();
-      ctx.fillStyle='#0a0800'; ctx.font='bold 11px sans-serif'; ctx.textAlign='center';
-      ctx.fillText(closest.l+'L', tx2+tw/2, closest.y-th/2-4);
-    }, {passive:false});
-  }
-};
+  ctx.fillStyle=hauptFarbe; ctx.fill();
+}
 
 // After render: receive chart data and draw
 window._kdAfterRender = function(chartData) {
@@ -1179,8 +1175,12 @@ function renderZaehlung() {
               <div style="font-size:.7rem;color:var(--text3)">${k.bauer||''} ${k.gruppe?'· '+k.gruppe:''}</div>
             </div>
             ${da
-              ? `<span style="color:var(--green);font-size:1rem">✓</span><button class="remove-btn" onclick="entferneZaehlung('${id}')">✕</button>`
-              : `<button class="btn-xs" onclick="zaehlKuhById('${id}')">+ erfassen</button>`}
+              ? `<button onclick="entferneZaehlung('${id}')"
+                  style="min-width:48px;height:48px;border-radius:10px;background:rgba(231,76,60,.15);border:2px solid rgba(231,76,60,.45);color:#e74c3c;font-size:1.3rem;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-family:inherit"
+                  title="Erfassung entfernen">✕</button>`
+              : `<button onclick="zaehlKuhById('${id}')"
+                  style="min-width:48px;height:48px;border-radius:10px;background:rgba(77,184,78,.2);border:2px solid var(--green);color:var(--green);font-size:1.5rem;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-family:inherit"
+                  title="Als anwesend erfassen">✓</button>`}
           </div>`;
         }).join('');
       })()}

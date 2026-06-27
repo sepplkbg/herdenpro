@@ -1169,11 +1169,15 @@ window.showMilchDetail = function(id, e) {
       '</div>'
     : '<div style="font-size:.78rem;color:var(--text3)">' + zeit + (e.molkerei ? ' · an Molkerei' : '') + '</div>';
 
+  // Bericht-Button immer dabei (nutzt Datum+Zeit der angeklickten Schicht)
+  const berichtBtn = '<button class="btn-secondary" onclick="closePopup();showMilchBericht('+e.datum+',\''+(e.zeit||'morgen')+'\')">📊 Bericht</button>';
   const actions = groupInfo
     ? '<button class="btn-secondary" style="flex:1" onclick="closePopup()">Schließen</button>' +
+      berichtBtn +
       '<button class="btn-primary" onclick="closePopup();editMilchEintrag(\''+id+'\')">✎ Bearbeiten</button>' +
       '<button class="btn-xs-danger" onclick="closePopup();deleteMilchGruppe(\''+id+'\')">Alle löschen</button>'
     : '<button class="btn-secondary" style="flex:1" onclick="closePopup()">Schließen</button>' +
+      berichtBtn +
       '<button class="btn-primary" onclick="closePopup();editMilchEintrag(window._milchDetailId)">✎ Bearbeiten</button>' +
       '<button class="btn-xs-danger" onclick="closePopup();window.deleteMilch(window._milchDetailId)">Löschen</button>';
 
@@ -1939,29 +1943,33 @@ window.saveMilch = async function() {
       savedKey = editMilchId;
       console.log('[saveMilch] Update:', savedKey);
     } else {
-      // ── ANTI-DUPLIKAT auch hier: erst nach existierendem Eintrag suchen ──
+      // ── MULTI-MELKER-SICHER: Eigene Session-Einträge updaten, fremde unangetastet lassen ──
+      const sessionId = getMilchSessionId();
       const startTag = new Date(datumTs); startTag.setHours(0,0,0,0);
       const endeTag  = startTag.getTime() + 86400000;
       const existingEntry = Object.entries(milchEintraege||{}).find(([id, e]) =>
         e && e.datum >= startTag.getTime() && e.datum < endeTag &&
-        (e.zeit||'morgen') === zeit
+        (e.zeit||'morgen') === zeit &&
+        e._session === sessionId
       );
       if(existingEntry) {
         await update(ref(db, 'milch/' + existingEntry[0]), {
           datum: datumTs, art: modus, zeit, gesamt,
           prokuh: modus==='prokuh' ? prokuh : null,
-          molkerei, notiz, updatedAt: Date.now()
+          molkerei, notiz, updatedAt: Date.now(),
+          _session: sessionId
         });
         savedKey = existingEntry[0];
-        console.log('[saveMilch] Existierenden Eintrag übernommen statt PUSH:', savedKey);
+        console.log('[saveMilch] Eigenen Session-Eintrag aktualisiert:', savedKey);
       } else {
         const newRef = await push(ref(db, 'milch'), {
           datum: datumTs, art: modus, zeit, gesamt,
           prokuh: modus==='prokuh' ? prokuh : null,
-          molkerei, notiz, createdAt: Date.now()
+          molkerei, notiz, createdAt: Date.now(),
+          _session: sessionId
         });
         savedKey = newRef.key;
-        console.log('[saveMilch] Neu:', savedKey);
+        console.log('[saveMilch] Neuer Session-Eintrag:', savedKey);
       }
     }
 
@@ -1999,8 +2007,28 @@ window.saveMilch = async function() {
     // Notnetz-Entwurf löschen nach erfolgreichem Save
     try { localStorage.removeItem('milchEntwurf'); } catch(e) {}
 
+    // Datum + Zeit für Bericht merken
+    const berichtDatumTs = datumTs;
+    const berichtZeit = zeit;
+
     restoreBtn();
     closeForm('milch-form-overlay');
+    // Doppel-Absicherung: Form-Overlay explizit verstecken, falls closeForm scheitert
+    setTimeout(()=>{
+      const ov = document.getElementById('milch-form-overlay');
+      if(ov && ov.style.display !== 'none') {
+        console.warn('[saveMilch] Force-Hide nach Save');
+        ov.style.display = 'none';
+        if(typeof render === 'function') { try { render(); } catch(e){} }
+      }
+    }, 100);
+    // Bericht automatisch anzeigen (nach kurzer Pause damit Firebase-Listener nachzieht)
+    setTimeout(() => {
+      if(window.showMilchBericht) {
+        try { showMilchBericht(berichtDatumTs, berichtZeit); }
+        catch(e) { console.warn('Bericht-Anzeige fehlgeschlagen:', e); }
+      }
+    }, 700);
   } catch(err) {
     // ── FEHLER: Form OFFEN lassen, Fehler zeigen ──
     console.error('[saveMilch] FEHLER:', err);
@@ -2262,48 +2290,68 @@ function renderMilch() {
     const nA = parseInt(a[1].nr)||0, nB = parseInt(b[1].nr)||0; return nA - nB;
   });
 
-  // Saison-Chart Daten: Tagessummen chronologisch (aus grupiert, summiert pro Tag)
-  const tagesMilch={};
+  // Saison-Chart Daten: getrennt nach Morgens und Abends
+  const tagesMilchMorgens = {};
+  const tagesMilchAbends  = {};
   grupiert.forEach(g=>{
     if(!g.datum) return;
     const tag=new Date(g.datum).toISOString().slice(0,10);
-    tagesMilch[tag]=(tagesMilch[tag]||0)+(g.gesamt||0);
+    if((g.zeit||'morgen') === 'abend') {
+      tagesMilchAbends[tag] = (tagesMilchAbends[tag]||0) + (g.gesamt||0);
+    } else {
+      tagesMilchMorgens[tag] = (tagesMilchMorgens[tag]||0) + (g.gesamt||0);
+    }
   });
-  const chartTage=Object.entries(tagesMilch).sort((a,b)=>a[0].localeCompare(b[0]));
+  const chartTageMorgens = Object.entries(tagesMilchMorgens).sort((a,b)=>a[0].localeCompare(b[0]));
+  const chartTageAbends  = Object.entries(tagesMilchAbends).sort((a,b)=>a[0].localeCompare(b[0]));
+  const chartTage = chartTageMorgens.length >= chartTageAbends.length ? chartTageMorgens : chartTageAbends;
 
   // Build chart JSON for canvas
   const chartJson=JSON.stringify(chartTage.map(([d,l])=>({d:new Date(d+'T12:00').getTime(),l:Math.round(l*10)/10})));
 
   return `
-    <div class="page-header"><h2>🥛 Milchleistung</h2><button class="btn-primary" onclick="showMilchForm()">+ Eintrag</button></div>
+    <div class="page-header"><h2>🥛 Milchleistung</h2><div style="display:flex;gap:.4rem"><button class="btn-ghost" onclick="showAktuellenBericht()" title="Bericht zur aktuellen Schicht">📊</button><button class="btn-primary" onclick="showMilchForm()">+ Eintrag</button></div></div>
     <div class="stats-grid" style="grid-template-columns:1fr 1fr 1fr">
       <div class="stat-card"><div class="stat-icon" style="font-size:.9rem">Ø/Tag</div><div class="stat-num" style="font-size:1.4rem">${letzten14.length?Math.round(gesamtL14/letzten14.length):'–'}L</div><div class="stat-label">14 Tage</div></div>
       <div class="stat-card"><div class="stat-icon" style="font-size:.9rem">Gesamt</div><div class="stat-num" style="font-size:1.4rem">${Math.round(gesamtAll)}L</div><div class="stat-label">Saison</div></div>
       <div class="stat-card" onclick="exportMilchMolkerei()"><div class="stat-icon">📤</div><div class="stat-num" style="font-size:.9rem">Export</div><div class="stat-label">→ Molkerei</div></div>
     </div>
 
-    ${chartTage.length >= 2 ? `
-    <div style="background:var(--bg3);border:1px solid var(--border);border-radius:14px;padding:.8rem .8rem .4rem;margin-bottom:.8rem">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.5rem">
-        <div style="font-size:.68rem;color:var(--text3);font-weight:700;letter-spacing:.06em">📈 MILCHLEISTUNG SAISON</div>
-        <button onclick="window._milchPrognoseSaison=!window._milchPrognoseSaison;render()" 
+    ${(chartTageMorgens.length >= 2 || chartTageAbends.length >= 2) ? `
+    <!-- 🌅 Morgens-Chart -->
+    ${chartTageMorgens.length >= 2 ? `
+    <div style="background:var(--bg3);border:1px solid rgba(122,203,255,.3);border-radius:14px;padding:.7rem .8rem .4rem;margin-bottom:.6rem">
+      <div style="font-size:.68rem;color:#7acbff;font-weight:700;letter-spacing:.06em;margin-bottom:.4rem">🌅 MORGENS — SAISON</div>
+      <canvas id="milch-saison-canvas-morgens" height="110" style="width:100%;display:block;border-radius:6px"></canvas>
+      <div style="display:flex;justify-content:space-between;font-size:.6rem;color:var(--text3);margin-top:.3rem;padding:0 2px">
+        <span>${new Date(chartTageMorgens[0][0]+'T12:00').toLocaleDateString('de-AT',{day:'numeric',month:'short'})}</span>
+        <span style="color:#7acbff">${chartTageMorgens.length} Tage · Ø ${Math.round(chartTageMorgens.reduce((s,[,l])=>s+l,0)/chartTageMorgens.length*10)/10}L</span>
+        <span>${new Date(chartTageMorgens[chartTageMorgens.length-1][0]+'T12:00').toLocaleDateString('de-AT',{day:'numeric',month:'short'})}</span>
+      </div>
+    </div>` : ''}
+    <!-- 🌇 Abends-Chart -->
+    ${chartTageAbends.length >= 2 ? `
+    <div style="background:var(--bg3);border:1px solid rgba(230,126,34,.3);border-radius:14px;padding:.7rem .8rem .4rem;margin-bottom:.8rem">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.4rem">
+        <div style="font-size:.68rem;color:#e67e22;font-weight:700;letter-spacing:.06em">🌇 ABENDS — SAISON</div>
+        <button onclick="window._milchPrognoseSaison=!window._milchPrognoseSaison;render()"
           style="font-size:.65rem;background:${window._milchPrognoseSaison?'rgba(212,168,75,.2)':'var(--bg2)'};border:1px solid ${window._milchPrognoseSaison?'var(--gold)':'var(--border)'};color:${window._milchPrognoseSaison?'var(--gold)':'var(--text3)'};border-radius:8px;padding:2px 7px;cursor:pointer">
           ${window._milchPrognoseSaison?'✓':'+'} 30-Tage-Prognose
         </button>
       </div>
-      <canvas id="milch-saison-canvas" height="130" style="width:100%;display:block;border-radius:6px"></canvas>
-      <div style="display:flex;justify-content:space-between;font-size:.62rem;color:var(--text3);margin-top:.3rem;padding:0 2px">
-        <span>${new Date(chartTage[0][0]+'T12:00').toLocaleDateString('de-AT',{day:'numeric',month:'short'})}</span>
-        <span style="color:var(--gold)">${chartTage.length} Messtage · Ø ${Math.round(gesamtAll/chartTage.length*10)/10}L</span>
-        <span>${new Date(chartTage[chartTage.length-1][0]+'T12:00').toLocaleDateString('de-AT',{day:'numeric',month:'short'})}</span>
+      <canvas id="milch-saison-canvas-abends" height="110" style="width:100%;display:block;border-radius:6px"></canvas>
+      <div style="display:flex;justify-content:space-between;font-size:.6rem;color:var(--text3);margin-top:.3rem;padding:0 2px">
+        <span>${new Date(chartTageAbends[0][0]+'T12:00').toLocaleDateString('de-AT',{day:'numeric',month:'short'})}</span>
+        <span style="color:#e67e22">${chartTageAbends.length} Tage · Ø ${Math.round(chartTageAbends.reduce((s,[,l])=>s+l,0)/chartTageAbends.length*10)/10}L</span>
+        <span>${new Date(chartTageAbends[chartTageAbends.length-1][0]+'T12:00').toLocaleDateString('de-AT',{day:'numeric',month:'short'})}</span>
       </div>
       ${window._milchPrognoseSaison ? `
-      <!-- Prognose-Info -->
       <div id="milch-prognose-info" style="margin-top:.5rem;padding:.5rem .6rem;background:rgba(212,168,75,.06);border:1px solid rgba(212,168,75,.2);border-radius:8px;font-size:.72rem">
         <div style="color:var(--gold);font-weight:700;margin-bottom:.2rem">📊 30-Tage-Prognose (lineare Regression)</div>
         <div id="milch-prognose-werte" style="color:var(--text2)">Wird berechnet…</div>
       </div>` : ''}
     </div>` : ''}
+    ` : ''}
 
     ${Object.keys(proMonat).length?`<div class="section-title">Monatsübersicht</div><div class="card-section" style="padding:.5rem .8rem">${Object.entries(proMonat).slice(0,6).map(([m,l])=>`<div class="info-row"><span>${m}</span><b>${Math.round(l)} L</b></div>`).join('')}</div>`:''}
 
@@ -2360,8 +2408,34 @@ function renderMilch() {
               ${[...new Set(kueheOben.map(([,k])=>k.bauer).filter(Boolean))].map(b=>`<button class="filter-chip" onclick="filterMilchBauer('${b}',this)">${b.split(' ').pop()}</button>`).join('')}
             </div>
             <div id="m-kuh-liste">
-              ${kueheOben.map(([id,k])=>`
-                <div class="milch-kuh-row" data-bauer="${k.bauer||''}" style="display:flex;flex-direction:column;padding:.35rem 0;border-bottom:1px solid var(--border)">
+              ${kueheOben.map(([id,k])=>{
+                // ── Wartezeit-Check für Milch ──
+                const heute = Date.now();
+                const aktiveWzBeh = Object.values(behandlungen||{}).find(b =>
+                  b && b.aktiv !== false && b.kuhId === id &&
+                  b.wzMilchEnde && b.wzMilchEnde > heute
+                );
+                let wzHinweis = '';
+                let rowStyle = 'display:flex;flex-direction:column;padding:.35rem 0;border-bottom:1px solid var(--border)';
+                if(aktiveWzBeh) {
+                  const tageRest = Math.ceil((aktiveWzBeh.wzMilchEnde - heute) / 86400000);
+                  const restText = tageRest === 1 ? '1 Tag' : tageRest+' Tage';
+                  rowStyle += ';border-left:4px solid #e67e22;padding-left:.4rem';
+                  wzHinweis = `
+                    <div class="wz-hinweis" style="display:flex;align-items:center;gap:.5rem;background:rgba(230,126,34,.12);border:1px solid rgba(230,126,34,.35);border-radius:6px;padding:.35rem .55rem;margin:.3rem 0 .1rem;font-size:.75rem">
+                      <span style="font-size:.95rem">⚠</span>
+                      <span style="color:#e67e22;font-weight:700;flex:1">${restText} keine Milch (Wartezeit)</span>
+                      <label style="display:inline-flex;align-items:center;gap:.3rem;font-size:.72rem;color:var(--text2);cursor:pointer;white-space:nowrap">
+                        <input type="checkbox" class="wz-beachtet-cb" data-kuh="${id}"
+                          onchange="onWzBeachtet(this)"
+                          style="width:18px;height:18px;accent-color:var(--green);cursor:pointer" />
+                        <span>Beachtet</span>
+                      </label>
+                    </div>
+                  `;
+                }
+                return `
+                <div class="milch-kuh-row" data-bauer="${k.bauer||''}" data-wz="${aktiveWzBeh?'1':'0'}" style="${rowStyle}">
                   <div style="display:flex;align-items:center;gap:.5rem">
                     <span class="nr-badge" style="min-width:38px;text-align:center">#${k.nr}</span>
                     <div style="flex:1;min-width:0">
@@ -2374,8 +2448,10 @@ function renderMilch() {
                       <button onclick="milchStep('${id}',1)" style="width:28px;height:28px;border-radius:50%;border:1px solid var(--border);background:var(--bg3);color:var(--text);font-size:1rem;cursor:pointer;display:flex;align-items:center;justify-content:center;font-family:inherit">+</button>
                     </div>
                   </div>
+                  ${wzHinweis}
                   <div id="milch-warn-${id}" style="display:none;font-size:.68rem;font-weight:600;padding:.1rem .5rem .1rem 42px;animation:kd-in .2s ease both"></div>
-                </div>`).join('')}
+                </div>`;
+              }).join('')}
             </div>
             <div style="display:flex;justify-content:space-between;align-items:center;margin-top:.6rem;padding-top:.5rem;border-top:1px solid var(--border2)">
               <span style="font-size:.82rem;color:var(--text3)">Eingetragen: <span id="m-count">0</span> Kühe</span>
@@ -2902,6 +2978,19 @@ function renderEinstellungen() {
       <div style="font-size:.72rem;color:var(--text3);margin-bottom:.5rem">Beispiel: 50% → Warnung wenn Kuh weniger als die Hälfte oder mehr als das 1,5-fache ihres Durchschnitts gibt.</div>
       <button class="btn-secondary" onclick="saveMilchWarnSchwelle()">💾 Speichern</button>
     </div>
+
+    <div class="card-section" style="margin-bottom:.8rem">
+      <div class="section-label" style="margin-bottom:.5rem">📊 BERICHT-SCHWELLENWERT</div>
+      <p style="font-size:.78rem;color:var(--text2);margin-bottom:.6rem">Im Schicht-Bericht erscheinen Kühe als „auffällig" wenn sie mehr als X% vom 7-Tage-Schnitt abweichen. Default 40% (etwas sensibler als die Live-Warnung).</p>
+      <div style="display:flex;align-items:center;gap:.6rem;margin-bottom:.4rem">
+        <label style="font-size:.82rem;color:var(--text2);white-space:nowrap">Schwellenwert</label>
+        <input id="einst-bericht-prozent" class="inp" type="number" min="10" max="90" step="5"
+          value="${parseInt(localStorage.getItem('milchBerichtProzent'))||40}"
+          style="width:80px;text-align:center" inputmode="numeric" />
+        <span style="font-size:.82rem;color:var(--text3)">%</span>
+      </div>
+      <button class="btn-secondary" onclick="saveBerichtSchwelle()">💾 Speichern</button>
+    </div>
     <div class="card-section" style="margin-bottom:.8rem">
       <p style="font-size:.82rem;color:var(--text2);margin-bottom:.7rem">
         Milchdaten als Excel exportieren – fertig formatiert für das Molkerei-System (Stall-Sheet Format, W1–W14).
@@ -3333,15 +3422,22 @@ window.showMilchForm = function() {
   // Auto-Save State zurücksetzen für neue Session
   if(window.resetMilchAutoSaveState) window.resetMilchAutoSaveState();
 
-  // ── Duplikat-Schutz: existiert bereits ein Eintrag für heute+morgen/abends? ──
-  // Falls ja, statt neuem Formular den bestehenden Eintrag bearbeiten.
+  // Kollisions-Warnungen direkt nach Form-Anzeige aktualisieren
+  setTimeout(()=>{ if(window.updateAndereMelkerHinweise) window.updateAndereMelkerHinweise(); }, 50);
+
+  // ── Duplikat-Schutz: existiert bereits ein Eintrag der EIGENEN SESSION? ──
+  // Wichtig: nur OWN-Session matchen! Wenn ein anderer Melker einen Eintrag hat,
+  // den NICHT fortsetzen (das würde dessen Daten überschreiben). Sein Eintrag
+  // bleibt unangetastet, die Anzeige merged später beide.
   try {
+    const sessionId = getMilchSessionId();
     const heuteStr = isoDate(new Date());
     const heuteTs  = new Date(heuteStr + 'T12:00').getTime();
     const aktuelleZeit = (new Date().getHours() < 13) ? 'morgen' : 'abend';
-    // Suche Einträge desselben Datums + Schicht, max. 6h alt
+    // Eigene Session-Einträge desselben Datums + Schicht, max. 6h alt
     const treffer = Object.entries(milchEintraege).filter(([id, e]) => {
       if(!e || !e.datum) return false;
+      if(e._session !== sessionId) return false;  // NUR eigene Session
       const eDatum = new Date(e.datum); eDatum.setHours(0,0,0,0);
       const ezDatum = new Date(heuteTs); ezDatum.setHours(0,0,0,0);
       if(eDatum.getTime() !== ezDatum.getTime()) return false;
@@ -3350,25 +3446,38 @@ window.showMilchForm = function() {
       return alter < 6*3600000;
     });
     if(treffer.length > 0) {
-      // Den jüngsten Eintrag nehmen
+      // Eigener vorheriger Eintrag → automatisch fortsetzen (keine Frage)
       treffer.sort((a,b) => (b[1].updatedAt||b[1].createdAt||0) - (a[1].updatedAt||a[1].createdAt||0));
-      const [bestehendId, bestehendE] = treffer[0];
-      const kuhCount = bestehendE.prokuh ? Object.keys(bestehendE.prokuh).length : 0;
-      const alterMin = Math.round((Date.now() - (bestehendE.updatedAt||bestehendE.createdAt||bestehendE.datum)) / 60000);
-      const ja = confirm(
-        'ℹ Du hast heute '+(aktuelleZeit==='abend'?'abends':'morgens')+' bereits einen Eintrag mit '+
-        kuhCount+' Kühen ('+bestehendE.gesamt+'L) angelegt (vor '+alterMin+' Min).\n\n'+
-        '➜ Bestehenden Eintrag FORTSETZEN (empfohlen, kein Duplikat)\n'+
-        '✕ Trotzdem NEU anlegen\n\n'+
-        'Fortsetzen?'
-      );
-      if(ja) {
-        // Statt neuer Form → Bearbeitungs-Form für den bestehenden Eintrag
-        ov.style.display = 'none';
-        setTimeout(()=>{ if(window.editMilchEintrag) editMilchEintrag(bestehendId); }, 50);
-        return;
-      }
-      // Wenn User auf "Neu" besteht: weitermachen mit leerem Formular
+      const [bestehendId] = treffer[0];
+      console.log('[showMilchForm] Eigener Session-Eintrag gefunden – wird fortgesetzt:', bestehendId);
+      ov.style.display = 'none';
+      setTimeout(()=>{ if(window.editMilchEintrag) editMilchEintrag(bestehendId); }, 50);
+      return;
+    }
+    // Optional: Info-Banner falls ein ANDERER Melker bereits an dieser Schicht arbeitet
+    const fremdEintraege = Object.values(milchEintraege).filter(e => {
+      if(!e || !e.datum) return false;
+      if(e._session === sessionId) return false;
+      const eDatum = new Date(e.datum); eDatum.setHours(0,0,0,0);
+      const ezDatum = new Date(heuteTs); ezDatum.setHours(0,0,0,0);
+      if(eDatum.getTime() !== ezDatum.getTime()) return false;
+      if((e.zeit||'morgen') !== aktuelleZeit) return false;
+      return (Date.now() - (e.updatedAt||e.createdAt||e.datum)) < 6*3600000;
+    });
+    if(fremdEintraege.length > 0) {
+      const kuhCount = fremdEintraege.reduce((sum, e) => sum + (e.prokuh ? Object.keys(e.prokuh).length : 0), 0);
+      // Kleine Info am Form-Top
+      setTimeout(()=>{
+        let hint = document.getElementById('m-andere-melker-hint');
+        if(!hint) {
+          hint = document.createElement('div');
+          hint.id = 'm-andere-melker-hint';
+          hint.style.cssText = 'background:rgba(122,203,255,.10);border:1px solid rgba(122,203,255,.4);border-radius:8px;padding:.45rem .7rem;margin-bottom:.5rem;font-size:.78rem;color:#7acbff;display:flex;align-items:center;gap:.5rem';
+          const body = ov.querySelector('.form-body');
+          if(body) body.insertBefore(hint, body.firstChild);
+        }
+        hint.innerHTML = '👥 <span><b>Anderer Melker</b> hat in dieser Schicht bereits '+kuhCount+' Kühe erfasst – wird beim Speichern zusammengeführt.</span>';
+      }, 80);
     }
   } catch(e) { console.warn('Duplikat-Check fehlgeschlagen:', e); }
 
@@ -3957,6 +4066,25 @@ window.milchStep = function(kuhId, delta) {
   onMilchInput(inp);
 };
 
+// Wenn das Häkchen "Beachtet" bei einer Wartezeit-Kuh gesetzt wird:
+// Hinweis-Box wird visuell abgesoftet (nicht entfernt – soll noch sichtbar bleiben).
+window.onWzBeachtet = function(cb) {
+  const row = cb.closest('.milch-kuh-row');
+  const box = row && row.querySelector('.wz-hinweis');
+  if(!box) return;
+  if(cb.checked) {
+    box.style.background = 'rgba(150,150,150,.08)';
+    box.style.border = '1px solid rgba(150,150,150,.25)';
+    box.querySelector('span:nth-of-type(2)').style.color = 'var(--text3)';
+    box.querySelector('span:nth-of-type(2)').style.textDecoration = 'line-through';
+  } else {
+    box.style.background = 'rgba(230,126,34,.12)';
+    box.style.border = '1px solid rgba(230,126,34,.35)';
+    box.querySelector('span:nth-of-type(2)').style.color = '#e67e22';
+    box.querySelector('span:nth-of-type(2)').style.textDecoration = 'none';
+  }
+};
+
 window.onMilchInput = function(inp) {
   const row = inp.closest('.milch-kuh-row');
   const val = parseFloat(inp.value)||0;
@@ -3995,6 +4123,70 @@ window.onMilchInput = function(inp) {
 window._milchAutoSaveDraftId = null;
 window._milchAutoSaveTimer   = null;
 window._milchAutoSaveInFlight = false;
+
+// Eindeutige Session-ID pro Browser-Tab (überlebt Form-Open/Close, aber NICHT Tab-Schließen)
+// Damit findet ein Melker SEINEN eigenen Eintrag wieder, ohne den anderen zu überschreiben.
+function getMilchSessionId() {
+  let sid = sessionStorage.getItem('milkSessionId');
+  if(!sid) {
+    sid = 'sess_' + Math.random().toString(36).slice(2, 10) + '_' + Date.now();
+    sessionStorage.setItem('milkSessionId', sid);
+  }
+  return sid;
+}
+
+// ── Kollisions-Warnung: zeigt bei jeder Kuh ob ein ANDERER Melker (andere Session)
+//    in derselben Schicht bereits einen Wert eingetragen hat. Live aktualisiert. ──
+window.updateAndereMelkerHinweise = function() {
+  const formOv = document.getElementById('milch-form-overlay');
+  if(!formOv || formOv.style.display !== 'flex') return;
+
+  const mySession = getMilchSessionId();
+  const datum = document.getElementById('m-datum')?.value;
+  if(!datum) return;
+  const datumTs = new Date(datum + 'T12:00').getTime();
+  const startTag = new Date(datumTs); startTag.setHours(0,0,0,0);
+  const endeTag = startTag.getTime() + 86400000;
+  const zeit = document.getElementById('m-zeit')?.value || 'morgen';
+
+  // Werte aller anderen Sessions für diese Schicht sammeln
+  const andereSessionWerte = {}; // kuhId → wert (letzter gewinnt falls mehrere fremde Sessions denselben Wert haben)
+  Object.values(milchEintraege || {}).forEach(e => {
+    if(!e || !e.datum) return;
+    if(e.datum < startTag.getTime() || e.datum >= endeTag) return;
+    if((e.zeit || 'morgen') !== zeit) return;
+    if(e._session === mySession) return; // eigene Session überspringen
+    if(!e.prokuh) return;
+    Object.entries(e.prokuh).forEach(([kuhId, l]) => {
+      const v = parseFloat(l) || 0;
+      if(v > 0) andereSessionWerte[kuhId] = v;
+    });
+  });
+
+  // DOM aktualisieren – pro Kuh-Zeile Hinweis ergänzen oder entfernen
+  document.querySelectorAll('#milch-form-overlay .milch-kuh-row').forEach(row => {
+    const input = row.querySelector('.kuh-liter');
+    if(!input) return;
+    const kuhId = input.dataset.id;
+    let hinweis = row.querySelector('.andere-melker-hinweis');
+    const fremdWert = andereSessionWerte[kuhId];
+
+    if(fremdWert) {
+      if(!hinweis) {
+        hinweis = document.createElement('div');
+        hinweis.className = 'andere-melker-hinweis';
+        hinweis.style.cssText = 'background:rgba(230,126,34,.14);border:1px solid rgba(230,126,34,.40);border-radius:6px;padding:.3rem .55rem;margin-top:.25rem;font-size:.7rem;color:#e67e22;font-weight:600;display:flex;align-items:center;gap:.4rem';
+        row.appendChild(hinweis);
+      }
+      hinweis.innerHTML = '👥 Anderer Melker: <b style="color:#e67e22">'+(Math.round(fremdWert*10)/10)+' L</b>';
+      // Visueller Border am Input
+      input.style.borderColor = '#e67e22';
+    } else if(hinweis) {
+      hinweis.remove();
+      input.style.borderColor = '';
+    }
+  });
+};
 
 function setMilchAutoSaveStatus(text, color) {
   const el = document.getElementById('milch-autosave-indicator');
@@ -4058,6 +4250,9 @@ async function doMilchAutoSave() {
     const editIdRaw = document.getElementById('m-edit-id')?.value || '';
     const isGroupEdit = editIdRaw.startsWith('group:');
 
+    const sessionId = getMilchSessionId();
+    payload._session = sessionId;  // Session-ID immer am Eintrag mitführen
+
     if(window._milchAutoSaveDraftId) {
       // Bereits Draft angelegt – nur updaten
       await update(ref(db, 'milch/' + window._milchAutoSaveDraftId), payload);
@@ -4066,27 +4261,27 @@ async function doMilchAutoSave() {
       window._milchAutoSaveDraftId = editIdRaw;
       await update(ref(db, 'milch/' + editIdRaw), payload);
     } else {
-      // ── ANTI-DUPLIKAT: Statt blind PUSH, erst nach existierendem Eintrag suchen ──
-      // Ohne diese Suche entstand bei jedem Form-Öffnen ein neuer Draft, der
-      // in der Aggregation als Doppel/Tripel/Quadrupel auftauchte.
+      // ── MULTI-MELKER-SICHER: nur Einträge der EIGENEN Session als Match werten ──
+      // Dadurch: SAME Browser-Tab/Melker → eigener Eintrag wird fortgesetzt (kein Duplikat).
+      //          ANDERER Browser/Melker  → eigener Eintrag wird gepusht (keine Überschreibung).
+      // View merged anschließend alle Einträge desselben Datum+Zeit zusammen.
       const startTag = new Date(datumTs); startTag.setHours(0,0,0,0);
       const endeTag  = startTag.getTime() + 86400000;
       const existingEntry = Object.entries(milchEintraege||{}).find(([id, e]) =>
         e && e.datum >= startTag.getTime() && e.datum < endeTag &&
-        (e.zeit||'morgen') === zeit
+        (e.zeit||'morgen') === zeit &&
+        e._session === sessionId
       );
       if(existingEntry) {
-        // Existierenden Eintrag als Auto-Save-Ziel übernehmen
-        console.log('[autoSave] Existierenden Eintrag fortsetzen statt neu anlegen:', existingEntry[0]);
+        console.log('[autoSave] Eigenen Session-Eintrag fortsetzen:', existingEntry[0]);
         window._milchAutoSaveDraftId = existingEntry[0];
         await update(ref(db, 'milch/' + existingEntry[0]), payload);
       } else {
-        // Echter Neueintrag
+        console.log('[autoSave] Neuer Session-Eintrag (eigene Session, kein Konflikt mit anderen Melkern)');
         payload.createdAt = Date.now();
         const r = await push(ref(db, 'milch'), payload);
         window._milchAutoSaveDraftId = r.key;
       }
-      // m-edit-id mit dem nun gültigen Draft füllen
       const eid = document.getElementById('m-edit-id');
       if(eid) eid.value = window._milchAutoSaveDraftId;
     }
@@ -4105,6 +4300,8 @@ async function doMilchAutoSave() {
 window.resetMilchAutoSaveState = function() {
   window._milchAutoSaveDraftId = null;
   window._milchOriginalGroupKey = null;
+  window._milchSaveInProgress = false;       // ← Save-Lock immer freigeben
+  window._milchAutoSaveInFlight = false;     // ← Auto-Save-Lock auch
   if(window._milchAutoSaveTimer) { clearTimeout(window._milchAutoSaveTimer); window._milchAutoSaveTimer = null; }
   setMilchAutoSaveStatus('', 'var(--text3)');
 };
@@ -4113,6 +4310,8 @@ window.selectMilchZeit = function(zeit, btn) {
   document.getElementById('m-zeit').value = zeit;
   document.querySelectorAll('#m-zeit-morgen,#m-zeit-abend').forEach(b => b.classList.remove('active'));
   if(btn) btn.classList.add('active');
+  // Bei Schicht-Wechsel: Kollisions-Hinweise neu prüfen (z.B. andere Schicht hat andere Werte)
+  if(window.updateAndereMelkerHinweise) window.updateAndereMelkerHinweise();
 };
 
 // ══════════════════════════════════════════════════════════════
@@ -4809,12 +5008,24 @@ window.showWeideTagForm=function(){
   const ov=document.getElementById('weidetag-overlay');
   if(!ov){navigate('weide');setTimeout(()=>showWeideTagForm(),150);return;}
   ov.style.display='flex';
-  // Filter zurücksetzen + Counter
+  // Filter setzen: Standardmäßig "Melkkühe" wenn vorhanden, sonst "Alle"
   setTimeout(()=>{
-    const allChip = ov.querySelector('.filter-chip[data-wf=""]');
-    if(allChip) setWeideFilter('', allChip);
+    const melkChip = ov.querySelector('.filter-chip[data-wf="Melkkühe"]') ||
+                     ov.querySelector('.filter-chip[data-wf="Melkkuehe"]');
+    if(melkChip) {
+      setWeideFilter(melkChip.dataset.wf, melkChip);
+      // Nur sichtbare (Melkkühe) automatisch ankreuzen, Rest abwählen
+      ov.querySelectorAll('.kuh-select-chip').forEach(chip => {
+        const cb = chip.querySelector('.kuh-cb');
+        if(!cb) return;
+        cb.checked = chip.style.display !== 'none';
+      });
+    } else {
+      const allChip = ov.querySelector('.filter-chip[data-wf=""]');
+      if(allChip) setWeideFilter('', allChip);
+    }
     updateWeideCount();
-  }, 20);
+  }, 30);
 };
 
 // Gruppen-Filter im Weidetag-Erfassdialog
@@ -6954,4 +7165,373 @@ window.saveSchalmViertel = async function() {
   } catch(e) {
     alert('Speichern fehlgeschlagen: '+e.message);
   }
+};
+
+// ══════════════════════════════════════════════════════════════════════════════
+//  MILCH-BERICHT (Schichten-Übersicht nach Save oder auf Anforderung)
+// ══════════════════════════════════════════════════════════════════════════════
+
+// 7-Tage-Schnitt für eine Kuh+Schicht (ohne den heutigen Tag, falls bereits gespeichert)
+function _berichtKuhSchnitt7T(kuhId, zeit, ausschlussDatum) {
+  const heute = Date.now();
+  const start = heute - 7 * 86400000;
+  const werte = [];
+  Object.values(milchEintraege || {}).forEach(e => {
+    if(!e || !e.datum || !e.prokuh) return;
+    if(e.datum < start || e.datum > heute) return;
+    if((e.zeit || 'morgen') !== zeit) return;
+    if(ausschlussDatum && Math.abs(e.datum - ausschlussDatum) < 12 * 3600000) return;
+    const v = parseFloat(e.prokuh[kuhId]) || 0;
+    if(v > 0) werte.push(v);
+  });
+  if(werte.length === 0) return null;
+  return werte.reduce((s,v) => s + v, 0) / werte.length;
+}
+
+// Tages-Gesamtmenge einer Schicht
+function _berichtSchichtGesamt(datumStart, datumEnde, zeit) {
+  let total = 0;
+  Object.values(milchEintraege || {}).forEach(e => {
+    if(!e || !e.datum) return;
+    if(e.datum < datumStart || e.datum >= datumEnde) return;
+    if((e.zeit || 'morgen') !== zeit) return;
+    total += e.gesamt || 0;
+  });
+  return total;
+}
+
+// Hauptberechnung
+window.computeMilchBericht = function(datumTs, zeit) {
+  const startTag = new Date(datumTs); startTag.setHours(0,0,0,0);
+  const endeTag = startTag.getTime() + 86400000;
+
+  // Alle Einträge dieser Schicht aggregieren (mehrere Melker zusammenführen)
+  const entries = Object.entries(milchEintraege || {}).filter(([id, e]) =>
+    e && e.datum >= startTag.getTime() && e.datum < endeTag &&
+    (e.zeit || 'morgen') === zeit
+  );
+  if(entries.length === 0) return null;
+
+  const prokuh = {};            // kuhId → Summe Liter (über alle Melker)
+  const sessionMap = {};        // sessionId → {kuhCount, liter, name}
+  let molkereiAnyTrue = false;
+
+  entries.forEach(([id, e]) => {
+    const sid = e._session || 'unbekannt';
+    if(!sessionMap[sid]) sessionMap[sid] = { kuhCount:0, liter:0 };
+    if(!e.prokuh) return;
+    Object.entries(e.prokuh).forEach(([kuhId, l]) => {
+      const v = parseFloat(l) || 0;
+      if(v > 0) {
+        prokuh[kuhId] = (prokuh[kuhId] || 0) + v;
+        sessionMap[sid].kuhCount++;
+        sessionMap[sid].liter += v;
+      }
+    });
+    if(e.molkerei) molkereiAnyTrue = true;
+  });
+
+  const gesamt = Object.values(prokuh).reduce((s,v) => s + v, 0);
+  const kuhCount = Object.keys(prokuh).length;
+  const durchschnitt = kuhCount > 0 ? gesamt / kuhCount : 0;
+
+  // Schwellenwert
+  const schwelle = parseInt(localStorage.getItem('milchBerichtProzent') || '40') / 100;
+
+  // Auffälligkeiten
+  const auffaelligWenig = [];
+  const auffaelligViel  = [];
+  Object.entries(prokuh).forEach(([kuhId, l]) => {
+    const k = kuehe[kuhId];
+    if(!k) return;
+    if(k.laktation === 'trocken' || k.laktation === 'trockengestellt') return;
+    const schnitt = _berichtKuhSchnitt7T(kuhId, zeit, datumTs);
+    if(!schnitt || schnitt < 1) return;
+    const untere = schnitt * (1 - schwelle);
+    const obere  = schnitt * (1 + schwelle);
+    if(l < untere) {
+      auffaelligWenig.push({ kuhId, kuh: k, wert: l, schnitt });
+    } else if(l > obere) {
+      auffaelligViel.push({ kuhId, kuh: k, wert: l, schnitt });
+    }
+  });
+  // Nach Abweichung sortieren (auffälligste oben)
+  auffaelligWenig.sort((a,b) => (a.wert/a.schnitt) - (b.wert/b.schnitt));
+  auffaelligViel.sort((a,b) => (b.wert/b.schnitt) - (a.wert/a.schnitt));
+
+  // Fehlende Kühe: hatten in den letzten 3 Schichten Werte, heute nicht
+  const start3 = Date.now() - 3 * 86400000;
+  const kuhMitWerten = new Set();
+  Object.values(milchEintraege || {}).forEach(e => {
+    if(!e || !e.datum || !e.prokuh) return;
+    if(e.datum < start3) return;
+    if(e.datum >= startTag.getTime() && e.datum < endeTag) return; // heute überspringen
+    if((e.zeit || 'morgen') !== zeit) return;
+    Object.entries(e.prokuh).forEach(([kuhId, l]) => {
+      if((parseFloat(l)||0) > 0) kuhMitWerten.add(kuhId);
+    });
+  });
+  Object.keys(prokuh).forEach(kuhId => kuhMitWerten.delete(kuhId));
+  // Trockene Kühe ausschließen
+  const fehlende = [...kuhMitWerten].map(kuhId => kuehe[kuhId])
+    .filter(k => k && k.laktation !== 'trocken' && k.laktation !== 'trockengestellt');
+
+  // Trend: gestern + Vorwoche
+  const gesternStart = startTag.getTime() - 86400000;
+  const gesternGesamt = _berichtSchichtGesamt(gesternStart, startTag.getTime(), zeit);
+  const trendGestern = gesternGesamt > 0 ? (gesamt - gesternGesamt) : null;
+
+  const vorWocheStart = startTag.getTime() - 7 * 86400000;
+  const vorWocheGesamt = _berichtSchichtGesamt(vorWocheStart, vorWocheStart + 86400000, zeit);
+  const trendVorwoche = vorWocheGesamt > 0 ? (gesamt - vorWocheGesamt) : null;
+
+  // Pro Bauer (sortiert nach Liter)
+  const proBauer = {};
+  Object.entries(prokuh).forEach(([kuhId, l]) => {
+    const k = kuehe[kuhId];
+    if(!k) return;
+    const bauer = k.bauer || '(ohne Bauer)';
+    if(!proBauer[bauer]) proBauer[bauer] = { kuhCount:0, liter:0 };
+    proBauer[bauer].kuhCount++;
+    proBauer[bauer].liter += l;
+  });
+  const proBauerSortiert = Object.entries(proBauer).sort((a,b) => b[1].liter - a[1].liter);
+
+  // Wartezeit aktiv
+  const heuteJetzt = Date.now();
+  const wzKuehe = [];
+  Object.entries(prokuh).forEach(([kuhId, l]) => {
+    const aktiveBeh = Object.values(behandlungen || {}).find(b =>
+      b && b.aktiv !== false && b.kuhId === kuhId &&
+      b.wzMilchEnde && b.wzMilchEnde > heuteJetzt
+    );
+    if(aktiveBeh) {
+      const k = kuehe[kuhId];
+      const tageRest = Math.ceil((aktiveBeh.wzMilchEnde - heuteJetzt) / 86400000);
+      wzKuehe.push({ kuhId, kuh: k, wert: l, tageRest });
+    }
+  });
+
+  // Top 3 / Bottom 3 (ohne trockene)
+  const aktiveListe = Object.entries(prokuh)
+    .filter(([kuhId]) => {
+      const k = kuehe[kuhId];
+      return k && k.laktation !== 'trocken' && k.laktation !== 'trockengestellt';
+    })
+    .map(([kuhId, l]) => ({ kuhId, kuh: kuehe[kuhId], l }));
+  const top3 = [...aktiveListe].sort((a,b) => b.l - a.l).slice(0, 3);
+  const bottom3 = [...aktiveListe].sort((a,b) => a.l - b.l).slice(0, 3);
+
+  return {
+    datum: startTag.getTime(), zeit,
+    gesamt, kuhCount, durchschnitt, molkereiAnyTrue, schwelle,
+    auffaelligWenig, auffaelligViel, fehlende,
+    trendGestern, trendVorwoche, gesternGesamt, vorWocheGesamt,
+    proBauerSortiert, wzKuehe, top3, bottom3, sessionMap
+  };
+};
+
+// HTML-Rendering des Berichts
+window.renderMilchBerichtHTML = function(d) {
+  if(!d) return '<div class="empty-state">Keine Daten für diese Schicht</div>';
+  const datumStr = new Date(d.datum).toLocaleDateString('de-AT', {weekday:'long', day:'numeric', month:'long'});
+  const zeitStr  = d.zeit === 'abend' ? '🌇 Abends' : '🌅 Morgens';
+  const fmtL = v => (Math.round((parseFloat(v)||0)*10)/10) + ' L';
+  const trendPfeil = t => t > 0 ? '↗' : t < 0 ? '↘' : '→';
+  const trendFarbe = t => t > 0 ? 'var(--green)' : t < 0 ? 'var(--orange)' : 'var(--text3)';
+
+  let html = '';
+
+  // Kopfzeile mit Eckdaten
+  html += `
+    <div style="background:linear-gradient(135deg,rgba(184,138,40,.18),rgba(74,184,232,.10));border:1px solid rgba(184,138,40,.4);border-radius:14px;padding:.9rem 1rem;margin-bottom:.8rem">
+      <div style="font-size:.7rem;color:var(--text3);font-weight:700;letter-spacing:.06em">📊 BERICHT</div>
+      <div style="font-size:1rem;font-weight:700;color:var(--gold);margin:.15rem 0">${datumStr} · ${zeitStr}</div>
+      <div style="display:flex;gap:.8rem;align-items:baseline;margin-top:.3rem;flex-wrap:wrap">
+        <span style="font-size:1.8rem;font-weight:700;color:var(--gold);line-height:1">${fmtL(d.gesamt)}</span>
+        <span style="font-size:.82rem;color:var(--text2)">· ${d.kuhCount} Kühe · Ø ${fmtL(d.durchschnitt)}</span>
+      </div>
+      ${d.trendGestern !== null || d.trendVorwoche !== null ? `
+        <div style="display:flex;gap:.9rem;margin-top:.5rem;font-size:.78rem;flex-wrap:wrap">
+          ${d.trendGestern !== null ? `
+            <span style="color:${trendFarbe(d.trendGestern)}">
+              ${trendPfeil(d.trendGestern)} ${d.trendGestern>0?'+':''}${fmtL(d.trendGestern)} <span style="color:var(--text3)">vs. gestern</span>
+            </span>` : ''}
+          ${d.trendVorwoche !== null ? `
+            <span style="color:${trendFarbe(d.trendVorwoche)}">
+              ${trendPfeil(d.trendVorwoche)} ${d.trendVorwoche>0?'+':''}${fmtL(d.trendVorwoche)} <span style="color:var(--text3)">vs. Vorwoche</span>
+            </span>` : ''}
+        </div>` : ''}
+    </div>`;
+
+  // Auffällig wenig
+  if(d.auffaelligWenig.length > 0) {
+    html += `
+      <div class="card-section" style="margin-bottom:.6rem;border-color:rgba(231,76,60,.45)">
+        <div style="font-size:.7rem;color:#e74c3c;font-weight:700;letter-spacing:.05em;margin-bottom:.4rem">⚠ AUFFÄLLIG WENIG (${d.auffaelligWenig.length})</div>
+        ${d.auffaelligWenig.slice(0,10).map(a => {
+          const minus = Math.round((1 - a.wert/a.schnitt)*100);
+          return `<div style="display:flex;justify-content:space-between;align-items:center;padding:.3rem 0;border-bottom:1px solid var(--border)">
+            <div style="display:flex;align-items:center;gap:.4rem">
+              <span class="nr-badge" style="background:rgba(231,76,60,.2);color:#e74c3c">#${a.kuh.nr||'?'}</span>
+              <div>
+                <div style="font-size:.85rem;font-weight:600">${a.kuh.name||'–'}</div>
+                <div style="font-size:.68rem;color:var(--text3)">Ø ${fmtL(a.schnitt)} · ${a.kuh.bauer||''}</div>
+              </div>
+            </div>
+            <div style="text-align:right">
+              <div style="color:#e74c3c;font-weight:700">${fmtL(a.wert)}</div>
+              <div style="font-size:.68rem;color:#e74c3c">−${minus}%</div>
+            </div>
+          </div>`;
+        }).join('')}
+      </div>`;
+  }
+
+  // Auffällig viel
+  if(d.auffaelligViel.length > 0) {
+    html += `
+      <div class="card-section" style="margin-bottom:.6rem;border-color:rgba(241,196,15,.5)">
+        <div style="font-size:.7rem;color:#f39c12;font-weight:700;letter-spacing:.05em;margin-bottom:.4rem">⚡ AUFFÄLLIG VIEL (${d.auffaelligViel.length})</div>
+        ${d.auffaelligViel.slice(0,10).map(a => {
+          const plus = Math.round((a.wert/a.schnitt - 1)*100);
+          return `<div style="display:flex;justify-content:space-between;align-items:center;padding:.3rem 0;border-bottom:1px solid var(--border)">
+            <div style="display:flex;align-items:center;gap:.4rem">
+              <span class="nr-badge" style="background:rgba(241,196,15,.2);color:#f39c12">#${a.kuh.nr||'?'}</span>
+              <div>
+                <div style="font-size:.85rem;font-weight:600">${a.kuh.name||'–'}</div>
+                <div style="font-size:.68rem;color:var(--text3)">Ø ${fmtL(a.schnitt)} · ${a.kuh.bauer||''}</div>
+              </div>
+            </div>
+            <div style="text-align:right">
+              <div style="color:#f39c12;font-weight:700">${fmtL(a.wert)}</div>
+              <div style="font-size:.68rem;color:#f39c12">+${plus}%</div>
+            </div>
+          </div>`;
+        }).join('')}
+      </div>`;
+  }
+
+  // Fehlende
+  if(d.fehlende.length > 0) {
+    html += `
+      <div class="card-section" style="margin-bottom:.6rem;border-color:rgba(155,89,182,.4)">
+        <div style="font-size:.7rem;color:#9b59b6;font-weight:700;letter-spacing:.05em;margin-bottom:.4rem">❓ FEHLEND (${d.fehlende.length})</div>
+        <div style="font-size:.7rem;color:var(--text3);margin-bottom:.3rem">Diese Kühe hatten in den letzten 3 Tagen Werte – heute nicht.</div>
+        <div style="display:flex;flex-wrap:wrap;gap:.3rem">
+          ${d.fehlende.map(k => `<span style="background:rgba(155,89,182,.15);border:1px solid rgba(155,89,182,.3);border-radius:14px;padding:.2rem .6rem;font-size:.75rem;color:#9b59b6">#${k.nr} ${k.name||''}</span>`).join('')}
+        </div>
+      </div>`;
+  }
+
+  // Wartezeit
+  if(d.wzKuehe.length > 0) {
+    html += `
+      <div class="card-section" style="margin-bottom:.6rem;border-color:rgba(230,126,34,.45)">
+        <div style="font-size:.7rem;color:#e67e22;font-weight:700;letter-spacing:.05em;margin-bottom:.4rem">⚕ IN WARTEZEIT (${d.wzKuehe.length}) – NICHT an Molkerei!</div>
+        ${d.wzKuehe.map(w => `<div style="display:flex;justify-content:space-between;align-items:center;padding:.3rem 0;border-bottom:1px solid var(--border)">
+          <div style="display:flex;align-items:center;gap:.4rem">
+            <span class="nr-badge" style="background:rgba(230,126,34,.2);color:#e67e22">#${w.kuh.nr||'?'}</span>
+            <div>
+              <div style="font-size:.85rem;font-weight:600">${w.kuh.name||'–'}</div>
+              <div style="font-size:.68rem;color:#e67e22">noch ${w.tageRest} ${w.tageRest===1?'Tag':'Tage'} WZ</div>
+            </div>
+          </div>
+          <div style="color:#e67e22;font-weight:700">${fmtL(w.wert)}</div>
+        </div>`).join('')}
+      </div>`;
+  }
+
+  // Pro Bauer
+  if(d.proBauerSortiert.length > 0) {
+    html += `
+      <div class="card-section" style="margin-bottom:.6rem">
+        <div style="font-size:.7rem;color:var(--text3);font-weight:700;letter-spacing:.05em;margin-bottom:.4rem">👥 PRO BAUER (sortiert nach Menge)</div>
+        ${d.proBauerSortiert.map(([bauer, info], idx) => `
+          <div style="display:flex;justify-content:space-between;align-items:center;padding:.35rem 0;border-bottom:1px solid var(--border)">
+            <div>
+              <div style="font-size:.85rem;font-weight:600">${idx===0?'🥇 ':idx===1?'🥈 ':idx===2?'🥉 ':''}${bauer}</div>
+              <div style="font-size:.68rem;color:var(--text3)">${info.kuhCount} Kühe · Ø ${fmtL(info.liter/info.kuhCount)}</div>
+            </div>
+            <div style="color:var(--gold);font-weight:700;font-size:1rem">${fmtL(info.liter)}</div>
+          </div>`).join('')}
+      </div>`;
+  }
+
+  // Top 3 / Bottom 3
+  if(d.top3.length > 0 || d.bottom3.length > 0) {
+    html += `
+      <div class="card-section" style="margin-bottom:.6rem">
+        <div style="font-size:.7rem;color:var(--text3);font-weight:700;letter-spacing:.05em;margin-bottom:.5rem">🏆 SPITZE & SCHLUSSLICHTER</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:.6rem">
+          <div>
+            <div style="font-size:.7rem;color:var(--green);font-weight:700;margin-bottom:.25rem">▲ Top 3</div>
+            ${d.top3.map((t,i) => `<div style="display:flex;justify-content:space-between;font-size:.78rem;padding:.15rem 0">
+              <span>${['🥇','🥈','🥉'][i]} #${t.kuh.nr} ${t.kuh.name||''}</span>
+              <b style="color:var(--green)">${fmtL(t.l)}</b>
+            </div>`).join('')}
+          </div>
+          <div>
+            <div style="font-size:.7rem;color:var(--orange);font-weight:700;margin-bottom:.25rem">▼ Bottom 3</div>
+            ${d.bottom3.map((t,i) => `<div style="display:flex;justify-content:space-between;font-size:.78rem;padding:.15rem 0">
+              <span>#${t.kuh.nr} ${t.kuh.name||''}</span>
+              <b style="color:var(--orange)">${fmtL(t.l)}</b>
+            </div>`).join('')}
+          </div>
+        </div>
+      </div>`;
+  }
+
+  // Zwei-Melker-Stat (nur wenn >1 Session)
+  const sessions = Object.entries(d.sessionMap).filter(([sid, info]) => info.liter > 0);
+  if(sessions.length > 1) {
+    html += `
+      <div class="card-section" style="margin-bottom:.6rem;border-color:rgba(122,203,255,.4)">
+        <div style="font-size:.7rem;color:#7acbff;font-weight:700;letter-spacing:.05em;margin-bottom:.4rem">👥 MELKER-STATISTIK (${sessions.length} Melker)</div>
+        ${sessions.sort((a,b)=>b[1].liter-a[1].liter).map(([sid, info], i) => `
+          <div style="display:flex;justify-content:space-between;align-items:center;padding:.25rem 0">
+            <div style="font-size:.82rem">Melker ${String.fromCharCode(65+i)}</div>
+            <div style="font-size:.78rem;color:#7acbff;font-weight:700">${info.kuhCount} Kühe · ${fmtL(info.liter)}</div>
+          </div>`).join('')}
+      </div>`;
+  }
+
+  // Footer mit Schwellenwert-Hinweis
+  html += `
+    <div style="font-size:.66rem;color:var(--text3);text-align:center;padding:.4rem;font-style:italic">
+      Schwellenwert „auffällig": ±${Math.round(d.schwelle*100)}% vom 7-Tage-Schnitt · 
+      <a onclick="navigate('einstellungen')" style="color:var(--gold);text-decoration:underline;cursor:pointer">ändern</a>
+    </div>`;
+
+  return html;
+};
+
+// Bericht als Popup anzeigen
+window.showMilchBericht = function(datumTs, zeit) {
+  const data = computeMilchBericht(datumTs, zeit);
+  if(!data) {
+    alert('Keine Daten für diese Schicht gefunden.');
+    return;
+  }
+  const html = renderMilchBerichtHTML(data);
+  window.showPopupHTML && showPopupHTML(html);
+};
+
+// Bericht für aktuellen Tag/Schicht aus aktuellem Kontext
+window.showAktuellenBericht = function() {
+  const heute = isoDate(new Date());
+  const datumTs = new Date(heute + 'T12:00').getTime();
+  const zeit = (new Date().getHours() < 13) ? 'morgen' : 'abend';
+  showMilchBericht(datumTs, zeit);
+};
+
+// Schwellenwert für Berichts-Auffälligkeit speichern
+window.saveBerichtSchwelle = function() {
+  const v = parseInt(document.getElementById('einst-bericht-prozent')?.value);
+  if(isNaN(v) || v < 10 || v > 90) {
+    alert('Wert muss zwischen 10 und 90 liegen.');
+    return;
+  }
+  localStorage.setItem('milchBerichtProzent', String(v));
+  window.showSaveToast && showSaveToast('Bericht-Schwellenwert: ±'+v+'%');
 };
