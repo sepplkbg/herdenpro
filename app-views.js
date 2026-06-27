@@ -870,21 +870,29 @@ window.drawKdChart = function() {
 function _drawKdChartSingle(canvasId, data, hauptFarbe, areaHi, areaLo) {
   var canvas = document.getElementById(canvasId);
   if(!canvas) return;
-  if(!data || data.length < 2) {
-    var ctxClear = canvas.getContext('2d');
-    var rect = canvas.getBoundingClientRect();
-    canvas.width = rect.width * (window.devicePixelRatio||1);
-    canvas.height = 100 * (window.devicePixelRatio||1);
-    ctxClear.fillStyle = 'rgba(255,255,255,.3)';
-    ctxClear.font = '12px sans-serif';
-    ctxClear.textAlign = 'center';
-    ctxClear.fillText('Noch keine Daten', canvas.width/2/(window.devicePixelRatio||1), 50);
+  var dpr = window.devicePixelRatio||1;
+  var H = 110;
+  var W = canvas.offsetWidth;
+  if(W < 10) {
+    // Wenn Canvas-Width 0 (z.B. tab nicht sichtbar), kurz retry
+    setTimeout(function(){ _drawKdChartSingle(canvasId, data, hauptFarbe, areaHi, areaLo); }, 100);
     return;
   }
-  var W = canvas.offsetWidth;
-  if(W < 10) return;
+  canvas.width = W*dpr; canvas.height = H*dpr;
+  canvas.style.height = H + 'px';
+  var ctx = canvas.getContext('2d');
+  ctx.scale(dpr,dpr);
 
-  // ── Prognose (nur Abends-Chart steuert die Anzeige, gilt für beide) ──
+  // Leer-Zustand
+  if(!data || data.length === 0) {
+    ctx.fillStyle = 'rgba(255,255,255,.35)';
+    ctx.font = '12px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('Noch keine Daten', W/2, H/2);
+    return;
+  }
+
+  // ── Prognose ──
   var zeigPrognose = window._kdPrognose;
   var progPts = [];
   if(zeigPrognose && data.length >= 4) {
@@ -893,17 +901,12 @@ function _drawKdChartSingle(canvasId, data, hauptFarbe, areaHi, areaLo) {
     var slope=(n*sumXY-sumX*sumY)/(n*sumX2-sumX*sumX);
     var intercept=(sumY-slope*sumX)/n;
     for(var j=1;j<=30;j++){
-      progPts.push({l:Math.max(0,Math.round((intercept+slope*(n-1+j))*10)/10), istPrognose:true});
+      progPts.push({l:Math.max(0,Math.round((intercept+slope*(n-1+j))*10)/10), istPrognose:true, d: (data[n-1].d || Date.now()) + j*86400000});
     }
   }
 
   var allData = zeigPrognose ? data.concat(progPts) : data;
-  var ctx = canvas.getContext('2d');
-  var dpr = window.devicePixelRatio||1;
-  var H = 100;
-  canvas.width = W*dpr; canvas.height = H*dpr;
-  ctx.scale(dpr,dpr);
-  var pad = {t:10,r:8,b:6,l:30};
+  var pad = {t:14,r:12,b:8,l:34};
   var gW = W-pad.l-pad.r, gH = H-pad.t-pad.b;
   var maxV = Math.max.apply(null, allData.map(function(d){return d.l;}));
   maxV = Math.max(maxV, 1);
@@ -911,60 +914,111 @@ function _drawKdChartSingle(canvasId, data, hauptFarbe, areaHi, areaLo) {
   var range = maxV-minV||1;
   var totalN = allData.length;
 
+  // Bei nur 1 Punkt: x-Position mittig (sonst Division durch 0)
+  var xStep = totalN > 1 ? gW/(totalN-1) : 0;
+  var startX = totalN > 1 ? pad.l : pad.l + gW/2;
+
   var pts = data.map(function(d,i){return {
-    x: pad.l + i*(gW/(totalN-1)),
+    x: startX + i*xStep,
     y: pad.t + gH - ((d.l-minV)/range)*gH,
-    l: d.l, istPrognose: false
+    l: d.l, d: d.d, istPrognose: false
   };});
   var pPts = progPts.map(function(d,j){return {
-    x: pad.l + (data.length+j)*(gW/(totalN-1)),
+    x: startX + (data.length+j)*xStep,
     y: pad.t + gH - ((d.l-minV)/range)*gH,
-    l: d.l, istPrognose: true
+    l: d.l, d: d.d, istPrognose: true
   };});
 
   // Grid
   [0.33,0.66,1].forEach(function(f){
     var y=pad.t+gH*(1-f);
-    ctx.strokeStyle='rgba(255,255,255,.05)'; ctx.lineWidth=1;
+    ctx.strokeStyle='rgba(255,255,255,.06)'; ctx.lineWidth=1;
     ctx.beginPath(); ctx.moveTo(pad.l,y); ctx.lineTo(pad.l+gW,y); ctx.stroke();
-    ctx.fillStyle='rgba(255,255,255,.28)'; ctx.font='9px sans-serif'; ctx.textAlign='right';
-    ctx.fillText(Math.round(minV+range*f)+'L', pad.l-3, y+3);
+    ctx.fillStyle='rgba(255,255,255,.35)'; ctx.font='10px sans-serif'; ctx.textAlign='right';
+    ctx.fillText(Math.round(minV+range*f)+'L', pad.l-4, y+3);
   });
-  // Area
-  var grad=ctx.createLinearGradient(0,pad.t,0,pad.t+gH);
-  grad.addColorStop(0,areaHi); grad.addColorStop(1,areaLo);
-  ctx.beginPath(); ctx.moveTo(pts[0].x,pad.t+gH);
-  pts.forEach(function(p){ctx.lineTo(p.x,p.y);});
-  ctx.lineTo(pts[pts.length-1].x,pad.t+gH);
-  ctx.closePath(); ctx.fillStyle=grad; ctx.fill();
-  // Ist-Linie
-  ctx.beginPath();
-  pts.forEach(function(p,i){if(i===0)ctx.moveTo(p.x,p.y);else ctx.lineTo(p.x,p.y);});
-  ctx.strokeStyle=hauptFarbe; ctx.lineWidth=2.5;
-  ctx.lineJoin='round'; ctx.lineCap='round'; ctx.stroke();
-  // Prognose-Linie
-  if(zeigPrognose && pPts.length) {
-    var lastP=pts[pts.length-1];
-    ctx.beginPath(); ctx.moveTo(lastP.x,lastP.y);
-    pPts.forEach(function(p){ctx.lineTo(p.x,p.y);});
-    ctx.strokeStyle='rgba(212,168,75,.8)'; ctx.lineWidth=2;
-    ctx.setLineDash([5,4]); ctx.stroke(); ctx.setLineDash([]);
-    ctx.strokeStyle='rgba(212,168,75,.3)'; ctx.lineWidth=1;
-    ctx.setLineDash([2,3]);
-    ctx.beginPath(); ctx.moveTo(lastP.x,pad.t); ctx.lineTo(lastP.x,pad.t+gH); ctx.stroke();
-    ctx.setLineDash([]);
+
+  // Area & Linie nur wenn >=2 Punkte
+  if(pts.length >= 2) {
+    var grad=ctx.createLinearGradient(0,pad.t,0,pad.t+gH);
+    grad.addColorStop(0,areaHi); grad.addColorStop(1,areaLo);
+    ctx.beginPath(); ctx.moveTo(pts[0].x,pad.t+gH);
+    pts.forEach(function(p){ctx.lineTo(p.x,p.y);});
+    ctx.lineTo(pts[pts.length-1].x,pad.t+gH);
+    ctx.closePath(); ctx.fillStyle=grad; ctx.fill();
+
+    ctx.beginPath();
+    pts.forEach(function(p,i){if(i===0)ctx.moveTo(p.x,p.y);else ctx.lineTo(p.x,p.y);});
+    ctx.strokeStyle=hauptFarbe; ctx.lineWidth=2.5;
+    ctx.lineJoin='round'; ctx.lineCap='round'; ctx.stroke();
+
+    // Prognose-Linie
+    if(zeigPrognose && pPts.length) {
+      var lastP=pts[pts.length-1];
+      ctx.beginPath(); ctx.moveTo(lastP.x,lastP.y);
+      pPts.forEach(function(p){ctx.lineTo(p.x,p.y);});
+      ctx.strokeStyle='rgba(212,168,75,.8)'; ctx.lineWidth=2;
+      ctx.setLineDash([5,4]); ctx.stroke(); ctx.setLineDash([]);
+      ctx.strokeStyle='rgba(212,168,75,.3)'; ctx.lineWidth=1;
+      ctx.setLineDash([2,3]);
+      ctx.beginPath(); ctx.moveTo(lastP.x,pad.t); ctx.lineTo(lastP.x,pad.t+gH); ctx.stroke();
+      ctx.setLineDash([]);
+    }
   }
-  // Dots auf Ist-Daten
-  pts.forEach(function(p){
-    ctx.beginPath(); ctx.arc(p.x,p.y, 2.5, 0, Math.PI*2);
-    ctx.fillStyle=hauptFarbe; ctx.fill();
+
+  // Datenpunkte mit deutlichem Ring – auch bei nur 1 Punkt sichtbar
+  pts.forEach(function(p, i){
+    var istLetzter = i === pts.length-1;
+    // Aussen-Ring
+    ctx.beginPath(); ctx.arc(p.x, p.y, istLetzter ? 7 : 5, 0, Math.PI*2);
+    ctx.fillStyle = areaHi; ctx.fill();
+    // Innen
+    ctx.beginPath(); ctx.arc(p.x, p.y, istLetzter ? 4.5 : 3.5, 0, Math.PI*2);
+    ctx.fillStyle = hauptFarbe; ctx.fill();
+    // Weisser Highlight
+    ctx.beginPath(); ctx.arc(p.x-1, p.y-1, istLetzter ? 1.4 : 1, 0, Math.PI*2);
+    ctx.fillStyle = 'rgba(255,255,255,.7)'; ctx.fill();
   });
-  // Letzter Punkt-Highlight
-  var lp=pts[pts.length-1];
-  ctx.beginPath(); ctx.arc(lp.x,lp.y,5,0,Math.PI*2);
-  ctx.fillStyle=areaHi; ctx.fill();
-  ctx.beginPath(); ctx.arc(lp.x,lp.y,3,0,Math.PI*2);
-  ctx.fillStyle=hauptFarbe; ctx.fill();
+
+  // Tooltip-Touch- und Hover-Handler (einmal pro Canvas)
+  if(!canvas._kdTooltipBound) {
+    canvas._kdTooltipBound = true;
+    var showTooltip = function(clientX) {
+      // Re-draw chart base
+      _drawKdChartSingle(canvasId, data, hauptFarbe, areaHi, areaLo);
+      var rect = canvas.getBoundingClientRect();
+      var tx = (clientX - rect.left) * (W/rect.width);
+      var allPts = (data.length>=2 ? pts : pts).concat(zeigPrognose ? pPts : []);
+      var closest = allPts[0], minD = Infinity;
+      allPts.forEach(function(p){
+        var d = Math.abs(p.x - tx);
+        if(d < minD) { minD = d; closest = p; }
+      });
+      if(!closest) return;
+      // Tooltip-Box
+      var datumStr = closest.d ? new Date(closest.d).toLocaleDateString('de-AT',{day:'numeric',month:'short'}) : '';
+      var label = (closest.istPrognose?'~':'') + closest.l + 'L';
+      if(datumStr) label += ' · ' + datumStr;
+      var tw = Math.max(50, label.length * 6.5), th = 22;
+      var tx2 = Math.min(W-tw-4, Math.max(4, closest.x - tw/2));
+      var ty = closest.y - th - 10;
+      if(ty < 4) ty = closest.y + 12;
+      ctx.fillStyle = closest.istPrognose ? 'rgba(212,168,75,.95)' : hauptFarbe;
+      if(ctx.roundRect) { ctx.beginPath(); ctx.roundRect(tx2,ty,tw,th,5); ctx.fill(); }
+      else { ctx.fillRect(tx2,ty,tw,th); }
+      ctx.fillStyle = closest.istPrognose ? '#0a0800' : '#fff';
+      ctx.font='bold 11px sans-serif'; ctx.textAlign='center';
+      ctx.fillText(label, tx2+tw/2, ty+th/2+4);
+      // Marker am Punkt
+      ctx.beginPath(); ctx.arc(closest.x, closest.y, 9, 0, Math.PI*2);
+      ctx.strokeStyle = closest.istPrognose ? 'rgba(212,168,75,.7)' : hauptFarbe;
+      ctx.lineWidth = 2; ctx.stroke();
+    };
+    canvas.addEventListener('touchstart', function(e){ e.preventDefault(); showTooltip(e.touches[0].clientX); }, {passive:false});
+    canvas.addEventListener('touchmove',  function(e){ e.preventDefault(); showTooltip(e.touches[0].clientX); }, {passive:false});
+    canvas.addEventListener('mousemove',  function(e){ showTooltip(e.clientX); });
+    canvas.addEventListener('mouseleave', function(){ _drawKdChartSingle(canvasId, data, hauptFarbe, areaHi, areaLo); });
+  }
 }
 
 // After render: receive chart data and draw
