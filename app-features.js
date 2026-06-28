@@ -7514,7 +7514,17 @@ window.showMilchBericht = function(datumTs, zeit) {
     return;
   }
   const html = renderMilchBerichtHTML(data);
-  window.showPopupHTML && showPopupHTML(html);
+  // Sticky-Header mit Schließen-Button + Footer-Button für klare Bedienung
+  const wrapped =
+    '<div style="position:sticky;top:-1px;background:var(--bg2);z-index:5;margin:-1rem -1rem .6rem;padding:.7rem 1rem;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;border-radius:14px 14px 0 0">' +
+      '<div style="font-size:.95rem;font-weight:700;color:var(--gold)">📊 Schicht-Bericht</div>' +
+      '<button onclick="closePopup()" style="background:var(--bg3);border:1px solid var(--border2);border-radius:8px;padding:.35rem .7rem;color:var(--text);cursor:pointer;font-family:inherit;font-weight:600;font-size:.85rem;display:flex;align-items:center;gap:.3rem">✕ Schließen</button>' +
+    '</div>' +
+    html +
+    '<div style="display:flex;justify-content:center;padding:.6rem 0 .2rem;margin-top:.5rem;border-top:1px solid var(--border)">' +
+      '<button onclick="closePopup()" class="btn-primary" style="min-width:160px">✕ Schließen</button>' +
+    '</div>';
+  window.showPopupHTML && showPopupHTML(wrapped);
 };
 
 // Bericht für aktuellen Tag/Schicht aus aktuellem Kontext
