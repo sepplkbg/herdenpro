@@ -385,6 +385,23 @@ function renderHerde() {
     <!-- Gruppe/Status Trenner wenn entsprechend sortiert -->
     <div class="card-list" id="kuh-list">
       ${liste.length ? (() => {
+        // ── Pro Kuh: letzte Morgen- und Abendmilch ermitteln (1× iterieren über alle Milcheinträge) ──
+        const letzteMilchProKuh = {};
+        Object.values(milchEintraege || {}).forEach(e => {
+          if(!e || !e.datum || !e.prokuh) return;
+          const istAbend = (e.zeit || 'morgen') === 'abend';
+          const schluessel = istAbend ? 'abend' : 'morgen';
+          Object.entries(e.prokuh).forEach(([kid, lRaw]) => {
+            const wert = parseFloat(lRaw) || 0;
+            if(wert <= 0) return;
+            if(!letzteMilchProKuh[kid]) letzteMilchProKuh[kid] = { morgen: null, abend: null };
+            const aktuell = letzteMilchProKuh[kid][schluessel];
+            if(!aktuell || e.datum > aktuell.datum) {
+              letzteMilchProKuh[kid][schluessel] = { datum: e.datum, l: wert };
+            }
+          });
+        });
+
         let lastGroup = null;
         return liste.map(([id,k]) => {
           let groupHeader = '';
@@ -393,6 +410,18 @@ function renderHerde() {
             lastGroup = groupKey;
             groupHeader = `<div style="font-size:.7rem;font-weight:700;color:var(--text3);letter-spacing:.06em;padding:.5rem 0 .2rem;border-top:1px solid var(--border);margin-top:.2rem">${groupKey}</div>`;
           }
+
+          // ── Tagesmilch-Zeile berechnen (nur wenn Kuh nicht trocken UND beide Werte vorhanden) ──
+          const istTrocken = k.laktation === 'trocken' || k.laktation === 'trockengestellt';
+          const mInfo = letzteMilchProKuh[id];
+          let tagesmilchHTML = '';
+          if(!istTrocken && mInfo && mInfo.morgen && mInfo.abend) {
+            const total = Math.round((mInfo.morgen.l + mInfo.abend.l) * 10) / 10;
+            const jungeresDatum = mInfo.morgen.datum > mInfo.abend.datum ? mInfo.morgen.datum : mInfo.abend.datum;
+            const datumStr = new Date(jungeresDatum).toLocaleDateString('de-AT', {weekday:'short', day:'numeric', month:'short'});
+            tagesmilchHTML = `<div style="font-size:.7rem;color:var(--gold);font-weight:600;margin-top:.15rem">🥛 Letzte Tagesmilch: ${total} L <span style="color:var(--text3);font-weight:400">· ${datumStr}</span></div>`;
+          }
+
           return groupHeader + `<div class="list-card" data-id="${id}" data-bauer="${k.bauer||''}" data-gruppe="${k.gruppe||''}" data-bio="${k.bio?'1':'0'}" onclick="showKuhDetail('${id}')">
             <div class="list-card-left">
               <span class="nr-badge">#${k.nr}</span>
@@ -400,6 +429,7 @@ function renderHerde() {
                 <div class="list-card-title">${k.name||'–'} ${k.almStatus==='oben'?'<span class="tag tag-green" style="font-size:.6rem">⛰</span>':''}</div>
                 <div class="list-card-sub">${k.bauer||''} ${k.rasse?'· '+k.rasse:''} ${k.gruppe?'· '+k.gruppe:''} ${k.ohrmarke?'· '+k.ohrmarke:''}</div>
                 ${k.laktation?`<div style="font-size:.65rem;color:var(--text3)">${{melkend:'🥛',trocken:'💧',tragend:'🐄',jung:'🌱',trockengestellt:'⏸'}[k.laktation]||''} ${k.laktation}</div>`:''}
+                ${tagesmilchHTML}
               </div>
             </div>
             <div class="list-card-right">
