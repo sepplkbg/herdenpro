@@ -1952,12 +1952,14 @@ window.saveMilch = async function() {
         (e.zeit||'morgen') === zeit &&
         e._session === sessionId
       );
+      const cu = window._currentUser || {};
+      const userName = cu.name || cu.displayName || (cu.email ? cu.email.split('@')[0] : '') || 'Unbekannt';
       if(existingEntry) {
         await update(ref(db, 'milch/' + existingEntry[0]), {
           datum: datumTs, art: modus, zeit, gesamt,
           prokuh: modus==='prokuh' ? prokuh : null,
           molkerei, notiz, updatedAt: Date.now(),
-          _session: sessionId
+          _session: sessionId, _userName: userName
         });
         savedKey = existingEntry[0];
         console.log('[saveMilch] Eigenen Session-Eintrag aktualisiert:', savedKey);
@@ -1966,7 +1968,7 @@ window.saveMilch = async function() {
           datum: datumTs, art: modus, zeit, gesamt,
           prokuh: modus==='prokuh' ? prokuh : null,
           molkerei, notiz, createdAt: Date.now(),
-          _session: sessionId
+          _session: sessionId, _userName: userName
         });
         savedKey = newRef.key;
         console.log('[saveMilch] Neuer Session-Eintrag:', savedKey);
@@ -4252,6 +4254,9 @@ async function doMilchAutoSave() {
 
     const sessionId = getMilchSessionId();
     payload._session = sessionId;  // Session-ID immer am Eintrag mitführen
+    // Benutzername mitspeichern für Bericht-Anzeige
+    const cu = window._currentUser || {};
+    payload._userName = cu.name || cu.displayName || (cu.email ? cu.email.split('@')[0] : '') || 'Unbekannt';
 
     if(window._milchAutoSaveDraftId) {
       // Bereits Draft angelegt – nur updaten
@@ -6568,13 +6573,16 @@ function schriftPopupOutsideHandler(e) {
 function renderDarstellung() {
   const aktuell = parseFloat(localStorage.getItem('schriftSkala') || '1.00');
   const stufen = [
+    {skala:'0.45', label:'Mikro',      beispiel:'Maximale Übersicht – Adleraugen nötig'},
     {skala:'0.60', label:'Mini',       beispiel:'Sehr kompakt – viel auf den Schirm'},
     {skala:'0.75', label:'Sehr klein', beispiel:'Klein und übersichtlich'},
     {skala:'0.90', label:'Klein',      beispiel:'Etwas kleiner als Standard'},
     {skala:'1.00', label:'Normal',     beispiel:'Standard-Größe (Empfehlung)'},
     {skala:'1.15', label:'Groß',       beispiel:'Etwas größer'},
     {skala:'1.30', label:'Sehr groß',  beispiel:'Gut lesbar mit Brille'},
-    {skala:'1.50', label:'Riesig',     beispiel:'Maximal lesbar – Senioren-Modus'}
+    {skala:'1.50', label:'Riesig',     beispiel:'Senioren-Modus'},
+    {skala:'1.80', label:'Mega',       beispiel:'Maximal lesbar'},
+    {skala:'2.20', label:'Extrem',     beispiel:'Stark sehbehindert – wenig Inhalt aufs Mal'}
   ];
   // Aktuelle Stufe finden (nähester Match)
   const aktuellStr = stufen.reduce((best, s) =>
@@ -6599,11 +6607,11 @@ function renderDarstellung() {
           <span id="schrift-slider-wert" style="font-size:.85rem;color:var(--gold);font-weight:700">${Math.round(aktuell*100)}%</span>
         </div>
         <input type="range" id="schrift-slider"
-          min="50" max="200" step="5" value="${Math.round(aktuell*100)}"
+          min="40" max="250" step="5" value="${Math.round(aktuell*100)}"
           oninput="setSchriftSkala((this.value/100).toFixed(2));document.getElementById('schrift-slider-wert').textContent=this.value+'%'"
           style="width:100%;accent-color:var(--gold)" />
         <div style="display:flex;justify-content:space-between;font-size:.65rem;color:var(--text3);margin-top:.2rem">
-          <span>50%</span><span>100%</span><span>200%</span>
+          <span>40%</span><span>100%</span><span>250%</span>
         </div>
       </div>
 
@@ -7218,7 +7226,9 @@ window.computeMilchBericht = function(datumTs, zeit) {
 
   entries.forEach(([id, e]) => {
     const sid = e._session || 'unbekannt';
-    if(!sessionMap[sid]) sessionMap[sid] = { kuhCount:0, liter:0 };
+    if(!sessionMap[sid]) sessionMap[sid] = { kuhCount:0, liter:0, name: e._userName || '' };
+    // Falls Name in einem späteren Eintrag der gleichen Session steht, übernehmen
+    if(e._userName && !sessionMap[sid].name) sessionMap[sid].name = e._userName;
     if(!e.prokuh) return;
     Object.entries(e.prokuh).forEach(([kuhId, l]) => {
       const v = parseFloat(l) || 0;
@@ -7364,12 +7374,13 @@ window.renderMilchBerichtHTML = function(d) {
         </div>` : ''}
     </div>`;
 
-  // Auffällig wenig
-  if(d.auffaelligWenig.length > 0) {
-    html += `
-      <div class="card-section" style="margin-bottom:.6rem;border-color:rgba(231,76,60,.45)">
-        <div style="font-size:.7rem;color:#e74c3c;font-weight:700;letter-spacing:.05em;margin-bottom:.4rem">⚠ AUFFÄLLIG WENIG (${d.auffaelligWenig.length})</div>
-        ${d.auffaelligWenig.slice(0,10).map(a => {
+  // Auffällig wenig – Sektion IMMER zeigen damit klar ist „heute alles ok" wenn leer
+  html += `
+    <div class="card-section" style="margin-bottom:.6rem;border-color:rgba(231,76,60,.45)">
+      <div style="font-size:.7rem;color:#e74c3c;font-weight:700;letter-spacing:.05em;margin-bottom:.4rem">⚠ AUFFÄLLIG WENIG (${d.auffaelligWenig.length})</div>
+      ${d.auffaelligWenig.length === 0
+        ? '<div style="font-size:.8rem;color:var(--text3);font-style:italic;padding:.3rem 0">Keine Kuh unter der Schwelle – alles im grünen Bereich 👍</div>'
+        : d.auffaelligWenig.slice(0,10).map(a => {
           const minus = Math.round((1 - a.wert/a.schnitt)*100);
           return `<div style="display:flex;justify-content:space-between;align-items:center;padding:.3rem 0;border-bottom:1px solid var(--border)">
             <div style="display:flex;align-items:center;gap:.4rem">
@@ -7385,15 +7396,15 @@ window.renderMilchBerichtHTML = function(d) {
             </div>
           </div>`;
         }).join('')}
-      </div>`;
-  }
+    </div>`;
 
-  // Auffällig viel
-  if(d.auffaelligViel.length > 0) {
-    html += `
-      <div class="card-section" style="margin-bottom:.6rem;border-color:rgba(241,196,15,.5)">
-        <div style="font-size:.7rem;color:#f39c12;font-weight:700;letter-spacing:.05em;margin-bottom:.4rem">⚡ AUFFÄLLIG VIEL (${d.auffaelligViel.length})</div>
-        ${d.auffaelligViel.slice(0,10).map(a => {
+  // Auffällig viel – ebenfalls IMMER zeigen
+  html += `
+    <div class="card-section" style="margin-bottom:.6rem;border-color:rgba(241,196,15,.5)">
+      <div style="font-size:.7rem;color:#f39c12;font-weight:700;letter-spacing:.05em;margin-bottom:.4rem">⚡ AUFFÄLLIG VIEL (${d.auffaelligViel.length})</div>
+      ${d.auffaelligViel.length === 0
+        ? '<div style="font-size:.8rem;color:var(--text3);font-style:italic;padding:.3rem 0">Keine Kuh deutlich über dem Schnitt</div>'
+        : d.auffaelligViel.slice(0,10).map(a => {
           const plus = Math.round((a.wert/a.schnitt - 1)*100);
           return `<div style="display:flex;justify-content:space-between;align-items:center;padding:.3rem 0;border-bottom:1px solid var(--border)">
             <div style="display:flex;align-items:center;gap:.4rem">
@@ -7409,8 +7420,7 @@ window.renderMilchBerichtHTML = function(d) {
             </div>
           </div>`;
         }).join('')}
-      </div>`;
-  }
+    </div>`;
 
   // Fehlende
   if(d.fehlende.length > 0) {
@@ -7488,11 +7498,15 @@ window.renderMilchBerichtHTML = function(d) {
     html += `
       <div class="card-section" style="margin-bottom:.6rem;border-color:rgba(122,203,255,.4)">
         <div style="font-size:.7rem;color:#7acbff;font-weight:700;letter-spacing:.05em;margin-bottom:.4rem">👥 MELKER-STATISTIK (${sessions.length} Melker)</div>
-        ${sessions.sort((a,b)=>b[1].liter-a[1].liter).map(([sid, info], i) => `
-          <div style="display:flex;justify-content:space-between;align-items:center;padding:.25rem 0">
-            <div style="font-size:.82rem">Melker ${String.fromCharCode(65+i)}</div>
+        ${sessions.sort((a,b)=>b[1].liter-a[1].liter).map(([sid, info], i) => {
+          const anzeigeName = (info.name && info.name.trim())
+            ? info.name
+            : 'Melker '+String.fromCharCode(65+i);
+          return `<div style="display:flex;justify-content:space-between;align-items:center;padding:.25rem 0">
+            <div style="font-size:.82rem;font-weight:600">${anzeigeName}</div>
             <div style="font-size:.78rem;color:#7acbff;font-weight:700">${info.kuhCount} Kühe · ${fmtL(info.liter)}</div>
-          </div>`).join('')}
+          </div>`;
+        }).join('')}
       </div>`;
   }
 
