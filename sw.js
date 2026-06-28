@@ -1,4 +1,4 @@
-const CACHE = 'herdenpro-v167';
+const CACHE = 'herdenpro-v169';
 const SHELL = [
   '/herdenpro/',
   '/herdenpro/manifest.json'
