@@ -832,10 +832,10 @@ function renderKuhDetail() {
       </div>
     </div>
 
-    <!-- Einträge Liste -->
+    <!-- Einträge Liste – max-height entfernt damit der Platz nach unten genutzt wird -->
     <div style="font-size:.68rem;color:var(--text3);font-weight:600;letter-spacing:.05em;margin-bottom:.3rem">ALLE EINTRÄGE (${chartDaten.length})</div>
-    <div style="max-height:240px;overflow-y:auto">
-      ${[...chartDaten].reverse().slice(0,30).map((d,i)=>{
+    <div>
+      ${[...chartDaten].reverse().slice(0,60).map((d,i)=>{
         const pct = Math.round(d.l/chartMax*100);
         return `<div class="kd-milch-row" style="animation:kd-in .25s ${i*.03}s both">
           <div style="min-width:70px">

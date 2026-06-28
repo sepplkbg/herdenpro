@@ -26,7 +26,7 @@
   --radius:   16px;
   --radius-sm:10px;
   --radius-xs:6px;
-  --nav-h:    96px;
+  --nav-h:    64px;
   --topbar-h: 56px;
   --safe-t:   env(safe-area-inset-top,0px);
   --safe-b:   env(safe-area-inset-bottom,0px);
@@ -146,29 +146,32 @@ body{
   flex-shrink:0;font-weight:bold;
 }
 
-/* ── Bottom Nav ── */
+/* ── Bottom Nav ──
+   POSITION FIXED am unteren Rand des Visual-Viewports.
+   Notwendig weil flex-Column + 100dvh auf manchen iPhone-Versionen
+   nicht 100% zuverlässig ist (Safari reserviert manchmal Platz für
+   eine versteckte URL-Leiste am unteren Rand → schwarze Lücke). */
 #bottom-nav{
+  position:fixed;
+  left:0;right:0;bottom:0;
   display:flex;
-  /* iPhone: safe-b deckt Home-Indicator. Nav-Items sitzen DIREKT darüber – nicht
-     mehr vertikal zentriert (das hätte sie zu weit nach oben gerückt).
-     align-items:flex-end → Items am unteren Rand der nav-h-Zone, kurz über safe-b. */
   align-items:flex-end;
-  height:calc(var(--nav-h) + var(--safe-b));
+  /* Kompakter: 64px Nav-Inhalt + Safe-Area (Home-Indicator) */
+  height:calc(64px + var(--safe-b));
   padding:0 var(--safe-r) var(--safe-b) var(--safe-l);
   background:rgba(10,21,8,.92);
   backdrop-filter:blur(24px) saturate(1.4);
   -webkit-backdrop-filter:blur(24px) saturate(1.4);
   border-top:1px solid rgba(212,168,75,.18);
-  flex-shrink:0;
+  z-index:20;
   box-shadow:0 -8px 24px rgba(0,0,0,.4);
 }
 .nav-item{
-  flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;
-  gap:4px;background:none;border:none;color:var(--text3);cursor:pointer;
-  font-family:inherit;font-size:.95rem;letter-spacing:.3px;font-weight:500;
-  min-height:60px;
-  /* Geringeres Top-Padding, mehr Bottom-Padding damit Items am unteren Rand sitzen */
-  padding:6px 4px 8px;position:relative;
+  flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;
+  gap:3px;background:none;border:none;color:var(--text3);cursor:pointer;
+  font-family:inherit;font-size:.85rem;letter-spacing:.3px;font-weight:500;
+  min-height:54px;
+  padding:6px 4px;position:relative;
   transition:color .2s,transform .1s;
   -webkit-user-select:none;user-select:none;
   -webkit-touch-callout:none;
