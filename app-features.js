@@ -6686,7 +6686,55 @@ window.schalmtestFarbe = function(wert) {
   return s ? s.farbe : 'var(--border)';
 };
 
+// ── Zellzahl-Ampel: Farbe pro Wert (in ×1000/ml) ──
+function zellzahlAmpel(wert) {
+  if(wert == null || wert === '' || isNaN(wert)) return { farbe:'var(--text3)', bg:'transparent', label:'—', stufe:'unbekannt' };
+  const w = parseInt(wert);
+  if(w < 100)  return { farbe:'#4db84e', bg:'rgba(77,184,78,.15)',  label:'Sehr gut', stufe:'sehr_gut' };
+  if(w < 200)  return { farbe:'#7cb342', bg:'rgba(124,179,66,.15)', label:'Gut',       stufe:'gut' };
+  if(w < 400)  return { farbe:'#f1c40f', bg:'rgba(241,196,15,.15)', label:'Erhöht',    stufe:'erhoeht' };
+  if(w < 700)  return { farbe:'#e67e22', bg:'rgba(230,126,34,.15)', label:'Kritisch',  stufe:'kritisch' };
+  return              { farbe:'#e74c3c', bg:'rgba(231,76,60,.20)',  label:'Sehr hoch', stufe:'sehr_hoch' };
+}
+window.zellzahlAmpel = zellzahlAmpel;
+
+// Neuesten Zellzahl-Wert einer Kuh
+window.getLetzteZellzahl = function(kuhId) {
+  const eintraege = Object.values(zellzahl||{})
+    .filter(e => e && e.kuhId === kuhId && e.wert != null)
+    .sort((a,b) => b.datum - a.datum);
+  return eintraege.length ? eintraege[0] : null;
+};
+
+// Alle Zellzahl-Einträge einer Kuh (chronologisch aufsteigend)
+window.getZellzahlHistorie = function(kuhId) {
+  return Object.entries(zellzahl||{})
+    .filter(([,e]) => e && e.kuhId === kuhId)
+    .sort((a,b) => a[1].datum - b[1].datum);
+};
+
 function renderMilchqualitaet() {
+  const tab = window._mqTab || 'schalmtest';
+
+  // Tab-Bar oben (Schalmtest / Zellzahl)
+  const tabBar = `
+    <div style="display:flex;gap:.4rem;margin-bottom:.7rem;border-bottom:1px solid var(--border);padding-bottom:0">
+      <button onclick="window._mqTab='schalmtest';render()"
+        style="flex:1;padding:.6rem;background:none;border:none;border-bottom:3px solid ${tab==='schalmtest'?'var(--gold)':'transparent'};color:${tab==='schalmtest'?'var(--gold)':'var(--text3)'};font-family:inherit;font-weight:600;font-size:.9rem;cursor:pointer">
+        🧪 Schalmtest
+      </button>
+      <button onclick="window._mqTab='zellzahl';render()"
+        style="flex:1;padding:.6rem;background:none;border:none;border-bottom:3px solid ${tab==='zellzahl'?'var(--gold)':'transparent'};color:${tab==='zellzahl'?'var(--gold)':'var(--text3)'};font-family:inherit;font-weight:600;font-size:.9rem;cursor:pointer">
+        🔬 Zellzahl
+      </button>
+    </div>`;
+
+  if(tab === 'zellzahl') return tabBar + _renderZellzahl();
+  return tabBar + _renderSchalmtest();
+}
+
+// Bisheriger Schalmtest-Inhalt (unverändert, nur ausgelagert)
+function _renderSchalmtest() {
   const aktDatum = window._schalmDatum || isoDate(new Date());
   const aktGruppe = window._schalmGruppe || '';
   const modus = window._schalmModus || 'uebersicht'; // 'uebersicht' | 'erfassung'
@@ -6959,6 +7007,239 @@ function renderMilchqualitaet() {
     </div>
   `;
 }
+
+// ══════════════════════════════════════════════════════════════════════════════
+//  ZELLZAHL
+// ══════════════════════════════════════════════════════════════════════════════
+function _renderZellzahl() {
+  const modus = window._zzModus || 'uebersicht';   // 'uebersicht' | 'erfassung'
+  const filter = window._zzFilter || 'alle';       // 'alle' | 'sehr_gut' | 'gut' | 'erhoeht' | 'kritisch' | 'sehr_hoch' | 'unbekannt'
+  const aktDatum = window._zzDatum || isoDate(new Date());
+  const aktGruppe = window._zzGruppe || '';
+  const gruppenListe = Object.values(gruppen||{}).sort((a,b) => (a.name||'').localeCompare(b.name||''));
+
+  // Aktive Kühe (nicht trocken)
+  const aktiveKuehe = Object.entries(kuehe)
+    .filter(([id,k]) => {
+      if(k.laktation === 'trocken' || k.laktation === 'trockengestellt') return false;
+      if(aktGruppe && !kuhInGruppe(k, aktGruppe, id)) return false;
+      return true;
+    })
+    .sort((a,b) => (parseInt(a[1].nr)||0) - (parseInt(b[1].nr)||0));
+
+  // ── Erfassungs-Modus ──
+  if(modus === 'erfassung') {
+    return `
+      <div class="page-header">
+        <h2>🔬 Zellzahl erfassen</h2>
+        <button class="btn-secondary" onclick="window._zzModus='uebersicht';render()">← Zurück</button>
+      </div>
+
+      <div style="display:flex;gap:.4rem;align-items:center;margin-bottom:.6rem;flex-wrap:wrap">
+        <input type="date" id="zz-datum" class="inp" value="${aktDatum}"
+          onchange="window._zzDatum=this.value;render()"
+          style="width:auto;min-width:9rem" />
+        <span style="font-size:.75rem;color:var(--text3)">Wert = ×1000 Zellen/ml</span>
+      </div>
+
+      ${gruppenListe.length ? `
+      <div style="display:flex;gap:.3rem;flex-wrap:wrap;margin-bottom:.7rem">
+        <button class="filter-chip ${!aktGruppe?'active':''}" onclick="window._zzGruppe='';render()">Alle</button>
+        ${gruppenListe.map(g => `
+          <button class="filter-chip ${aktGruppe===g.name?'active':''}" onclick="window._zzGruppe='${g.name}';render()">
+            <span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:${g.farbe||'#5ba85c'};margin-right:4px;vertical-align:middle"></span>${g.name}
+          </button>`).join('')}
+      </div>` : ''}
+
+      <!-- Ampel-Legende -->
+      <div style="display:flex;gap:.35rem;justify-content:center;font-size:.68rem;color:var(--text3);margin-bottom:.6rem;flex-wrap:wrap">
+        ${['sehr_gut','gut','erhoeht','kritisch','sehr_hoch'].map(s => {
+          const ranges = {sehr_gut:'<100', gut:'100-199', erhoeht:'200-399', kritisch:'400-699', sehr_hoch:'≥700'};
+          const a = zellzahlAmpel(s==='sehr_gut'?50 : s==='gut'?150 : s==='erhoeht'?250 : s==='kritisch'?500 : 800);
+          return `<span style="display:inline-flex;align-items:center;gap:.2rem"><span style="width:9px;height:9px;border-radius:50%;background:${a.farbe}"></span>${ranges[s]}</span>`;
+        }).join('<span>·</span>')}
+      </div>
+
+      <div class="card-list" id="zz-liste">
+        ${aktiveKuehe.map(([id,k]) => {
+          // Werte für dieses Datum
+          const startTag = new Date(new Date(aktDatum+'T12:00').getTime()); startTag.setHours(0,0,0,0);
+          const endeTag = startTag.getTime() + 86400000;
+          const heutigerEintrag = Object.entries(zellzahl||{}).find(([,e]) =>
+            e && e.kuhId === id && e.datum >= startTag.getTime() && e.datum < endeTag
+          );
+          const letzterEintrag = getLetzteZellzahl(id);
+          const heutigerWert = heutigerEintrag ? heutigerEintrag[1].wert : null;
+          const a = zellzahlAmpel(heutigerWert);
+          const letzterInfo = letzterEintrag && (!heutigerEintrag || letzterEintrag.datum !== heutigerEintrag[1].datum)
+            ? '<span style="font-size:.63rem;color:var(--text3)">Letzter: '+letzterEintrag.wert+' ('+new Date(letzterEintrag.datum).toLocaleDateString('de-AT',{day:'numeric',month:'short'})+')</span>'
+            : '';
+          return `
+            <div class="list-card list-card-sm" style="display:flex;flex-direction:column;gap:.3rem;padding:.5rem .7rem;${heutigerWert!=null?'border-left:4px solid '+a.farbe:''}">
+              <div style="display:flex;align-items:center;gap:.5rem">
+                <span class="nr-badge" style="min-width:38px;text-align:center">#${k.nr}</span>
+                <div style="flex:1;min-width:0">
+                  <div style="font-size:.85rem;font-weight:700">${k.name||'–'}</div>
+                  <div style="font-size:.66rem;color:var(--text3)">${k.bauer||''}</div>
+                </div>
+                <div style="display:flex;align-items:center;gap:.3rem">
+                  <input type="number" min="0" max="9999" step="1" inputmode="numeric"
+                    id="zz-inp-${id}"
+                    value="${heutigerWert!=null?heutigerWert:''}"
+                    placeholder="—"
+                    onblur="setZellzahl('${id}',this.value,this)"
+                    onkeydown="if(event.key==='Enter'){this.blur();}"
+                    style="width:5rem;padding:.45rem .3rem;text-align:center;font-size:1rem;font-weight:700;background:${a.bg};border:2px solid ${heutigerWert!=null?a.farbe:'var(--border)'};border-radius:8px;color:${heutigerWert!=null?a.farbe:'var(--text)'};font-family:inherit" />
+                  ${heutigerEintrag ? `<button onclick="deleteZellzahl('${heutigerEintrag[0]}')" class="btn-xs-danger" style="padding:.4rem .5rem">✕</button>` : ''}
+                </div>
+              </div>
+              ${heutigerWert!=null?`<div style="font-size:.65rem;color:${a.farbe};font-weight:600;padding-left:.3rem">${a.label}</div>`:''}
+              ${letzterInfo?'<div>'+letzterInfo+'</div>':''}
+            </div>`;
+        }).join('')}
+      </div>
+
+      ${aktiveKuehe.length === 0 ? '<div class="empty-state">Keine Kühe in diesem Filter</div>' : ''}
+    `;
+  }
+
+  // ── Übersichts-Modus ──
+  // Statistik zu allen aktiven Kühen (letzter Wert)
+  const kuhWerte = aktiveKuehe.map(([id,k]) => {
+    const letzter = getLetzteZellzahl(id);
+    return { id, k, letzter };
+  });
+  const stufen = { unbekannt:0, sehr_gut:0, gut:0, erhoeht:0, kritisch:0, sehr_hoch:0 };
+  kuhWerte.forEach(kw => {
+    const stufe = kw.letzter ? zellzahlAmpel(kw.letzter.wert).stufe : 'unbekannt';
+    stufen[stufe]++;
+  });
+
+  // Filter anwenden für Anzeige
+  const gefiltert = kuhWerte.filter(kw => {
+    if(filter === 'alle') return true;
+    const stufe = kw.letzter ? zellzahlAmpel(kw.letzter.wert).stufe : 'unbekannt';
+    return stufe === filter;
+  });
+  // Nach höchstem Wert absteigend sortieren (auffällige oben)
+  gefiltert.sort((a,b) => {
+    const wA = a.letzter ? a.letzter.wert : -1;
+    const wB = b.letzter ? b.letzter.wert : -1;
+    return wB - wA;
+  });
+
+  // Filter-Chips
+  const filterInfos = [
+    { key:'alle',      label:'Alle',       icon:'', count:kuhWerte.length,     farbe:'var(--text)' },
+    { key:'sehr_hoch', label:'≥700',       icon:'🔴', count:stufen.sehr_hoch,   farbe:'#e74c3c' },
+    { key:'kritisch',  label:'400-699',    icon:'🟠', count:stufen.kritisch,    farbe:'#e67e22' },
+    { key:'erhoeht',   label:'200-399',    icon:'🟡', count:stufen.erhoeht,     farbe:'#f1c40f' },
+    { key:'gut',       label:'100-199',    icon:'🟢', count:stufen.gut,         farbe:'#7cb342' },
+    { key:'sehr_gut',  label:'<100',       icon:'✅', count:stufen.sehr_gut,    farbe:'#4db84e' },
+    { key:'unbekannt', label:'Keine Daten',icon:'?',  count:stufen.unbekannt,   farbe:'var(--text3)' }
+  ];
+
+  return `
+    <div class="page-header">
+      <h2>🔬 Zellzahl</h2>
+      <button class="btn-primary" onclick="window._zzModus='erfassung';window._zzDatum='${isoDate(new Date())}';render()">+ Erfassen</button>
+    </div>
+
+    <!-- Filter-Chips mit Ampel und Anzahl -->
+    <div style="display:flex;gap:.3rem;flex-wrap:wrap;overflow-x:auto;margin-bottom:.7rem">
+      ${filterInfos.map(fi => `
+        <button class="filter-chip ${filter===fi.key?'active':''}"
+          onclick="window._zzFilter='${fi.key}';render()"
+          style="${filter===fi.key?'':'border-color:'+fi.farbe+'80'};color:${filter===fi.key?'':fi.farbe}">
+          ${fi.icon} ${fi.label} <span style="opacity:.6;margin-left:.2rem">${fi.count}</span>
+        </button>`).join('')}
+    </div>
+
+    <!-- Kuh-Liste mit letztem Wert -->
+    ${gefiltert.length === 0 ? '<div class="empty-state">Keine Kühe in diesem Filter</div>' :
+      '<div class="card-list">'+
+      gefiltert.map(({id, k, letzter}) => {
+        const a = letzter ? zellzahlAmpel(letzter.wert) : zellzahlAmpel(null);
+        const tage = letzter ? Math.floor((Date.now()-letzter.datum)/86400000) : null;
+        return `<div class="list-card list-card-sm" onclick="showKuhDetail('${id}')" style="cursor:pointer;${letzter?'border-left:4px solid '+a.farbe:''}">
+          <span class="nr-badge">#${k.nr}</span>
+          <div style="flex:1;min-width:0">
+            <div style="font-weight:700;font-size:.9rem">${k.name||'–'}</div>
+            <div style="font-size:.7rem;color:var(--text3)">${k.bauer||''}${letzter?' · vor '+(tage===0?'heute':tage===1?'1 Tag':tage+' Tagen'):' · noch nie gemessen'}</div>
+          </div>
+          ${letzter ? `<div style="text-align:right">
+            <div style="background:${a.bg};color:${a.farbe};padding:.25rem .6rem;border-radius:14px;font-weight:700;font-size:.95rem;display:inline-block">${letzter.wert}</div>
+            <div style="font-size:.63rem;color:${a.farbe};margin-top:.15rem">${a.label}</div>
+          </div>` : '<span style="color:var(--text3);font-size:.85rem">—</span>'}
+        </div>`;
+      }).join('')+
+      '</div>'}
+  `;
+}
+
+// ── Zellzahl-Wert setzen (Sofort-Save mit Optimistic Update) ──
+window.setZellzahl = async function(kuhId, wertRaw, inp) {
+  const wert = parseInt(wertRaw);
+  const datumStr = window._zzDatum || isoDate(new Date());
+  const datumTs = new Date(datumStr + 'T12:00').getTime();
+  const startTag = new Date(datumTs); startTag.setHours(0,0,0,0);
+  const endeTag = startTag.getTime() + 86400000;
+
+  // Existiert bereits ein Eintrag für diese Kuh + dieses Datum?
+  const existing = Object.entries(zellzahl||{}).find(([,e]) =>
+    e && e.kuhId === kuhId && e.datum >= startTag.getTime() && e.datum < endeTag
+  );
+
+  // Ungültig oder leer → wenn existierender Eintrag da war, löschen
+  if(wertRaw === '' || isNaN(wert) || wert < 0 || wert > 9999) {
+    if(existing) {
+      try { await remove(ref(db,'zellzahl/'+existing[0])); }
+      catch(e) { console.warn(e); }
+    }
+    if(inp) { inp.style.background=''; inp.style.borderColor='var(--border)'; inp.style.color='var(--text)'; }
+    return;
+  }
+
+  // Optimistic: Input-Farbe sofort setzen
+  const a = zellzahlAmpel(wert);
+  if(inp) {
+    inp.style.background = a.bg;
+    inp.style.borderColor = a.farbe;
+    inp.style.color = a.farbe;
+  }
+
+  const cu = window._currentUser || {};
+  const userName = cu.name || cu.displayName || (cu.email ? cu.email.split('@')[0] : '') || 'Unbekannt';
+
+  try {
+    if(existing) {
+      await update(ref(db,'zellzahl/'+existing[0]), {
+        wert, updatedAt: Date.now(), _userName: userName
+      });
+    } else {
+      await push(ref(db,'zellzahl'), {
+        kuhId, datum: datumTs, wert,
+        notiz: '',
+        createdAt: Date.now(),
+        _userName: userName
+      });
+    }
+    if(navigator.vibrate) navigator.vibrate(15);
+    window.showSaveToast && showSaveToast('✓ Zellzahl: '+wert);
+  } catch(e) {
+    console.error('Zellzahl-Save:', e);
+    alert('Speichern fehlgeschlagen: '+e.message+
+      '\n\nEventuell fehlt "zellzahl" in den Firebase-Rules.');
+  }
+};
+
+window.deleteZellzahl = async function(id) {
+  if(!confirm('Zellzahl-Eintrag löschen?')) return;
+  try {
+    await remove(ref(db,'zellzahl/'+id));
+    window.showSaveToast && showSaveToast('Eintrag gelöscht');
+  } catch(e) { alert('Fehler: '+e.message); }
+};
 
 // ── Aktion: Schalmtest setzen (Sofort-Save mit Optimistic Update) ──
 window.setSchalmtest = async function(kuhId, wert, btn) {
