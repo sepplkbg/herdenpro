@@ -422,6 +422,15 @@ function renderHerde() {
             tagesmilchHTML = `<div style="font-size:.7rem;color:var(--gold);font-weight:600;margin-top:.15rem">🥛 Letzte Tagesmilch: ${total} L <span style="color:var(--text3);font-weight:400">· ${datumStr}</span></div>`;
           }
 
+          // ── Zellzahl-Zeile (letzter Wert, OHNE Ampelfarbe wie gewünscht) ──
+          let zellzahlHTML = '';
+          if(typeof window.getLetzteZellzahl === 'function') {
+            const zz = window.getLetzteZellzahl(id);
+            if(zz) {
+              zellzahlHTML = `<div style="font-size:.68rem;color:var(--text2);margin-top:.1rem">🔬 Zellzahl: <b>${zz.wert}</b> <span style="color:var(--text3)">· ${new Date(zz.datum).toLocaleDateString('de-AT',{day:'numeric',month:'short'})}</span></div>`;
+            }
+          }
+
           return groupHeader + `<div class="list-card" data-id="${id}" data-bauer="${k.bauer||''}" data-gruppe="${k.gruppe||''}" data-bio="${k.bio?'1':'0'}" onclick="showKuhDetail('${id}')">
             <div class="list-card-left">
               <span class="nr-badge">#${k.nr}</span>
@@ -430,6 +439,7 @@ function renderHerde() {
                 <div class="list-card-sub">${k.bauer||''} ${k.rasse?'· '+k.rasse:''} ${k.gruppe?'· '+k.gruppe:''} ${k.ohrmarke?'· '+k.ohrmarke:''}</div>
                 ${k.laktation?`<div style="font-size:.65rem;color:var(--text3)">${{melkend:'🥛',trocken:'💧',tragend:'🐄',jung:'🌱',trockengestellt:'⏸'}[k.laktation]||''} ${k.laktation}</div>`:''}
                 ${tagesmilchHTML}
+                ${zellzahlHTML}
               </div>
             </div>
             <div class="list-card-right">
