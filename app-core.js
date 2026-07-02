@@ -245,7 +245,7 @@ let db;
 let kuehe={}, behandlungen={}, besamungen={}, zaehlSession=null;
 let milchEintraege={}, weideTage={}, weiden={}, bauern={};
 let saisonInfo=null;
-let gruppen={}, fotos={}, zaehlVerlauf={}, chatNachrichten={}, kraftfutter={}, schalmtest={};
+let gruppen={}, fotos={}, zaehlVerlauf={}, chatNachrichten={}, kraftfutter={}, schalmtest={}, zellzahl={};
 let kalenderTermine={};   // manuelle Kalendertermine
 let traenkeLog={};         // Tränke/Wasser-Protokoll
 let saisonArchiv={};       // Saisonvergleich-Archivdaten
@@ -281,6 +281,7 @@ function initApp() {
   onValue(ref(db,'zaehlung'),     s=>{ zaehlSession=s.val();       render(); });
   onValue(ref(db,'milch'),        s=>{ milchEintraege=s.val()||{}; render(); });
   onValue(ref(db,'schalmtest'),   s=>{ schalmtest=s.val()||{}; window.schalmtest=schalmtest; render(); });
+  onValue(ref(db,'zellzahl'),     s=>{ zellzahl=s.val()||{}; window.zellzahl=zellzahl; render(); });
   onValue(ref(db,'weideTage'),    s=>{ weideTage=s.val()||{};      render(); });
   onValue(ref(db,'weiden'),       s=>{ weiden=s.val()||{};         render(); });
   onValue(ref(db,'bauern'),       s=>{ bauern=s.val()||{};         render(); });
