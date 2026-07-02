@@ -1422,17 +1422,44 @@ function behandlungFormHTML(vorId, editId, editData) {
         <label class="inp-label">Kuh *</label>
         <button type="button" id="b-kuh-btn" class="inp" onclick="openKuhPicker('b-kuh','b-kuh-btn')"
           style="text-align:left;display:flex;align-items:center;justify-content:space-between;gap:.5rem;cursor:pointer;width:100%">
-          <span id="b-kuh-label" style="${initialKuhLabel?'':'color:var(--text3)'}">${initialKuhLabel||'Kuh wählen…'}</span>
+          <span id="b-kuh-btn-label" style="${initialKuhLabel?'':'color:var(--text3)'}">${initialKuhLabel||'Kuh wählen…'}</span>
           <span style="color:var(--text3);font-size:1.2rem">▾</span>
         </button>
-        <label class="inp-label">Behandelt am</label>
+        <label class="inp-label">Erste Behandlung</label>
         <div style="display:grid;grid-template-columns:1fr auto;gap:.5rem;align-items:center">
-          <input id="b-datum" class="inp" type="date" value="${bDatum}" oninput="berechneWartezeiten()" />
+          <input id="b-datum" class="inp" type="date" value="${bDatum}"
+            oninput="onErsteBehChange();berechneWartezeiten()" />
           <select id="b-behandlung-zeit" class="inp" style="width:auto" onchange="berechneWartezeiten()">
             <option value="morgen" ${bZeit==='morgen'?'selected':''}>🌅 Morgens</option>
             <option value="abend" ${bZeit==='abend'?'selected':''}>🌇 Abends</option>
           </select>
         </div>
+        <label class="inp-label">Letzte Behandlung <span style="font-size:.68rem;color:var(--text3);font-weight:400">(bei Mehrtages-Behandlung – sonst gleich wie oben)</span></label>
+        <div style="display:grid;grid-template-columns:1fr auto;gap:.5rem;align-items:center">
+          <input id="b-datum-ende" class="inp" type="date" value="${d.datumEnde ? isoDate(new Date(d.datumEnde)) : bDatum}"
+            oninput="berechneWartezeiten()" />
+          <select id="b-behandlung-zeit-ende" class="inp" style="width:auto" onchange="berechneWartezeiten()">
+            <option value="morgen" ${(d.behandlungZeitEnde||bZeit)==='morgen'?'selected':''}>🌅 Morgens</option>
+            <option value="abend" ${(d.behandlungZeitEnde||bZeit)==='abend'?'selected':''}>🌇 Abends</option>
+          </select>
+        </div>
+        <div style="font-size:.7rem;color:var(--text3);margin-top:.2rem;margin-bottom:.4rem">
+          💡 <b>Wartezeit</b> wird ab <b>Letzter Behandlung</b> gerechnet.
+        </div>
+
+        <!-- Medizin-Quelle -->
+        <label class="inp-label">Medikament von</label>
+        <div style="display:flex;gap:.4rem;margin-bottom:.5rem">
+          <button type="button" id="b-med-bauer" onclick="setMedizinQuelle('bauer',this)"
+            style="flex:1;padding:.5rem;border-radius:var(--radius-sm);border:${(d.medizinQuelle||'alm')==='bauer'?'2px solid var(--gold)':'1px solid var(--border)'};background:${(d.medizinQuelle||'alm')==='bauer'?'var(--gold)':'transparent'};color:${(d.medizinQuelle||'alm')==='bauer'?'#000':'var(--text3)'};font-weight:${(d.medizinQuelle||'alm')==='bauer'?'700':'500'};font-family:inherit;font-size:.85rem;cursor:pointer">
+            👨‍🌾 Bauer
+          </button>
+          <button type="button" id="b-med-alm" onclick="setMedizinQuelle('alm',this)"
+            style="flex:1;padding:.5rem;border-radius:var(--radius-sm);border:${(d.medizinQuelle||'alm')==='alm'?'2px solid var(--gold)':'1px solid var(--border)'};background:${(d.medizinQuelle||'alm')==='alm'?'var(--gold)':'transparent'};color:${(d.medizinQuelle||'alm')==='alm'?'#000':'var(--text3)'};font-weight:${(d.medizinQuelle||'alm')==='alm'?'700':'500'};font-family:inherit;font-size:.85rem;cursor:pointer">
+            🏔 Alm
+          </button>
+        </div>
+        <input type="hidden" id="b-medizin-quelle" value="${d.medizinQuelle||'alm'}" />
         <input id="b-diagnose" class="inp" placeholder="Diagnose" value="${d.diagnose||''}" />
         <input id="b-symptome" class="inp" placeholder="Symptome" value="${d.symptome||''}" />
 
@@ -1833,10 +1860,18 @@ window.saveBehandlung=async function(){
   const wzMilch=document.getElementById('b-wz-milch')?.value;
   const wzFleisch=document.getElementById('b-wz-fleisch')?.value;
   let editId=document.getElementById('b-edit-id')?.value;
+  // Erste + Letzte Behandlung (bei Mehrtages-Behandlung)
+  const datumErsteStr = document.getElementById('b-datum').value;
+  const datumEndeStr  = document.getElementById('b-datum-ende')?.value || datumErsteStr;
+  const zeitErste = document.getElementById('b-behandlung-zeit')?.value||'morgen';
+  const zeitEnde  = document.getElementById('b-behandlung-zeit-ende')?.value || zeitErste;
   const data={
     kuhId,
-    datum:new Date(document.getElementById('b-datum').value).getTime(),
-    behandlungZeit:document.getElementById('b-behandlung-zeit')?.value||'morgen',
+    datum:new Date(datumErsteStr).getTime(),                        // Erste Behandlung
+    behandlungZeit: zeitErste,
+    datumEnde: new Date(datumEndeStr).getTime(),                     // Letzte Behandlung
+    behandlungZeitEnde: zeitEnde,
+    medizinQuelle: document.getElementById('b-medizin-quelle')?.value || 'alm',
     diagnose:document.getElementById('b-diagnose')?.value.trim()||'',
     symptome:document.getElementById('b-symptome')?.value.trim()||'',
     temperatur:parseFloat(document.getElementById('b-temperatur')?.value)||null,
@@ -7767,10 +7802,44 @@ window.saveAlmEinstellungen = async function() {
   alert('✓ Gespeichert');
 };
 
+// Wenn Erste Behandlung geändert wird, setze Letzte Behandlung auf denselben Wert
+// (nur falls Ende leer oder identisch mit vorherigem Anfang)
+window.onErsteBehChange = function() {
+  const anfang = document.getElementById('b-datum')?.value;
+  const endeEl = document.getElementById('b-datum-ende');
+  if(!endeEl) return;
+  // Wenn Ende leer oder = alter Anfang, dann auf neuen Anfang setzen
+  if(!endeEl.value || endeEl.value < anfang) {
+    endeEl.value = anfang;
+  }
+};
+
+// Medizin-Quelle toggle (Bauer/Alm)
+window.setMedizinQuelle = function(quelle, btn) {
+  const hidden = document.getElementById('b-medizin-quelle');
+  if(hidden) hidden.value = quelle;
+  const bauerBtn = document.getElementById('b-med-bauer');
+  const almBtn   = document.getElementById('b-med-alm');
+  [
+    {el:bauerBtn, aktiv:quelle==='bauer'},
+    {el:almBtn,   aktiv:quelle==='alm'}
+  ].forEach(({el, aktiv}) => {
+    if(!el) return;
+    el.style.background   = aktiv ? 'var(--gold)' : 'transparent';
+    el.style.color        = aktiv ? '#000' : 'var(--text3)';
+    el.style.border       = aktiv ? '2px solid var(--gold)' : '1px solid var(--border)';
+    el.style.fontWeight   = aktiv ? '700' : '500';
+  });
+};
+
 window.berechneWartezeiten = function() {
-  const datum = document.getElementById('b-datum')?.value;
+  // WZ wird ab LETZTER Behandlung berechnet – oder Erste falls Ende leer
+  const datumErste = document.getElementById('b-datum')?.value;
+  const datumEnde  = document.getElementById('b-datum-ende')?.value || datumErste;
+  const datum = datumEnde || datumErste;
   if(!datum) return;
-  const zeit = document.getElementById('b-behandlung-zeit')?.value || 'morgen';
+  const zeit = document.getElementById('b-behandlung-zeit-ende')?.value ||
+               document.getElementById('b-behandlung-zeit')?.value || 'morgen';
 
   function calcEnde(tage, basisDatum, basisZeit) {
     if(!tage || tage <= 0) return null;
