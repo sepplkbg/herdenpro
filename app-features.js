@@ -1856,15 +1856,8 @@ window.saveMilch = async function() {
     clearTimeout(window._milchAutoSaveTimer);
     window._milchAutoSaveTimer = null;
   }
-  // Warten bis ein laufender Auto-Save fertig ist (max. 3 Sekunden)
-  const wartenAufAutoSave = async () => {
-    let n = 0;
-    while(window._milchAutoSaveInFlight && n < 30) {
-      await new Promise(r => setTimeout(r, 100));
-      n++;
-    }
-  };
-  await wartenAufAutoSave();
+  // Auto-Save-Flags freigeben (Auto-Save schreibt nicht mehr in Firebase, kein Warten nötig)
+  window._milchAutoSaveInFlight = false;
 
   // Save-Button visuell sperren während des Speicherns
   const saveBtn = document.querySelector('#milch-form-overlay .btn-primary[onclick*="saveMilch"]');
@@ -1910,40 +1903,50 @@ window.saveMilch = async function() {
     const originalGroupKey = window._milchOriginalGroupKey;
     let savedKey = null;
 
+    // ── FIRE-AND-FORGET: Firebase-Writes werden NICHT geawaited ──
+    // Grund: offline hängt Firebase's Promise unendlich. Der Firebase-Client
+    // hat automatische Offline-Persistierung – Daten sind sofort lokal gesichert
+    // und werden synchronisiert wenn wieder online. Die Promise resolvt erst nach
+    // Server-Bestätigung, was uns nicht interessiert.
+    // .key auf push() ist SYNCHRON verfügbar (ThenableReference).
     if(originalGroupKey || (editMilchId && editMilchId.startsWith('group:'))) {
-      // Gruppen-Edit: zuerst NEU schreiben, dann alle Original-Einträge löschen
-      const newRef = await push(ref(db, 'milch'), {
+      // Gruppen-Edit
+      const newRef = push(ref(db, 'milch'), {
         datum: datumTs, art: modus, zeit, gesamt,
         prokuh: modus==='prokuh' ? prokuh : null,
         molkerei, notiz,
         createdAt: Date.now(), quelle: 'merged_edit'
       });
       savedKey = newRef.key;
-      console.log('[saveMilch] Group-Edit: neuer Eintrag', savedKey);
+      // Wenn erfolgreich (online): Server bestätigt später
+      Promise.resolve(newRef).then(()=>console.log('[saveMilch] Group-Edit Server-Bestätigt', savedKey))
+        .catch(e => console.warn('[saveMilch] Group-Edit sync später:', e));
 
-      // Alle Original-IDs der Gruppe löschen
+      // Alte Einträge löschen – auch fire-and-forget
       const key = originalGroupKey || editMilchId.slice(6);
       const g = window._milchGruppen && window._milchGruppen[key];
       if(g && Array.isArray(g.ids)) {
         for(const oldId of g.ids) {
           if(oldId === savedKey) continue;
-          try { await remove(ref(db, 'milch/' + oldId)); console.log('[saveMilch] Alt-Eintrag gelöscht:', oldId); }
-          catch(x) { console.error('[saveMilch] Lösch-Fehler für '+oldId+':', x); }
+          remove(ref(db, 'milch/' + oldId))
+            .then(()=>console.log('[saveMilch] Alt-Eintrag gelöscht:', oldId))
+            .catch(x => console.warn('[saveMilch] Lösch-Fehler '+oldId+':', x));
         }
       }
-      // Original-Gruppen-Key freigeben
       window._milchOriginalGroupKey = null;
     } else if(editMilchId) {
-      // Single-Edit oder Auto-Save-Draft updaten
-      await update(ref(db, 'milch/' + editMilchId), {
+      // Single-Edit
+      const payload = {
         datum: datumTs, art: modus, zeit, gesamt,
         prokuh: modus==='prokuh' ? prokuh : null,
         molkerei, notiz, updatedAt: Date.now()
-      });
+      };
+      update(ref(db, 'milch/' + editMilchId), payload)
+        .then(()=>console.log('[saveMilch] Update Server-Bestätigt', editMilchId))
+        .catch(e => console.warn('[saveMilch] Update sync später:', e));
       savedKey = editMilchId;
-      console.log('[saveMilch] Update:', savedKey);
     } else {
-      // ── MULTI-MELKER-SICHER: Eigene Session-Einträge updaten, fremde unangetastet lassen ──
+      // ── MULTI-MELKER-SICHER: Eigene Session-Einträge updaten ──
       const sessionId = getMilchSessionId();
       const startTag = new Date(datumTs); startTag.setHours(0,0,0,0);
       const endeTag  = startTag.getTime() + 86400000;
@@ -1955,25 +1958,31 @@ window.saveMilch = async function() {
       const cu = window._currentUser || {};
       const userName = cu.name || cu.displayName || (cu.email ? cu.email.split('@')[0] : '') || 'Unbekannt';
       if(existingEntry) {
-        await update(ref(db, 'milch/' + existingEntry[0]), {
+        const payload = {
           datum: datumTs, art: modus, zeit, gesamt,
           prokuh: modus==='prokuh' ? prokuh : null,
           molkerei, notiz, updatedAt: Date.now(),
           _session: sessionId, _userName: userName
-        });
+        };
+        update(ref(db, 'milch/' + existingEntry[0]), payload)
+          .then(()=>console.log('[saveMilch] Session-Update Server-Bestätigt', existingEntry[0]))
+          .catch(e => console.warn('[saveMilch] Session-Update sync später:', e));
         savedKey = existingEntry[0];
-        console.log('[saveMilch] Eigenen Session-Eintrag aktualisiert:', savedKey);
       } else {
-        const newRef = await push(ref(db, 'milch'), {
+        const newRef = push(ref(db, 'milch'), {
           datum: datumTs, art: modus, zeit, gesamt,
           prokuh: modus==='prokuh' ? prokuh : null,
           molkerei, notiz, createdAt: Date.now(),
           _session: sessionId, _userName: userName
         });
         savedKey = newRef.key;
-        console.log('[saveMilch] Neuer Session-Eintrag:', savedKey);
+        Promise.resolve(newRef).then(()=>console.log('[saveMilch] Push Server-Bestätigt', savedKey))
+          .catch(e => console.warn('[saveMilch] Push sync später:', e));
       }
     }
+
+    // Kurze Pause, damit Firebase die lokale Persistierung fertig hat
+    await new Promise(r => setTimeout(r, 150));
 
     // ── 4. SUCCESS – Form-State + UI bereinigen ──
     const eid = document.getElementById('m-edit-id'); if(eid) eid.value='';
@@ -2400,7 +2409,7 @@ function renderMilch() {
           </div>
           <!-- Auto-Save Statusanzeige -->
           <div style="display:flex;align-items:center;justify-content:space-between;padding:.45rem .65rem;margin-bottom:.6rem;background:rgba(77,184,78,.08);border:1px solid rgba(77,184,78,.25);border-radius:var(--radius-sm)">
-            <span style="font-size:.74rem;color:var(--text2)">🛡 Auto-Speichern aktiv</span>
+            <span style="font-size:.74rem;color:var(--text2)">🛡 Werte lokal gesichert · unten „Speichern" tippen</span>
             <span id="milch-autosave-indicator" style="font-size:.72rem;color:var(--text3);font-weight:600"></span>
           </div>
           <div id="m-prokuh-block">
@@ -3140,19 +3149,29 @@ function renderBestandsbuch() {
     <div style="overflow-x:auto">
     <table class="bb-table">
       <thead><tr>
-        <th>Datum</th><th>Tier</th><th>Ohrmarke</th><th>Diagnose</th>
-        <th>Medikament</th><th>Dosis</th><th>Abgabe</th>
+        <th>Erste Beh.</th><th>Letzte Beh.</th><th>Tier</th><th>Ohrmarke</th><th>Diagnose</th>
+        <th>Medikament</th><th>Med. von</th><th>Dosis</th><th>Abgabe</th>
         <th>WZ Milch (T)</th><th>WZ Ende Milch</th>
         <th>WZ Fleisch (T)</th><th>WZ Ende Fleisch</th><th>Tierarzt</th>
       </tr></thead>
       <tbody>${bListe.map(([,b])=>{
         const k=kuehe[b.kuhId];
+        const medQuelle = b.medizinQuelle === 'bauer' ? '👨‍🌾 Bauer' :
+                          b.medizinQuelle === 'alm' ? '🏔 Alm' : '–';
+        const zeitTxt = z => z==='abend'?'ab':'mo';
+        const ersteStr = new Date(b.datum).toLocaleDateString('de-AT') +
+                        (b.behandlungZeit ? ' ('+zeitTxt(b.behandlungZeit)+')' : '');
+        const endeMs = b.datumEnde || b.datum;
+        const endeStr = new Date(endeMs).toLocaleDateString('de-AT') +
+                       ((b.behandlungZeitEnde||b.behandlungZeit) ? ' ('+zeitTxt(b.behandlungZeitEnde||b.behandlungZeit)+')' : '');
         return `<tr>
-          <td>${new Date(b.datum).toLocaleDateString('de-AT')}</td>
+          <td>${ersteStr}</td>
+          <td>${endeStr}</td>
           <td>#${k?.nr||'?'} ${k?.name||''}</td>
           <td>${k?.ohrmarke||'–'}</td>
           <td>${b.diagnose||'–'}</td>
           <td>${b.medikament}</td>
+          <td>${medQuelle}</td>
           <td>${b.dosis||'–'}</td>
           <td>${b.abgabeDatum?new Date(b.abgabeDatum).toLocaleDateString('de-AT'):'–'}</td>
           <td>${b.wzMilchTage||'–'}</td>
@@ -4213,89 +4232,31 @@ function scheduleMilchAutoSave() {
   window._milchAutoSaveTimer = setTimeout(doMilchAutoSave, 600);
 }
 
+// Auto-Save v2 – nur LocalStorage, keine Firebase-Calls mehr während Tippens.
+// Grund: Offline-Firebase-Writes hängen unendlich und blockieren später den Save-Klick.
+// Der localStorage-Notnetz-Save in onMilchInput läuft ohnehin schon bei JEDEM Tastenklick.
+// Hier nur noch UI-Status-Update.
 async function doMilchAutoSave() {
-  if(window._milchAutoSaveInFlight) {
-    // Falls noch ein Save läuft, gleich neu planen
-    window._milchAutoSaveTimer = setTimeout(doMilchAutoSave, 300);
-    return;
-  }
   try {
-    window._milchAutoSaveInFlight = true;
     const datum = document.getElementById('m-datum')?.value;
-    if(!datum) { window._milchAutoSaveInFlight = false; return; }
-    const zeit  = document.getElementById('m-zeit')?.value || 'morgen';
-    const molkerei = document.getElementById('m-molkerei')?.checked || false;
-    const notiz = (document.getElementById('m-notiz')?.value || '').trim();
+    if(!datum) return;
 
-    let gesamt = 0; const prokuh = {};
+    // Zähle wie viele Kühe eingetragen sind
+    let count = 0;
     document.querySelectorAll('.kuh-liter').forEach(i => {
       const l = parseFloat((i.value||'').replace(',','.')) || 0;
-      if(l > 0) { prokuh[i.dataset.id] = l; gesamt += l; }
+      if(l > 0) count++;
     });
-    if(Object.keys(prokuh).length === 0) {
-      // Nichts zu speichern – Indicator zurücksetzen
-      window._milchAutoSaveInFlight = false;
+
+    if(count === 0) {
       setMilchAutoSaveStatus('', 'var(--text3)');
       return;
     }
-    gesamt = Math.round(gesamt * 10) / 10;
-    const datumTs = new Date(datum + 'T12:00').getTime();
-
-    const payload = {
-      datum: datumTs, art: 'prokuh', zeit, gesamt,
-      prokuh, molkerei, notiz,
-      autosave: true,
-      updatedAt: Date.now()
-    };
-
-    // Edit-ID checken: bestehender Eintrag (kein "group:")
-    const editIdRaw = document.getElementById('m-edit-id')?.value || '';
-    const isGroupEdit = editIdRaw.startsWith('group:');
-
-    const sessionId = getMilchSessionId();
-    payload._session = sessionId;  // Session-ID immer am Eintrag mitführen
-    // Benutzername mitspeichern für Bericht-Anzeige
-    const cu = window._currentUser || {};
-    payload._userName = cu.name || cu.displayName || (cu.email ? cu.email.split('@')[0] : '') || 'Unbekannt';
-
-    if(window._milchAutoSaveDraftId) {
-      // Bereits Draft angelegt – nur updaten
-      await update(ref(db, 'milch/' + window._milchAutoSaveDraftId), payload);
-    } else if(editIdRaw && !isGroupEdit) {
-      // Bearbeitung eines existierenden Einzel-Eintrags
-      window._milchAutoSaveDraftId = editIdRaw;
-      await update(ref(db, 'milch/' + editIdRaw), payload);
-    } else {
-      // ── MULTI-MELKER-SICHER: nur Einträge der EIGENEN Session als Match werten ──
-      // Dadurch: SAME Browser-Tab/Melker → eigener Eintrag wird fortgesetzt (kein Duplikat).
-      //          ANDERER Browser/Melker  → eigener Eintrag wird gepusht (keine Überschreibung).
-      // View merged anschließend alle Einträge desselben Datum+Zeit zusammen.
-      const startTag = new Date(datumTs); startTag.setHours(0,0,0,0);
-      const endeTag  = startTag.getTime() + 86400000;
-      const existingEntry = Object.entries(milchEintraege||{}).find(([id, e]) =>
-        e && e.datum >= startTag.getTime() && e.datum < endeTag &&
-        (e.zeit||'morgen') === zeit &&
-        e._session === sessionId
-      );
-      if(existingEntry) {
-        console.log('[autoSave] Eigenen Session-Eintrag fortsetzen:', existingEntry[0]);
-        window._milchAutoSaveDraftId = existingEntry[0];
-        await update(ref(db, 'milch/' + existingEntry[0]), payload);
-      } else {
-        console.log('[autoSave] Neuer Session-Eintrag (eigene Session, kein Konflikt mit anderen Melkern)');
-        payload.createdAt = Date.now();
-        const r = await push(ref(db, 'milch'), payload);
-        window._milchAutoSaveDraftId = r.key;
-      }
-      const eid = document.getElementById('m-edit-id');
-      if(eid) eid.value = window._milchAutoSaveDraftId;
-    }
 
     const t = new Date().toLocaleTimeString('de-AT', {hour:'2-digit', minute:'2-digit', second:'2-digit'});
-    setMilchAutoSaveStatus('✓ Gespeichert · '+t, 'var(--green)');
+    setMilchAutoSaveStatus('🛡 '+count+' Kühe lokal gesichert · '+t, 'var(--green)');
   } catch(e) {
-    console.error('Auto-Save Fehler:', e);
-    setMilchAutoSaveStatus('⚠ Speichern fehlgeschlagen – nochmal probieren', 'var(--red)');
+    console.warn('Auto-Save Status:', e);
   } finally {
     window._milchAutoSaveInFlight = false;
   }
