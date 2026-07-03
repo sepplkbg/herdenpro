@@ -105,13 +105,14 @@ window.pushMilchWert = function(kuhId, wert, datum, zeit) {
   const now = Date.now();
   const wertVal = Math.round((parseFloat(wert) || 0) * 10) / 10;
 
-  const kuhPayload = { wert: wertVal, session: sessionId, userName: userName, ts: now };
+  // Attribution separat vom Wert speichern (Firebase-Rules-freundlich: prokuh bleibt Zahl!)
+  const metaPayload = { session: sessionId, userName: userName, ts: now };
 
-  // 1. LocalStorage sofort (Wahrheit auf Gerät)
+  // 1. LocalStorage sofort (Wahrheit auf Gerät). Kombinierte Payload für internes Tracking.
   const pending = getPending();
   if(wertVal > 0) {
     if(!pending[entryKey]) pending[entryKey] = {};
-    pending[entryKey][kuhId] = kuhPayload;
+    pending[entryKey][kuhId] = { wert: wertVal, session: sessionId, userName: userName, ts: now };
     setPending(pending);
   } else {
     // Wert 0 = löschen
@@ -128,12 +129,15 @@ window.pushMilchWert = function(kuhId, wert, datum, zeit) {
     const entryPath = 'milch/' + entryKey;
 
     if(wertVal === 0) {
-      // Aus Firebase entfernen
-      firebase.database().ref(entryPath + '/prokuh/' + kuhId).remove()
+      // Aus Firebase entfernen (Wert + Meta)
+      const rmPayload = {};
+      rmPayload['prokuh/' + kuhId] = null;
+      rmPayload['meta/' + kuhId] = null;
+      firebase.database().ref(entryPath).update(rmPayload)
         .then(() => updateSyncBanner())
-        .catch(e => console.warn('[Milch v2] remove failed (bleibt lokal):', e));
+        .catch(e => handleSyncError(e, 'remove'));
     } else {
-      // Wert setzen (Termin-Metadaten + Kuh-Wert in einem update)
+      // Wert setzen — WICHTIG: prokuh/kuhId ist eine ZAHL, Attribution getrennt unter meta/
       let datumTs;
       if(typeof datum === 'string' && datum.length >= 10) {
         datumTs = new Date(datum.slice(0,10) + 'T12:00').getTime();
@@ -143,7 +147,8 @@ window.pushMilchWert = function(kuhId, wert, datum, zeit) {
         datumTs = d.getTime();
       }
       const updatePayload = {};
-      updatePayload['prokuh/' + kuhId] = kuhPayload;
+      updatePayload['prokuh/' + kuhId] = wertVal;          // ← plain number (Rules-friendly)
+      updatePayload['meta/' + kuhId] = metaPayload;        // ← Attribution separat
       updatePayload['datum'] = datumTs;
       updatePayload['zeit'] = zeit || 'morgen';
       updatePayload['art'] = 'prokuh';
@@ -151,18 +156,39 @@ window.pushMilchWert = function(kuhId, wert, datum, zeit) {
 
       firebase.database().ref(entryPath).update(updatePayload)
         .then(() => {
-          // Bestätigung folgt via Listener (onMilchEintraegeChanged)
           console.log('[Milch v2] Server-Bestätigt:', kuhId, '=', wertVal);
         })
-        .catch(e => console.warn('[Milch v2] Write failed (bleibt lokal):', e));
+        .catch(e => handleSyncError(e, 'write'));
     }
   } catch(e) {
-    console.warn('[Milch v2] Firebase-Fehler (Wert bleibt lokal):', e);
+    handleSyncError(e, 'exception');
   }
 
   // 3. Banner updaten
   updateSyncBanner();
 };
+
+// ── Sync-Fehler sichtbar machen (nicht nur Konsole)
+function handleSyncError(err, op) {
+  console.error('[Milch v2] Sync-Fehler (' + op + '):', err);
+  const msg = err && err.message ? err.message : String(err);
+  const banner = document.getElementById('milch-sync-banner');
+  if(banner) {
+    banner._wasVisible = true;
+    banner.style.display = 'flex';
+    banner.className = 'milch-sync-banner milch-sync-error';
+    banner.innerHTML = '<span>❌</span><span>Sync-Fehler: ' + msg + '</span>' +
+      '<button class="milch-sync-action" onclick="syncMilchPending()">Retry</button>';
+  }
+  // Toast mit Details für Melker
+  if(window.showSaveToast) {
+    if(msg.toLowerCase().includes('permission')) {
+      window.showSaveToast('❌ Firebase-Rechte verweigern Schreiben. Admin kontaktieren.');
+    } else {
+      window.showSaveToast('❌ Sync-Fehler: ' + msg.slice(0, 60));
+    }
+  }
+}
 
 // ══════════════════════════════════════════════════════════════
 //  Retry-Sync: alle pending Werte nochmal an Firebase pushen
@@ -189,12 +215,18 @@ window.syncMilchPending = function() {
     updatePayload['art'] = 'prokuh';
     updatePayload['lastUpdate'] = Date.now();
     Object.entries(cows).forEach(([kuhId, payload]) => {
-      updatePayload['prokuh/' + kuhId] = payload;
+      // Wert als plain number, Meta separat
+      updatePayload['prokuh/' + kuhId] = parseFloat(payload.wert) || 0;
+      updatePayload['meta/' + kuhId] = {
+        session: payload.session,
+        userName: payload.userName,
+        ts: payload.ts
+      };
     });
 
     firebase.database().ref('milch/' + entryKey).update(updatePayload)
       .then(() => console.log('[Milch v2] Retry-Sync OK für', entryKey))
-      .catch(e => console.warn('[Milch v2] Retry-Sync err:', e));
+      .catch(e => handleSyncError(e, 'retry-sync'));
   });
 };
 
@@ -212,35 +244,48 @@ window.onMilchEintraegeChanged = function() {
   Object.entries(p).forEach(([entryKey, cows]) => {
     const fbEntry = eintraege[entryKey];
     if(!fbEntry || !fbEntry.prokuh) return;
+    const fbMeta = fbEntry.meta || {};
     Object.entries(cows).forEach(([kuhId, payload]) => {
       const fbVal = fbEntry.prokuh[kuhId];
+      const meta = fbMeta[kuhId];
       if(fbVal == null) return;
-      // Alter Wert (Zahl) → keine Attribution, wir nehmen an unser Wert ist synced
-      if(typeof fbVal === 'number') {
-        delete p[entryKey][kuhId];
-        if(Object.keys(p[entryKey]).length === 0) delete p[entryKey];
-        changed = true;
+      // Neue Struktur: Wert ist Zahl, Attribution in meta/
+      if(typeof fbVal === 'number' || typeof fbVal === 'string') {
+        // Wenn Meta vorhanden und session/ts passen → bestätigt
+        if(meta && meta.session === payload.session && (meta.ts || 0) >= (payload.ts || 0)) {
+          delete p[entryKey][kuhId];
+          if(Object.keys(p[entryKey]).length === 0) delete p[entryKey];
+          changed = true;
+          return;
+        }
+        // Konflikt: Meta zeigt andere Session mit späterem ts → anderer Melker hat überschrieben
+        if(meta && meta.session && meta.session !== payload.session && (meta.ts || 0) > (payload.ts || 0)) {
+          addKonflikt({
+            entryKey, kuhId,
+            meinWert: payload.wert,
+            meineSession: payload.session,
+            fremdWert: parseFloat(fbVal) || 0,
+            fremdSession: meta.session,
+            fremdName: meta.userName || 'Anderer Melker',
+            ts: Date.now()
+          });
+          delete p[entryKey][kuhId];
+          if(Object.keys(p[entryKey]).length === 0) delete p[entryKey];
+          changed = true;
+          return;
+        }
+        // Kein Meta oder identischer Wert wie unser payload.wert → als bestätigt behandeln
+        // (Kann bei Legacy-Einträgen ohne meta passieren)
+        const fbNum = parseFloat(fbVal) || 0;
+        if(!meta && Math.abs(fbNum - payload.wert) < 0.05) {
+          delete p[entryKey][kuhId];
+          if(Object.keys(p[entryKey]).length === 0) delete p[entryKey];
+          changed = true;
+        }
         return;
       }
-      if(typeof fbVal !== 'object') return;
-      // Match: Server-Session = meine Session UND Server-ts >= mein ts
-      if(fbVal.session === payload.session && (fbVal.ts || 0) >= (payload.ts || 0)) {
-        delete p[entryKey][kuhId];
-        if(Object.keys(p[entryKey]).length === 0) delete p[entryKey];
-        changed = true;
-      }
-      // Konflikt: anderer Melker hat NACH mir geschrieben
-      else if(fbVal.session && fbVal.session !== payload.session && (fbVal.ts || 0) > (payload.ts || 0)) {
-        addKonflikt({
-          entryKey, kuhId,
-          meinWert: payload.wert,
-          meineSession: payload.session,
-          fremdWert: parseFloat(fbVal.wert) || 0,
-          fremdSession: fbVal.session,
-          fremdName: fbVal.userName || 'Anderer Melker',
-          ts: Date.now()
-        });
-        // Aus pending entfernen (Server-Wert gilt)
+      // Legacy-Struktur (Objekt mit .wert): Backward-Compat für alte v2-Zwischenversion
+      if(typeof fbVal === 'object' && fbVal.session === payload.session && (fbVal.ts || 0) >= (payload.ts || 0)) {
         delete p[entryKey][kuhId];
         if(Object.keys(p[entryKey]).length === 0) delete p[entryKey];
         changed = true;
@@ -619,15 +664,25 @@ window.updateAndereMelkerHinweise = function() {
   // Werte anderer Sessions einsammeln
   const andereWerte = {}; // kuhId → {wert, name}
   if(fbEntry && fbEntry.prokuh) {
+    const meta = fbEntry.meta || {};
     Object.entries(fbEntry.prokuh).forEach(([kuhId, v]) => {
       if(v == null) return;
-      if(typeof v === 'object') {
+      const w = milchWert(v);
+      if(w <= 0) return;
+      // Neue Struktur: Wert ist Zahl, Attribution in meta/kuhId
+      if(typeof v === 'number' || typeof v === 'string') {
+        const m = meta[kuhId];
+        if(m && m.session && m.session !== mySession) {
+          andereWerte[kuhId] = { wert: w, name: m.userName || 'Anderer' };
+        }
+        // Ohne Meta: können wir Melker nicht unterscheiden → ignorieren
+      }
+      // Legacy-Objekt-Struktur
+      else if(typeof v === 'object') {
         if(v.session && v.session !== mySession) {
-          const w = parseFloat(v.wert) || 0;
-          if(w > 0) andereWerte[kuhId] = { wert: w, name: v.userName || 'Anderer' };
+          andereWerte[kuhId] = { wert: w, name: v.userName || 'Anderer' };
         }
       }
-      // Alte Struktur (Zahl): können wir Melker nicht unterscheiden → ignorieren
     });
   }
 
@@ -716,11 +771,18 @@ window.resetMilchAutoSaveState = function() {
         const mySession = getMilchSessionId();
         const fbEntry = (window.milchEintraege || {})[entryKey];
 
-        // Aus Firebase-Eintrag: EIGENE Werte übernehmen
+        // Aus Firebase-Eintrag: EIGENE Werte übernehmen (per Meta-Attribution identifiziert)
         const eigene = {};
         if(fbEntry && fbEntry.prokuh) {
+          const meta = fbEntry.meta || {};
           Object.entries(fbEntry.prokuh).forEach(([kuhId, v]) => {
-            if(v && typeof v === 'object' && v.session === mySession) {
+            const w = milchWert(v);
+            const m = meta[kuhId];
+            if(m && m.session === mySession && w > 0) {
+              eigene[kuhId] = w;
+            }
+            // Legacy-Objekt-Struktur (Zwischen-Version)
+            else if(typeof v === 'object' && v && v.session === mySession) {
               eigene[kuhId] = parseFloat(v.wert) || 0;
             }
           });
