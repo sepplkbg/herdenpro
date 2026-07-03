@@ -386,13 +386,15 @@ function renderHerde() {
     <div class="card-list" id="kuh-list">
       ${liste.length ? (() => {
         // ── Pro Kuh: letzte Morgen- und Abendmilch ermitteln (1× iterieren über alle Milcheinträge) ──
+        // v2-kompat: prokuh[kid] kann Objekt {wert, session, ...} sein
+        const _mWherde = window.milchWert || function(v){ return typeof v === 'number' ? v : (v && v.wert != null ? parseFloat(v.wert) || 0 : parseFloat(v) || 0); };
         const letzteMilchProKuh = {};
         Object.values(milchEintraege || {}).forEach(e => {
           if(!e || !e.datum || !e.prokuh) return;
           const istAbend = (e.zeit || 'morgen') === 'abend';
           const schluessel = istAbend ? 'abend' : 'morgen';
           Object.entries(e.prokuh).forEach(([kid, lRaw]) => {
-            const wert = parseFloat(lRaw) || 0;
+            const wert = _mWherde(lRaw);
             if(wert <= 0) return;
             if(!letzteMilchProKuh[kid]) letzteMilchProKuh[kid] = { morgen: null, abend: null };
             const aktuell = letzteMilchProKuh[kid][schluessel];
@@ -495,8 +497,9 @@ function renderKuhDetail() {
   const aktiveBs= bsList.find(([,bs])=>bs.status==='tragend'||bs.status==='besamt');
   const heute   = Date.now();
 
-  // Milch-Daten für Chart (alle, chronologisch)
-  const chartDaten = mListAll.map(([,m])=>({ l: parseFloat(m.prokuh[id])||0, d: m.datum, z: m.zeit }));
+  // Milch-Daten für Chart (alle, chronologisch) — v2-kompat: prokuh[id] kann Objekt sein
+  const _mWkd = window.milchWert || function(v){ return typeof v === 'number' ? v : (v && v.wert != null ? parseFloat(v.wert) || 0 : parseFloat(v) || 0); };
+  const chartDaten = mListAll.map(([,m])=>({ l: _mWkd(m.prokuh[id]), d: m.datum, z: m.zeit }));
   const chartMax = Math.max(...chartDaten.map(d=>d.l), 1);
   const mGesamt = chartDaten.reduce((s,d)=>s+d.l, 0);
   const mSchnitt = chartDaten.length ? Math.round(mGesamt/chartDaten.length*10)/10 : 0;
@@ -3106,11 +3109,12 @@ function renderStatistik() {
     </svg>`;
   }
 
-  // ── Milch pro Kuh (aus prokuh-Daten) ──
+  // ── Milch pro Kuh (aus prokuh-Daten) ── (v2-kompat: prokuh kann Objekt sein)
   const kuhMilch = {};
+  const _mW = window.milchWert || function(v){ return typeof v === 'number' ? v : (v && v.wert != null ? parseFloat(v.wert) || 0 : parseFloat(v) || 0); };
   milchListe.forEach(m => {
     if(m.prokuh) Object.entries(m.prokuh).forEach(([kId, liter]) => {
-      kuhMilch[kId] = (kuhMilch[kId]||0) + (parseFloat(liter)||0);
+      kuhMilch[kId] = (kuhMilch[kId]||0) + _mW(liter);
     });
   });
   const kuhMilchSorted = Object.entries(kuhMilch).sort((a,b)=>b[1]-a[1]);
@@ -5436,7 +5440,7 @@ window.spShowQuickView = function(kuhId) {
   var alleMilch = Object.entries(milchEintraege).filter(function(e){return e[1].prokuh && e[1].prokuh[kuhId];}).sort(function(a,b){return (b[1].datum||0)-(a[1].datum||0);});
   var letzteMilch = alleMilch[0];
   var milchInfo = letzteMilch
-    ? '<div style="font-size:.75rem;color:var(--text2);margin:.3rem 0">🥛 Letzte Milch: <b>'+new Date(letzteMilch[1].datum).toLocaleDateString('de-AT',{day:'numeric',month:'short'})+'</b> – '+(parseFloat(letzteMilch[1].prokuh[kuhId])||0)+'L '+(letzteMilch[1].zeit==='morgen'?'morgens':'abends')+'</div>'
+    ? '<div style="font-size:.75rem;color:var(--text2);margin:.3rem 0">🥛 Letzte Milch: <b>'+new Date(letzteMilch[1].datum).toLocaleDateString('de-AT',{day:'numeric',month:'short'})+'</b> – '+((window.milchWert?window.milchWert(letzteMilch[1].prokuh[kuhId]):(parseFloat(letzteMilch[1].prokuh[kuhId])||0)))+'L '+(letzteMilch[1].zeit==='morgen'?'morgens':'abends')+'</div>'
     : '<div style="font-size:.75rem;color:var(--text3);margin:.3rem 0">🥛 Keine Milcheinträge</div>';
 
   // Foto/Emoji
@@ -7738,18 +7742,25 @@ window.saveMilchWarnSchwelle = function() {
   showSaveToast && showSaveToast('Schwellenwert gespeichert: ±'+clamped+'%');
 };
 
-// ── Milch-Warnsystem: Durchschnitt berechnen ──
-window.getMilchDurchschnitt = function(kuhId) {
+// ── Milch-Warnsystem: Durchschnitt berechnen ── (v2-kompat, zeit-spezifisch)
+// zeit-Parameter: 'morgen' | 'abend' | undefined (dann alle Einträge)
+window.getMilchDurchschnitt = function(kuhId, zeit) {
+  const _mW = window.milchWert || function(v){ return typeof v === 'number' ? v : (v && v.wert != null ? parseFloat(v.wert) || 0 : parseFloat(v) || 0); };
   const eintraege = Object.values(milchEintraege)
-    .filter(m => m.prokuh && m.prokuh[kuhId])
-    .map(m => parseFloat(m.prokuh[kuhId])||0)
+    .filter(m => {
+      if(!m || !m.prokuh || !m.prokuh[kuhId]) return false;
+      // Wenn zeit-Filter gesetzt: nur passende Schicht (morgens/abends) berücksichtigen
+      if(zeit && (m.zeit || 'morgen') !== zeit) return false;
+      return true;
+    })
+    .map(m => _mW(m.prokuh[kuhId]))
     .filter(v => v > 0)
-    .slice(-10); // letzte 10 Einträge
+    .slice(-10); // letzte 10 Einträge derselben Schicht
   if(eintraege.length < 2) return null; // nicht genug Daten
   return eintraege.reduce((s,v)=>s+v,0) / eintraege.length;
 };
 
-// ── Live-Warnung im Milchformular ──
+// ── Live-Warnung im Milchformular (zeit-spezifisch) ──
 window.checkMilchWert = function(input, kuhId) {
   const wert = parseFloat((input.value||'').replace(',','.'));
   const warnEl = document.getElementById('milch-warn-'+kuhId);
@@ -7763,20 +7774,23 @@ window.checkMilchWert = function(input, kuhId) {
     warnEl.textContent=''; warnEl.style.display='none'; input.style.borderColor=''; return;
   }
 
-  const schnitt = window.getMilchDurchschnitt(kuhId);
+  // Aktuelle Schicht aus dem Formular auslesen (dynamisch, damit Wechsel morgen↔abend live wirkt)
+  const zeit = document.getElementById('m-zeit')?.value || 'morgen';
+  const schnitt = window.getMilchDurchschnitt(kuhId, zeit);
   if(schnitt === null) { warnEl.textContent=''; warnEl.style.display='none'; return; }
 
   const prozent = parseInt(localStorage.getItem('milchWarnProzent'))||50;
   const unterGrenze = schnitt * (1 - prozent/100);
   const oberGrenze  = schnitt * (1 + prozent/100);
+  const zeitLabel = zeit === 'abend' ? 'abends' : 'morgens';
 
   if(wert < unterGrenze) {
-    warnEl.textContent = '⚠ Ungewöhnlich wenig (Ø '+Math.round(schnitt*10)/10+' L)';
+    warnEl.textContent = '⚠ Ungewöhnlich wenig (Ø ' + zeitLabel + ' ' + Math.round(schnitt*10)/10 + ' L)';
     warnEl.style.color = 'var(--orange)';
     warnEl.style.display = '';
     input.style.borderColor = 'var(--orange)';
   } else if(wert > oberGrenze) {
-    warnEl.textContent = '⚠ Ungewöhnlich viel (Ø '+Math.round(schnitt*10)/10+' L)';
+    warnEl.textContent = '⚠ Ungewöhnlich viel (Ø ' + zeitLabel + ' ' + Math.round(schnitt*10)/10 + ' L)';
     warnEl.style.color = '#4ab8e8';
     warnEl.style.display = '';
     input.style.borderColor = '#4ab8e8';
