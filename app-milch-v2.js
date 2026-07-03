@@ -1,8 +1,8 @@
 // ══════════════════════════════════════════════════════════════
 //  HERDENPRO – MILCH v2  (LocalStorage-first Persistence)
-//  MODUL-VERSION: 2.3  ← wenn du das siehst, ist der Fix geladen
+//  MODUL-VERSION: 2.4  ← wenn du das siehst, ist der Fix geladen
 // ══════════════════════════════════════════════════════════════
-window.MILCH_V2_VERSION = '2.3';
+window.MILCH_V2_VERSION = '2.4';
 //  Löst die alten Probleme (Datenverlust, hängende Saves offline,
 //  Multi-Melker-Kollisionen, Aggregations-Verdopplung).
 //
@@ -30,10 +30,18 @@ window.milchWert = function(v) {
 };
 
 // ── Session-ID: gekoppelt an user.uid (persistent, nicht pro Tab)
+// Fällt zurück auf firebase.auth().currentUser wenn window._currentUser noch nicht gesetzt ist
 window.getMilchSessionId = function() {
   const u = window._currentUser;
   if(u && u.uid) return 'user_' + u.uid;
-  // Fallback: sessionStorage
+  // Fallback 1: Firebase Auth direkt (verfügbar sobald Session restored, vor DB-Load)
+  try {
+    if(typeof firebase !== 'undefined' && firebase.auth) {
+      const authUser = firebase.auth().currentUser;
+      if(authUser && authUser.uid) return 'user_' + authUser.uid;
+    }
+  } catch(e) {}
+  // Fallback 2: sessionStorage
   let sid = sessionStorage.getItem('milkSessionId');
   if(!sid) {
     sid = 'anon_' + Math.random().toString(36).slice(2, 10);
@@ -276,10 +284,11 @@ window.onMilchEintraegeChanged = function() {
           changed = true;
           return;
         }
-        // Kein Meta oder identischer Wert wie unser payload.wert → als bestätigt behandeln
-        // (Kann bei Legacy-Einträgen ohne meta passieren)
+        // Auto-Confirm für Legacy-Pending: wenn Firebase-Wert existiert und
+        // ≈ dem lokalen pending-Wert entspricht, ist er bereits synced —
+        // unabhängig von Session-Mismatch (kann durch Session-ID-Wechsel entstehen)
         const fbNum = parseFloat(fbVal) || 0;
-        if(!meta && Math.abs(fbNum - payload.wert) < 0.05) {
+        if(Math.abs(fbNum - payload.wert) < 0.05) {
           delete p[entryKey][kuhId];
           if(Object.keys(p[entryKey]).length === 0) delete p[entryKey];
           changed = true;
