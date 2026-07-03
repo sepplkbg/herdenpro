@@ -1,8 +1,8 @@
 // ══════════════════════════════════════════════════════════════
 //  HERDENPRO – MILCH v2  (LocalStorage-first Persistence)
-//  MODUL-VERSION: 2.8  ← wenn du das siehst, ist der Fix geladen
+//  MODUL-VERSION: 2.9  ← wenn du das siehst, ist der Fix geladen
 // ══════════════════════════════════════════════════════════════
-window.MILCH_V2_VERSION = '2.8';
+window.MILCH_V2_VERSION = '2.9';
 //  Löst die alten Probleme (Datenverlust, hängende Saves offline,
 //  Multi-Melker-Kollisionen, Aggregations-Verdopplung).
 //
@@ -254,6 +254,71 @@ window.clearMilchSyncError = function() {
   window._milchSyncError = null;
   window._milchErrorToastShown = false;
   updateSyncBanner();
+};
+
+// ── EINZELNEN Pending-Wert live synchen und Ergebnis genau zeigen ──
+window.milchSyncOneAndReport = async function(entryKey, kuhId) {
+  const pending = getPending();
+  const payload = pending[entryKey] && pending[entryKey][kuhId];
+  if(!payload) { alert('Wert nicht mehr in pending.'); return; }
+
+  const raw = entryKey.replace(/^v2_/, '');
+  const parts = raw.split('_');
+  const iso = parts[0];
+  const zeit = parts[1] || 'morgen';
+  const datumTs = new Date(iso + 'T12:00').getTime();
+
+  const updatePayload = {};
+  updatePayload['datum'] = datumTs;
+  updatePayload['zeit'] = zeit;
+  updatePayload['art'] = 'prokuh';
+  updatePayload['lastUpdate'] = Date.now();
+  updatePayload['prokuh/' + kuhId] = parseFloat(payload.wert) || 0;
+  updatePayload['meta/' + kuhId] = {
+    session: payload.session,
+    userName: payload.userName,
+    ts: payload.ts
+  };
+
+  const targetPath = 'milch/' + entryKey;
+  const start = Date.now();
+  let writeResult, readResult;
+  try {
+    const wp = firebase.database().ref(targetPath).update(updatePayload);
+    const tp = new Promise((_, reject) => setTimeout(() => reject(new Error('Write-Timeout 10s')), 10000));
+    await Promise.race([wp, tp]);
+    writeResult = '✓ OK (' + (Date.now() - start) + 'ms)';
+  } catch(e) {
+    writeResult = '❌ FAIL: ' + (e.message || String(e)).slice(0, 100);
+  }
+
+  // Jetzt gleich lesen was ankam
+  const readStart = Date.now();
+  try {
+    const snap = await firebase.database().ref(targetPath).once('value');
+    const val = snap.val();
+    if(val && val.prokuh && val.prokuh[kuhId] != null) {
+      readResult = '✓ Wert am Server: ' + val.prokuh[kuhId] + ' (Read ' + (Date.now() - readStart) + 'ms)';
+    } else {
+      readResult = '❌ Wert NICHT am Server nach Write! Entry vorhanden: ' + (val ? 'ja' : 'nein');
+    }
+  } catch(e) {
+    readResult = '❌ Read fail: ' + (e.message || e);
+  }
+
+  alert(
+    '🔬 EINZEL-SYNC-TEST\n\n' +
+    'Pfad: ' + targetPath + '\n' +
+    'Kuh-ID: ' + kuhId + '\n' +
+    'Wert: ' + payload.wert + ' L\n' +
+    'Session (pending): ' + payload.session + '\n' +
+    'Session (aktuell): ' + getMilchSessionId() + '\n\n' +
+    'WRITE: ' + writeResult + '\n' +
+    'READ nach Write: ' + readResult + '\n\n' +
+    (writeResult.startsWith('✓') && readResult.startsWith('✓')
+      ? '→ Write geht durch! Falls Banner trotzdem hängt: Bestätigungs-Logik ist buggy.\n   Auf „🔄 Retry alle" tippen sollte pending clearen.'
+      : '→ Hier ist der Fehler. Details oben.')
+  );
 };
 
 // ── Test-Write: testet 3 verschiedene Firebase-Pfade um die Rules zu diagnostizieren ──
@@ -542,10 +607,11 @@ window.showMilchPendingDetails = function() {
       const name = k ? (k.name || '') : '(unbekannte Kuh)';
       const fbHas = ((window.milchEintraege||{})[entryKey]||{}).prokuh?.[kuhId];
       const fbMark = fbHas != null ? ' <span style="color:var(--green);font-size:.7rem">✓ in Cloud</span>' : ' <span style="color:var(--orange);font-size:.7rem">✗ nicht in Cloud</span>';
-      rowsHtml += '<div style="display:flex;justify-content:space-between;align-items:center;padding:.35rem .5rem;border:1px solid var(--border);border-radius:6px;margin-bottom:.25rem;font-size:.78rem">' +
-        '<span>' + nr + ' ' + name + fbMark + '</span>' +
-        '<div style="display:flex;align-items:center;gap:.5rem">' +
+      rowsHtml += '<div style="display:flex;justify-content:space-between;align-items:center;padding:.35rem .5rem;border:1px solid var(--border);border-radius:6px;margin-bottom:.25rem;font-size:.78rem;flex-wrap:wrap;gap:.3rem">' +
+        '<span style="flex:1;min-width:60%">' + nr + ' ' + name + fbMark + '</span>' +
+        '<div style="display:flex;align-items:center;gap:.4rem;flex-wrap:wrap">' +
           '<b style="color:var(--gold)">' + payload.wert + ' L</b>' +
+          '<button onclick="milchSyncOneAndReport(\'' + entryKey + '\',\'' + kuhId + '\')" style="background:rgba(74,184,232,.15);border:1px solid rgba(74,184,232,.5);color:#4ab8e8;padding:.2rem .5rem;border-radius:4px;font-size:.68rem;cursor:pointer">🔬 Test</button>' +
           '<button onclick="discardMilchPending(\'' + entryKey + '\',\'' + kuhId + '\')" style="background:rgba(200,60,60,.15);border:1px solid rgba(200,60,60,.5);color:#e05a5a;padding:.2rem .5rem;border-radius:4px;font-size:.68rem;cursor:pointer">Verwerfen</button>' +
         '</div>' +
       '</div>';
