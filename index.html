@@ -19,11 +19,11 @@
 ═══════════════════════════════════════════════════════════════════════════ -->
 <script>
 // Force clear cache if version changed
-if(localStorage.getItem('hp_version') !== 'v37.3') {
+if(localStorage.getItem('hp_version') !== 'v38.1') {
   localStorage.removeItem('mainNav');
   localStorage.removeItem('mehrOrder');
   localStorage.removeItem('mehrOrder');
-  localStorage.setItem('hp_version','v37.3');
+  localStorage.setItem('hp_version','v38.1');
   // Force SW update
   if('serviceWorker' in navigator) {
     navigator.serviceWorker.getRegistrations().then(function(regs) {
@@ -39,8 +39,8 @@ if(localStorage.getItem('hp_version') !== 'v37.3') {
       });
     }
     // Reload once after clearing
-    if(!sessionStorage.getItem('reloaded_v37_3')) {
-      sessionStorage.setItem('reloaded_v37_3','1');
+    if(!sessionStorage.getItem('reloaded_v38_1')) {
+      sessionStorage.setItem('reloaded_v38_1','1');
       window.location.reload(true);
     }
   }
@@ -268,6 +268,9 @@ window.FIREBASE_CONFIG = {
     ⚠ Wieder online – Daten werden synchronisiert. Bei mehreren Geräten bitte Einträge prüfen.
   </div>
 
+  <!-- Milch v2: globaler Sync-Banner (immer sichtbar solange pending oder Konflikte) -->
+  <div id="milch-sync-banner" class="milch-sync-banner" style="display:none"></div>
+
   <!-- Top Bar -->
   <div id="topbar">
     <div style="display:flex;flex-direction:column;line-height:1.1">
@@ -341,6 +344,7 @@ window.FIREBASE_CONFIG = {
 <script src="app-core.js"></script>
 <script src="app-views.js"></script>
 <script src="app-features.js"></script>
+<script src="app-milch-v2.js"></script>
 <script>
 document.addEventListener('DOMContentLoaded', function() {
   var mb = document.getElementById('nav-mehr');
