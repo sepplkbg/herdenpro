@@ -1,4 +1,4 @@
-const CACHE = 'herdenpro-v178';
+const CACHE = 'herdenpro-v180';
 const SHELL = [
   '/herdenpro/',
   '/herdenpro/manifest.json'
@@ -35,7 +35,7 @@ self.addEventListener('fetch', e => {
   // index.html, app-*.js, styles.css IMMER frisch aus dem Netz holen
   // (network-first ohne Cache-Speicherung) – damit Updates sofort durchschlagen.
   const url = e.request.url;
-  const isCritical = /\/(index\.html|app-[a-z]+\.js|styles\.css|sw\.js|manifest\.json)$/i.test(url) || url.endsWith('/herdenpro/');
+  const isCritical = /\/(index\.html|app-[a-z0-9\-]+\.js|styles\.css|sw\.js|manifest\.json)$/i.test(url) || url.endsWith('/herdenpro/');
   if(isCritical) {
     e.respondWith(
       fetch(e.request, { cache: 'no-store' })

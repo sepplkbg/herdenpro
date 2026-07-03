@@ -1133,11 +1133,14 @@ window.showMilchDetail = function(id, e) {
   const zeit = e.zeit === 'abend' ? '🌇 Abends' : '🌅 Morgens';
   
   let kuhZeilen = '';
+  const _mWdet = window.milchWert || function(v){ return typeof v === 'number' ? v : (v && v.wert != null ? parseFloat(v.wert) || 0 : parseFloat(v) || 0); };
   if(e.prokuh && Object.keys(e.prokuh).length > 0) {
     const kuhEntries = Object.entries(e.prokuh)
       .map(([kuhId, liter]) => {
         const k = kuehe[kuhId];
-        return {nr: parseInt(k?.nr)||0, name: k?.name||'–', bauer: k?.bauer||'', liter};
+        const wert = _mWdet(liter);
+        const melker = (typeof liter === 'object' && liter && liter.userName) ? liter.userName : '';
+        return {nr: parseInt(k?.nr)||0, name: k?.name||'–', bauer: k?.bauer||'', liter: Math.round(wert*10)/10, melker};
       })
       .sort((a,b) => a.nr - b.nr);
     
@@ -1808,11 +1811,12 @@ window.editMilchEintrag = function(id) {
       const row = inp.closest('.milch-kuh-row');
       if(row) { row.style.background=''; inp.closest('.milch-kuh-row')?.querySelector('.nr-badge')?.style && (inp.closest('.milch-kuh-row').querySelector('.nr-badge').style.background=''); }
     });
+    const _mW = window.milchWert || function(v){ return typeof v === 'number' ? v : (v && v.wert != null ? parseFloat(v.wert) || 0 : parseFloat(v) || 0); };
     Object.entries(e.prokuh).forEach(([kuhId, liter]) => {
       const inp = document.querySelector(`.kuh-liter[data-id="${kuhId}"]`);
       if(inp) {
-        // Auf 1 Nachkommastelle runden (Float-Addition aus Aggregation)
-        inp.value = Math.round((parseFloat(liter)||0) * 10) / 10;
+        // Auf 1 Nachkommastelle runden (Float-Addition aus Aggregation). milchWert für Objekt-Struktur.
+        inp.value = Math.round(_mW(liter) * 10) / 10;
         onMilchInput(inp);
       }
     });
@@ -2271,18 +2275,52 @@ function renderMilch() {
       });
     }
     const g = grupiertMap.get(key);
-    g.gesamt += (e.gesamt || 0);
-    g.anzahlMelker++;
     g.ids.push(id);
     g.molkerei = g.molkerei || !!e.molkerei;
     if(e.notiz) g.notizen.push(e.notiz);
+    // Milch v2: per-Kuh-Werte extrahieren (Zahl oder Objekt); gesamt aus prokuh berechnen
+    let entrySum = 0;
+    const entrySessions = new Set();
+    const mW = window.milchWert || function(v){ return typeof v === 'number' ? v : (v && v.wert != null ? parseFloat(v.wert) || 0 : parseFloat(v) || 0); };
     if(e.prokuh) {
       Object.entries(e.prokuh).forEach(([kuhId, l]) => {
-        g.prokuh[kuhId] = (g.prokuh[kuhId] || 0) + (parseFloat(l) || 0);
+        const w = mW(l);
+        // Bei mehreren Einträgen für dieselbe Kuh: letzter (nach ts) gewinnt
+        if(typeof l === 'object' && l && l.session) entrySessions.add(l.session);
+        if(!g.prokuh[kuhId] || (typeof l === 'object' && l && l.ts && (!g._prokuhTs || l.ts > (g._prokuhTs[kuhId]||0)))) {
+          g.prokuh[kuhId] = w;
+          if(!g._prokuhTs) g._prokuhTs = {};
+          if(typeof l === 'object' && l && l.ts) g._prokuhTs[kuhId] = l.ts;
+        } else if(typeof l === 'number' && g.prokuh[kuhId] == null) {
+          g.prokuh[kuhId] = w;
+        }
+        entrySum += w;
       });
+    }
+    // gesamt aus prokuh berechnen (überschreibt e.gesamt bei prokuh-Modus)
+    g.gesamt += entrySum > 0 ? entrySum : (e.gesamt || 0);
+    // Melker-Zahl: distinct sessions statt "1 pro Firebase-Eintrag"
+    if(entrySessions.size > 0) {
+      if(!g._alleSessions) g._alleSessions = new Set();
+      entrySessions.forEach(s => g._alleSessions.add(s));
+      g.anzahlMelker = g._alleSessions.size;
+    } else if(e._session) {
+      if(!g._alleSessions) g._alleSessions = new Set();
+      g._alleSessions.add(e._session);
+      g.anzahlMelker = g._alleSessions.size;
+    } else {
+      g.anzahlMelker++;
     }
     if(e.art === 'gesamt' && !e.prokuh) g.hatGesamtOnly = true;
   });
+  // Nach Aggregation: gesamt neu berechnen aus finalen prokuh-Werten (deduped nach ts)
+  for(const [key, g] of grupiertMap) {
+    if(Object.keys(g.prokuh).length > 0) {
+      let sum = 0;
+      Object.values(g.prokuh).forEach(v => sum += (parseFloat(v) || 0));
+      g.gesamt = Math.round(sum * 10) / 10;
+    }
+  }
   const grupiert = [...grupiertMap.values()].sort((a,b) => b.datum - a.datum);
 
   // Für showMilchDetail zugänglich machen
@@ -2409,11 +2447,18 @@ function renderMilch() {
           </div>
           <!-- Auto-Save Statusanzeige -->
           <div style="display:flex;align-items:center;justify-content:space-between;padding:.45rem .65rem;margin-bottom:.6rem;background:rgba(77,184,78,.08);border:1px solid rgba(77,184,78,.25);border-radius:var(--radius-sm)">
-            <span style="font-size:.74rem;color:var(--text2)">🛡 Werte lokal gesichert · unten „Speichern" tippen</span>
+            <span style="font-size:.74rem;color:var(--text2)">🛡 Werte werden bei jedem Tippen sofort gesichert</span>
             <span id="milch-autosave-indicator" style="font-size:.72rem;color:var(--text3);font-weight:600"></span>
           </div>
           <div id="m-prokuh-block">
-            <div style="font-size:.72rem;color:var(--text3);margin-bottom:.5rem">Liter pro Kuh · 0 oder leer = nicht gemolken</div>
+            <!-- Quick-Entry: Kuhnummer + Liter, ohne Scrollen ─ sticky ganz oben -->
+            <div id="m-quick-entry" style="position:sticky;top:-.5rem;z-index:5;background:linear-gradient(180deg,var(--bg2) 88%,transparent);padding:.5rem .1rem .55rem;margin:0 -.1rem .5rem;border-bottom:1px solid var(--border);display:flex;gap:.35rem;align-items:center">
+              <span style="color:var(--gold);font-weight:700;font-size:.8rem;flex-shrink:0">⚡</span>
+              <input id="mq-nr" class="inp" type="text" inputmode="numeric" placeholder="Nr." autocomplete="off" style="width:4.2rem;flex-shrink:0;text-align:center;font-weight:700;font-size:1rem;padding:.4rem .3rem" onkeydown="milchQuickKey(event)" onfocus="this.select()" />
+              <input id="mq-liter" class="inp" type="text" inputmode="decimal" placeholder="Liter" autocomplete="off" style="flex:1;min-width:0;text-align:center;font-weight:700;font-size:1rem;padding:.4rem .3rem" onkeydown="milchQuickKey(event)" onfocus="this.select()" />
+              <button onclick="milchQuickAdd()" class="btn-primary" style="padding:.45rem .8rem;font-size:1.1rem;flex-shrink:0;min-width:2.5rem;line-height:1">→</button>
+            </div>
+            <div style="font-size:.72rem;color:var(--text3);margin-bottom:.5rem">Liter pro Kuh · 0 oder leer = nicht gemolken · <span style="color:var(--gold)">⚡ = Schnell-Eingabe</span></div>
             <div id="m-bauer-filter" style="display:flex;gap:.3rem;flex-wrap:wrap;margin-bottom:.6rem">
               <button class="filter-chip active" onclick="filterMilchBauer('',this)">Alle</button>
               ${[...new Set(kueheOben.map(([,k])=>k.bauer).filter(Boolean))].map(b=>`<button class="filter-chip" onclick="filterMilchBauer('${b}',this)">${b.split(' ').pop()}</button>`).join('')}
@@ -2477,7 +2522,7 @@ function renderMilch() {
           <textarea id="m-notiz" class="inp" rows="2" placeholder="Notizen" style="margin-top:.4rem"></textarea>
           <div class="form-actions" style="margin-top:.8rem">
             <button class="btn-secondary" onclick="closeForm('milch-form-overlay')">Abbrechen</button>
-            <button class="btn-primary" onclick="saveMilch()">💾 Speichern</button>
+            <button class="btn-primary" onclick="saveMilch()">✓ Fertig</button>
           </div>
         </div>
       </div>
@@ -5090,15 +5135,33 @@ window.exportMilchMolkerei=function(){
       });
     }
     const g = grupiertMap.get(key);
-    g.gesamt += (e.gesamt || 0);
     g.molkerei = g.molkerei || !!e.molkerei;
     if(e.notiz) g.notizen.push(e.notiz);
+    // v2-kompat: prokuh-Wert kann Objekt sein, letzter ts gewinnt
+    const _mWmol = window.milchWert || function(v){ return typeof v === 'number' ? v : (v && v.wert != null ? parseFloat(v.wert) || 0 : parseFloat(v) || 0); };
+    let entrySum = 0;
     if(e.prokuh) {
       Object.entries(e.prokuh).forEach(([kuhId, l]) => {
-        g.prokuh[kuhId] = (g.prokuh[kuhId] || 0) + (parseFloat(l) || 0);
+        const w = _mWmol(l);
+        const ts = (typeof l === 'object' && l && l.ts) ? l.ts : 0;
+        if(!g._prokuhTs) g._prokuhTs = {};
+        if(g.prokuh[kuhId] == null || ts > (g._prokuhTs[kuhId] || 0)) {
+          g.prokuh[kuhId] = w;
+          g._prokuhTs[kuhId] = ts;
+        }
+        entrySum += w;
       });
     }
+    g.gesamt += entrySum > 0 ? entrySum : (e.gesamt || 0);
   });
+  // Nach Aggregation: gesamt aus finalen prokuh-Werten
+  for(const [key, g] of grupiertMap) {
+    if(Object.keys(g.prokuh).length > 0) {
+      let sum = 0;
+      Object.values(g.prokuh).forEach(v => sum += (parseFloat(v) || 0));
+      g.gesamt = Math.round(sum * 10) / 10;
+    }
+  }
 
   const kuhIds=Object.keys(kuehe);
   const sortedKuehe=kuhIds.sort((a,b)=>(parseInt(kuehe[a]?.nr)||0)-(parseInt(kuehe[b]?.nr)||0));
@@ -7426,12 +7489,13 @@ function _berichtKuhSchnitt7T(kuhId, zeit, ausschlussDatum) {
   const heute = Date.now();
   const start = heute - 7 * 86400000;
   const werte = [];
+  const _mW = window.milchWert || function(v){ return typeof v === 'number' ? v : (v && v.wert != null ? parseFloat(v.wert) || 0 : parseFloat(v) || 0); };
   Object.values(milchEintraege || {}).forEach(e => {
     if(!e || !e.datum || !e.prokuh) return;
     if(e.datum < start || e.datum > heute) return;
     if((e.zeit || 'morgen') !== zeit) return;
     if(ausschlussDatum && Math.abs(e.datum - ausschlussDatum) < 12 * 3600000) return;
-    const v = parseFloat(e.prokuh[kuhId]) || 0;
+    const v = _mW(e.prokuh[kuhId]);
     if(v > 0) werte.push(v);
   });
   if(werte.length === 0) return null;
@@ -7462,25 +7526,47 @@ window.computeMilchBericht = function(datumTs, zeit) {
   );
   if(entries.length === 0) return null;
 
-  const prokuh = {};            // kuhId → Summe Liter (über alle Melker)
+  const prokuh = {};            // kuhId → Liter (letzter Melker gewinnt bei Konflikt)
+  const prokuhTs = {};          // kuhId → ts, für „letzter gewinnt"
   const sessionMap = {};        // sessionId → {kuhCount, liter, name}
   let molkereiAnyTrue = false;
+  const _mWber = window.milchWert || function(v){ return typeof v === 'number' ? v : (v && v.wert != null ? parseFloat(v.wert) || 0 : parseFloat(v) || 0); };
 
   entries.forEach(([id, e]) => {
-    const sid = e._session || 'unbekannt';
-    if(!sessionMap[sid]) sessionMap[sid] = { kuhCount:0, liter:0, name: e._userName || '' };
-    // Falls Name in einem späteren Eintrag der gleichen Session steht, übernehmen
-    if(e._userName && !sessionMap[sid].name) sessionMap[sid].name = e._userName;
+    // Fallback für alte random-key-Einträge: e._session verwenden
+    const fallbackSid = e._session || 'unbekannt';
+    const fallbackName = e._userName || '';
+    if(e.molkerei) molkereiAnyTrue = true;
     if(!e.prokuh) return;
     Object.entries(e.prokuh).forEach(([kuhId, l]) => {
-      const v = parseFloat(l) || 0;
-      if(v > 0) {
-        prokuh[kuhId] = (prokuh[kuhId] || 0) + v;
+      const v = _mWber(l);
+      if(v <= 0) return;
+      // Attribution pro Kuh (v2) oder pro Eintrag (alt)
+      const sid = (typeof l === 'object' && l && l.session) ? l.session : fallbackSid;
+      const name = (typeof l === 'object' && l && l.userName) ? l.userName : fallbackName;
+      const ts = (typeof l === 'object' && l && l.ts) ? l.ts : (e.createdAt || 0);
+      if(!sessionMap[sid]) sessionMap[sid] = { kuhCount:0, liter:0, name };
+      if(name && !sessionMap[sid].name) sessionMap[sid].name = name;
+      // Letzter ts gewinnt pro Kuh
+      if(prokuh[kuhId] == null || ts > (prokuhTs[kuhId] || 0)) {
+        // Bei Wechsel: alten Session-Beitrag abziehen
+        if(prokuh[kuhId] != null && prokuhTs[kuhId]) {
+          // Finde welche Session hatte den alten Wert
+          const alteSids = Object.keys(sessionMap);
+          alteSids.forEach(asid => {
+            if(sessionMap[asid]._lastKuh === kuhId) {
+              sessionMap[asid].liter -= prokuh[kuhId];
+              sessionMap[asid].kuhCount--;
+            }
+          });
+        }
+        prokuh[kuhId] = v;
+        prokuhTs[kuhId] = ts;
         sessionMap[sid].kuhCount++;
         sessionMap[sid].liter += v;
+        sessionMap[sid]._lastKuh = kuhId;
       }
     });
-    if(e.molkerei) molkereiAnyTrue = true;
   });
 
   const gesamt = Object.values(prokuh).reduce((s,v) => s + v, 0);
