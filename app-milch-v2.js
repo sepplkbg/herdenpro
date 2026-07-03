@@ -1,6 +1,8 @@
 // ══════════════════════════════════════════════════════════════
 //  HERDENPRO – MILCH v2  (LocalStorage-first Persistence)
+//  MODUL-VERSION: 2.3  ← wenn du das siehst, ist der Fix geladen
 // ══════════════════════════════════════════════════════════════
+window.MILCH_V2_VERSION = '2.3';
 //  Löst die alten Probleme (Datenverlust, hängende Saves offline,
 //  Multi-Melker-Kollisionen, Aggregations-Verdopplung).
 //
@@ -341,13 +343,49 @@ window.updateSyncBanner = function() {
   if(!online) {
     banner.className = 'milch-sync-banner milch-sync-offline';
     banner.innerHTML = '<span>📵</span><span>Offline · ' + n + ' Wert' + (n > 1 ? 'e' : '') +
-      ' auf Gerät gesichert · Sync sobald online</span>';
+      ' auf Gerät gesichert · Sync sobald online <span style="opacity:.5;font-size:.65rem">[v' + (window.MILCH_V2_VERSION || '?') + ']</span></span>';
   } else {
     banner.className = 'milch-sync-banner milch-sync-pending';
     banner.innerHTML = '<span>📤</span><span>' + n + ' Wert' + (n > 1 ? 'e' : '') +
-      ' werden übertragen…</span>' +
+      ' werden übertragen… <span style="opacity:.5;font-size:.65rem">[v' + (window.MILCH_V2_VERSION || '?') + ']</span></span>' +
+      '<button class="milch-sync-action" onclick="showMilchPendingDetails()">?</button>' +
       '<button class="milch-sync-action" onclick="syncMilchPending()">Jetzt versuchen</button>';
   }
+};
+
+// ── Debug: zeigt was in pending steckt ──
+window.showMilchPendingDetails = function() {
+  const p = getPending();
+  const entries = Object.entries(p);
+  if(entries.length === 0) {
+    alert('Keine ausstehenden Werte.');
+    return;
+  }
+  let msg = 'Milch-Modul v' + (window.MILCH_V2_VERSION || '?') + '\n\n';
+  msg += 'Session-ID: ' + getMilchSessionId() + '\n';
+  msg += 'Firebase online: ' + (typeof firebase !== 'undefined' && firebase.database ? 'ja' : 'NEIN!') + '\n';
+  msg += 'navigator.onLine: ' + navigator.onLine + '\n\n';
+  msg += 'Ausstehende Werte (' + entries.reduce((s,[,c]) => s + Object.keys(c).length, 0) + '):\n\n';
+  entries.forEach(([entryKey, cows]) => {
+    msg += '📅 ' + entryKey.replace(/^v2_/, '') + ':\n';
+    Object.entries(cows).forEach(([kuhId, payload]) => {
+      const k = (window.kuehe || {})[kuhId];
+      const nr = k ? '#' + k.nr : kuhId.slice(0, 6);
+      const name = k ? k.name : '';
+      msg += '  ' + nr + ' ' + name + ': ' + payload.wert + ' L (Melker: ' + (payload.userName || '?') + ')\n';
+    });
+    msg += '\n';
+  });
+  msg += '\n💡 Tipp: Wenn hier Werte sind die du löschen willst,\nkannst du "clearMilchPending()" in der Konsole aufrufen.';
+  alert(msg);
+};
+
+// ── Notfall: alle pending löschen (nur für Debug) ──
+window.clearMilchPending = function() {
+  if(!confirm('Wirklich ALLE ' + countPending() + ' ausstehenden Milchwerte VERWERFEN?\n\nDies löscht sie nur lokal — Werte die schon in der Cloud sind bleiben. Fortfahren?')) return;
+  try { localStorage.removeItem('milchPendingV2'); } catch(e) {}
+  updateSyncBanner();
+  if(window.showSaveToast) window.showSaveToast('✓ Alle Pending gelöscht');
 };
 
 // ══════════════════════════════════════════════════════════════
