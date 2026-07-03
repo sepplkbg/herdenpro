@@ -1134,12 +1134,16 @@ window.showMilchDetail = function(id, e) {
   
   let kuhZeilen = '';
   const _mWdet = window.milchWert || function(v){ return typeof v === 'number' ? v : (v && v.wert != null ? parseFloat(v.wert) || 0 : parseFloat(v) || 0); };
+  const _eMeta = e.meta || {};
   if(e.prokuh && Object.keys(e.prokuh).length > 0) {
     const kuhEntries = Object.entries(e.prokuh)
       .map(([kuhId, liter]) => {
         const k = kuehe[kuhId];
         const wert = _mWdet(liter);
-        const melker = (typeof liter === 'object' && liter && liter.userName) ? liter.userName : '';
+        // Melker-Name: neu aus meta, legacy aus Objekt
+        const m = _eMeta[kuhId];
+        const melker = (m && m.userName) ? m.userName
+          : (typeof liter === 'object' && liter && liter.userName) ? liter.userName : '';
         return {nr: parseInt(k?.nr)||0, name: k?.name||'–', bauer: k?.bauer||'', liter: Math.round(wert*10)/10, melker};
       })
       .sort((a,b) => a.nr - b.nr);
@@ -2278,21 +2282,25 @@ function renderMilch() {
     g.ids.push(id);
     g.molkerei = g.molkerei || !!e.molkerei;
     if(e.notiz) g.notizen.push(e.notiz);
-    // Milch v2: per-Kuh-Werte extrahieren (Zahl oder Objekt); gesamt aus prokuh berechnen
+    // Milch v2: prokuh ist Zahl, Attribution in e.meta[kuhId]. Legacy-Objekte auch supported.
     let entrySum = 0;
     const entrySessions = new Set();
     const mW = window.milchWert || function(v){ return typeof v === 'number' ? v : (v && v.wert != null ? parseFloat(v.wert) || 0 : parseFloat(v) || 0); };
+    const eMeta = e.meta || {};
     if(e.prokuh) {
       Object.entries(e.prokuh).forEach(([kuhId, l]) => {
         const w = mW(l);
+        // Attribution herausfinden — neu: aus e.meta[kuhId], legacy: aus l.session
+        const m = eMeta[kuhId];
+        let session = null, ts = 0;
+        if(m && m.session) { session = m.session; ts = m.ts || 0; }
+        else if(typeof l === 'object' && l && l.session) { session = l.session; ts = l.ts || 0; }
+        if(session) entrySessions.add(session);
         // Bei mehreren Einträgen für dieselbe Kuh: letzter (nach ts) gewinnt
-        if(typeof l === 'object' && l && l.session) entrySessions.add(l.session);
-        if(!g.prokuh[kuhId] || (typeof l === 'object' && l && l.ts && (!g._prokuhTs || l.ts > (g._prokuhTs[kuhId]||0)))) {
+        if(!g._prokuhTs) g._prokuhTs = {};
+        if(g.prokuh[kuhId] == null || ts > (g._prokuhTs[kuhId] || 0)) {
           g.prokuh[kuhId] = w;
-          if(!g._prokuhTs) g._prokuhTs = {};
-          if(typeof l === 'object' && l && l.ts) g._prokuhTs[kuhId] = l.ts;
-        } else if(typeof l === 'number' && g.prokuh[kuhId] == null) {
-          g.prokuh[kuhId] = w;
+          g._prokuhTs[kuhId] = ts;
         }
         entrySum += w;
       });
@@ -7538,13 +7546,18 @@ window.computeMilchBericht = function(datumTs, zeit) {
     const fallbackName = e._userName || '';
     if(e.molkerei) molkereiAnyTrue = true;
     if(!e.prokuh) return;
+    const eMeta = e.meta || {};
     Object.entries(e.prokuh).forEach(([kuhId, l]) => {
       const v = _mWber(l);
       if(v <= 0) return;
-      // Attribution pro Kuh (v2) oder pro Eintrag (alt)
-      const sid = (typeof l === 'object' && l && l.session) ? l.session : fallbackSid;
-      const name = (typeof l === 'object' && l && l.userName) ? l.userName : fallbackName;
-      const ts = (typeof l === 'object' && l && l.ts) ? l.ts : (e.createdAt || 0);
+      // Attribution: v2 meta, dann legacy-Objekt, dann Fallback aus Entry-Ebene
+      const m = eMeta[kuhId];
+      const sid = (m && m.session) ? m.session
+        : (typeof l === 'object' && l && l.session) ? l.session : fallbackSid;
+      const name = (m && m.userName) ? m.userName
+        : (typeof l === 'object' && l && l.userName) ? l.userName : fallbackName;
+      const ts = (m && m.ts) ? m.ts
+        : (typeof l === 'object' && l && l.ts) ? l.ts : (e.createdAt || 0);
       if(!sessionMap[sid]) sessionMap[sid] = { kuhCount:0, liter:0, name };
       if(name && !sessionMap[sid].name) sessionMap[sid].name = name;
       // Letzter ts gewinnt pro Kuh
