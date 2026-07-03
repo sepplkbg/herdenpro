@@ -1,8 +1,8 @@
 // ══════════════════════════════════════════════════════════════
 //  HERDENPRO – MILCH v2  (LocalStorage-first Persistence)
-//  MODUL-VERSION: 2.7  ← wenn du das siehst, ist der Fix geladen
+//  MODUL-VERSION: 2.8  ← wenn du das siehst, ist der Fix geladen
 // ══════════════════════════════════════════════════════════════
-window.MILCH_V2_VERSION = '2.7';
+window.MILCH_V2_VERSION = '2.8';
 //  Löst die alten Probleme (Datenverlust, hängende Saves offline,
 //  Multi-Melker-Kollisionen, Aggregations-Verdopplung).
 //
@@ -256,39 +256,72 @@ window.clearMilchSyncError = function() {
   updateSyncBanner();
 };
 
-// ── Test-Write: schreibt eine Test-Zahl in Firebase und zeigt Ergebnis ──
-window.milchTestWrite = function() {
+// ── Test-Write: testet 3 verschiedene Firebase-Pfade um die Rules zu diagnostizieren ──
+window.milchTestWrite = async function() {
   if(typeof firebase === 'undefined' || !firebase.database) {
     alert('Firebase nicht verfügbar');
     return;
   }
-  const testKey = 'milch_test_' + Date.now();
-  const testPath = 'milch_debug/' + testKey;
-  const startTime = Date.now();
-  const wp = firebase.database().ref(testPath).set({
-    ts: startTime,
-    session: getMilchSessionId(),
-    test: true
+  const runOne = async function(path, payload) {
+    const start = Date.now();
+    try {
+      const wp = firebase.database().ref(path).set(payload);
+      const tp = new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout 8s')), 8000));
+      await Promise.race([wp, tp]);
+      // Cleanup wenn erfolgreich (auf altem Pfad)
+      firebase.database().ref(path).remove().catch(() => {});
+      return { ok: true, ms: Date.now() - start };
+    } catch(e) {
+      return { ok: false, ms: Date.now() - start, err: (e.message || String(e)).slice(0, 100) };
+    }
+  };
+
+  const now = Date.now();
+  const results = {};
+
+  // Test 1: alter random-key Pfad wie bisher (funktionierte vor v2)
+  results.oldStyle = await runOne('milch/-TEST_' + now, {
+    datum: now, zeit: 'test', art: 'prokuh', gesamt: 0, test: true
   });
-  const tp = new Promise((_, reject) => setTimeout(() => reject(new Error('Test-Timeout 10s')), 10000));
-  Promise.race([wp, tp])
-    .then(() => {
-      const duration = Date.now() - startTime;
-      alert('✓ TEST-WRITE ERFOLGREICH!\n\nDauer: ' + duration + 'ms\nPfad: ' + testPath + '\n\n' +
-        'Firebase-Schreiben funktioniert grundsätzlich.\nWenn Milch-Werte trotzdem hängen, sind es die\nRules oder ein spezieller Pfad-Fehler.');
-      // Cleanup
-      setTimeout(() => firebase.database().ref(testPath).remove(), 5000);
-    })
-    .catch(e => {
-      const duration = Date.now() - startTime;
-      alert('❌ TEST-WRITE FEHLGESCHLAGEN!\n\nDauer: ' + duration + 'ms\nFehler: ' + (e.message || e) + '\n\n' +
-        'Firebase ist erreichbar aber Writes gehen nicht durch.\n' +
-        'Wahrscheinliche Ursachen:\n' +
-        '• Firebase-Rules blockieren\n' +
-        '• Auth-Token abgelaufen\n' +
-        '• Netzwerk-Filter (Firewall)\n\n' +
-        'Auf „🔌 Neu verbinden" tippen oder ausloggen und neu einloggen.');
-    });
+
+  // Test 2: neuer v2_ deterministic Pfad wie im aktuellen Code
+  results.newStyle = await runOne('milch/v2_TEST_' + now, {
+    datum: now, zeit: 'test', art: 'prokuh', lastUpdate: now, test: true
+  });
+
+  // Test 3: v2_-Pfad MIT meta/-Zweig (das ist was die App wirklich schreibt)
+  const kuhTestId = '-testcowid_' + now;
+  results.newStyleFull = await runOne('milch/v2_TEST2_' + now, {
+    datum: now, zeit: 'test', art: 'prokuh', lastUpdate: now,
+    prokuh: { [kuhTestId]: 3.3 },
+    meta:   { [kuhTestId]: { session: getMilchSessionId(), userName: 'Test', ts: now } }
+  });
+
+  const mark = r => r.ok ? '✓ OK (' + r.ms + 'ms)' : '❌ FAIL (' + r.err + ')';
+  const diag =
+    '📋 FIREBASE-WRITE DIAGNOSE:\n\n' +
+    '1) milch/-TEST_… (alter Stil):\n   ' + mark(results.oldStyle) + '\n\n' +
+    '2) milch/v2_TEST_… (nur Metadaten):\n   ' + mark(results.newStyle) + '\n\n' +
+    '3) milch/v2_TEST2_… (mit prokuh+meta):\n   ' + mark(results.newStyleFull) + '\n\n';
+
+  let hinweis = '';
+  if(results.oldStyle.ok && !results.newStyle.ok) {
+    hinweis = '👉 ALTE Pfade ok, aber v2_ wird abgelehnt.\nRules blockieren Keys die nicht mit „-" beginnen.\n\n' +
+              'FIREBASE-CONSOLE öffnen:\n' +
+              'https://console.firebase.google.com\n→ Realtime Database → Regeln → prüfen ob es .validate auf $id gibt';
+  } else if(results.newStyle.ok && !results.newStyleFull.ok) {
+    hinweis = '👉 v2_-Pfad OK, aber meta/ oder prokuh/ wird abgelehnt.\n' +
+              'Rules haben wahrscheinlich .validate auf prokuh/$kid oder verbieten unbekannte Felder.';
+  } else if(!results.oldStyle.ok && !results.newStyle.ok && !results.newStyleFull.ok) {
+    hinweis = '👉 GAR NICHTS schreibbar auf /milch. Rules komplett zu.\n' +
+              'Firebase-Console öffnen und Regel setzen:\n\n' +
+              '"milch": {\n  ".read": "auth != null",\n  ".write": "auth != null"\n}';
+  } else if(results.oldStyle.ok && results.newStyle.ok && results.newStyleFull.ok) {
+    hinweis = '👉 Alle Tests OK! Rules erlauben alles. Wenn Milch trotzdem hängt,\n' +
+              'ist es kein Rules-Problem. Nächster Schritt: Konsole prüfen.';
+  }
+
+  alert(diag + hinweis);
 };
 
 // ══════════════════════════════════════════════════════════════
