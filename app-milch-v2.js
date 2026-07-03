@@ -1,8 +1,8 @@
 // ══════════════════════════════════════════════════════════════
 //  HERDENPRO – MILCH v2  (LocalStorage-first Persistence)
-//  MODUL-VERSION: 2.9  ← wenn du das siehst, ist der Fix geladen
+//  MODUL-VERSION: 3.0  ← wenn du das siehst, ist der Fix geladen
 // ══════════════════════════════════════════════════════════════
-window.MILCH_V2_VERSION = '2.9';
+window.MILCH_V2_VERSION = '3.0';
 //  Löst die alten Probleme (Datenverlust, hängende Saves offline,
 //  Multi-Melker-Kollisionen, Aggregations-Verdopplung).
 //
@@ -173,6 +173,8 @@ window.pushMilchWert = function(kuhId, wert, datum, zeit) {
       Promise.race([writePromise, timeoutPromise])
         .then(() => {
           console.log('[Milch v2] Server-Bestätigt:', kuhId, '=', wertVal);
+          // EXPLIZIT: nach erfolgreichem Write direkt aus Firebase lesen und pending clearen
+          confirmMilchPendingDirect(entryKey, kuhId, wertVal);
         })
         .catch(e => handleSyncError(e, 'write'));
     }
@@ -219,6 +221,79 @@ window.getFirebaseConnected = function(cb) {
       .catch(() => cb(null));
   } catch(e) { cb(null); }
 };
+
+// ── DIREKT-Bestätigung: nach erfolgreichem Write direkt aus Firebase lesen und
+//    pending clearen (unabhängig von render-hook der bei manchen Builds nicht greift)
+function confirmMilchPendingDirect(entryKey, kuhId, expectedWert) {
+  if(typeof firebase === 'undefined' || !firebase.database) return;
+  firebase.database().ref('milch/' + entryKey + '/prokuh/' + kuhId).once('value')
+    .then(snap => {
+      const val = snap.val();
+      if(val == null) return;
+      const p = getPending();
+      if(!p[entryKey] || !p[entryKey][kuhId]) return;
+      const num = parseFloat(val) || (val && val.wert) || 0;
+      // Wenn Server-Wert ≈ erwarteter Wert → als synced markieren
+      if(Math.abs(num - expectedWert) < 0.05) {
+        delete p[entryKey][kuhId];
+        if(Object.keys(p[entryKey]).length === 0) delete p[entryKey];
+        setPending(p);
+        console.log('[Milch v2] Direkt bestätigt:', kuhId, '=', expectedWert);
+        updateSyncBanner();
+      }
+    })
+    .catch(e => console.warn('[Milch v2] Direkt-Bestätigung read err:', e));
+}
+
+// ── Alle Pending gegen Firebase abgleichen (Bestätigung erzwingen) ──
+// silent=true → kein Alert, für Auto-Aufrufe
+async function _milchConfirmAllInternal(silent) {
+  if(typeof firebase === 'undefined' || !firebase.database) return {checked:0, confirmed:0};
+  const p = getPending();
+  const entries = Object.entries(p);
+  if(entries.length === 0) return {checked:0, confirmed:0};
+  let confirmed = 0, checked = 0;
+  for(const [entryKey, cows] of entries) {
+    try {
+      const snap = await firebase.database().ref('milch/' + entryKey).once('value');
+      const val = snap.val();
+      if(!val || !val.prokuh) continue;
+      for(const [kuhId, payload] of Object.entries(cows)) {
+        checked++;
+        const fbVal = val.prokuh[kuhId];
+        if(fbVal == null) continue;
+        const num = parseFloat(fbVal) || (fbVal && fbVal.wert) || 0;
+        if(Math.abs(num - payload.wert) < 0.05) {
+          const pNow = getPending();
+          if(pNow[entryKey] && pNow[entryKey][kuhId]) {
+            delete pNow[entryKey][kuhId];
+            if(Object.keys(pNow[entryKey]).length === 0) delete pNow[entryKey];
+            setPending(pNow);
+            confirmed++;
+          }
+        }
+      }
+    } catch(e) { console.warn('[Milch v2] confirmAll err:', e); }
+  }
+  updateSyncBanner();
+  return {checked, confirmed};
+}
+
+window.milchConfirmAllPending = async function() {
+  const before = countPending();
+  if(before === 0) {
+    if(window.showSaveToast) window.showSaveToast('✓ Keine pending Werte');
+    return;
+  }
+  const {checked, confirmed} = await _milchConfirmAllInternal(false);
+  alert('🔍 Bestätigungs-Prüfung fertig:\n\n' +
+        checked + ' Werte geprüft\n' +
+        confirmed + ' Werte als synced markiert\n' +
+        (countPending() > 0 ? '\n' + countPending() + ' Werte übrig — sind wirklich noch nicht in Cloud' : '\n\n✓ Alles bestätigt!'));
+};
+
+// Interne Version für Auto-Aufrufe (kein Alert)
+window._milchConfirmAllPendingSilent = () => _milchConfirmAllInternal(true);
 
 // ── Sync-Fehler PERSISTENT machen (Banner nicht mehr überschreiben lassen) ──
 window._milchSyncError = null;  // { msg, op, ts }
@@ -640,6 +715,7 @@ window.showMilchPendingDetails = function() {
         '</div>' +
         rowsHtml +
         '<div style="display:flex;gap:.5rem;margin-top:1rem;padding-top:.8rem;border-top:1px solid var(--border);flex-wrap:wrap">' +
+          '<button class="btn-secondary" style="flex:1;min-width:7rem;background:rgba(77,184,78,.15);border-color:var(--green);color:var(--green)" onclick="milchConfirmAllPending();setTimeout(showMilchPendingDetails,1500)">🔍 Bestätigen</button>' +
           '<button class="btn-secondary" style="flex:1;min-width:7rem" onclick="milchTestWrite()">🧪 Test-Write</button>' +
           '<button class="btn-secondary" style="flex:1;min-width:7rem" onclick="syncMilchPending();setTimeout(showMilchPendingDetails,1500)">🔄 Retry alle</button>' +
           '<button class="btn-secondary" style="flex:1;min-width:7rem;background:rgba(74,184,232,.15);border-color:#4ab8e8;color:#4ab8e8" onclick="milchForceReconnect();setTimeout(showMilchPendingDetails,3000)">🔌 Neu verbinden</button>' +
@@ -1201,12 +1277,44 @@ window.resetMilchAutoSaveState = function() {
 })();
 
 // ══════════════════════════════════════════════════════════════
+//  Direkter Firebase-Listener für Bestätigung (unabhängig von render-Hook)
+// ══════════════════════════════════════════════════════════════
+(function attachOwnListener() {
+  if(typeof firebase === 'undefined' || !firebase.database || !firebase.auth) {
+    setTimeout(attachOwnListener, 500);
+    return;
+  }
+  // Warte bis der User eingeloggt ist
+  const attach = function() {
+    try {
+      firebase.database().ref('milch').on('value', function(snap) {
+        // Nach jeder Änderung Bestätigung prüfen
+        setTimeout(function() {
+          if(window.onMilchEintraegeChanged) window.onMilchEintraegeChanged();
+          updateSyncBanner();
+        }, 100);
+      });
+      console.log('[Milch v2] Eigener Firebase-Listener installiert');
+    } catch(e) { console.warn('[Milch v2] Own listener err:', e); }
+  };
+  if(firebase.auth().currentUser) {
+    attach();
+  } else {
+    firebase.auth().onAuthStateChanged(function(u) { if(u) attach(); });
+  }
+})();
+
+// ══════════════════════════════════════════════════════════════
 //  App-Start: initial pending sync + Banner
 // ══════════════════════════════════════════════════════════════
 window.addEventListener('load', () => {
   setTimeout(() => {
     updateSyncBanner();
-    if(navigator.onLine) syncMilchPending();
+    if(navigator.onLine) {
+      syncMilchPending();
+      // 3 Sekunden warten und stille Bestätigung erzwingen (Alt-Werte aufräumen)
+      setTimeout(() => { if(window._milchConfirmAllPendingSilent) window._milchConfirmAllPendingSilent(); }, 3500);
+    }
   }, 1500);
 });
 
