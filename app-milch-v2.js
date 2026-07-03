@@ -1,8 +1,8 @@
 // ══════════════════════════════════════════════════════════════
 //  HERDENPRO – MILCH v2  (LocalStorage-first Persistence)
-//  MODUL-VERSION: 2.5  ← wenn du das siehst, ist der Fix geladen
+//  MODUL-VERSION: 2.6  ← wenn du das siehst, ist der Fix geladen
 // ══════════════════════════════════════════════════════════════
-window.MILCH_V2_VERSION = '2.5';
+window.MILCH_V2_VERSION = '2.6';
 //  Löst die alten Probleme (Datenverlust, hängende Saves offline,
 //  Multi-Melker-Kollisionen, Aggregations-Verdopplung).
 //
@@ -164,7 +164,13 @@ window.pushMilchWert = function(kuhId, wert, datum, zeit) {
       updatePayload['art'] = 'prokuh';
       updatePayload['lastUpdate'] = now;
 
-      firebase.database().ref(entryPath).update(updatePayload)
+      // Firebase-Write mit TIMEOUT: wenn kein Ack in 15 Sekunden → Fehler zeigen
+      // Sonst hängt der Client stumm wenn interne WebSocket-Verbindung tot ist
+      const writePromise = firebase.database().ref(entryPath).update(updatePayload);
+      const timeoutPromise = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('Timeout (15s) — Firebase-Verbindung möglicherweise blockiert')), 15000)
+      );
+      Promise.race([writePromise, timeoutPromise])
         .then(() => {
           console.log('[Milch v2] Server-Bestätigt:', kuhId, '=', wertVal);
         })
@@ -176,6 +182,42 @@ window.pushMilchWert = function(kuhId, wert, datum, zeit) {
 
   // 3. Banner updaten
   updateSyncBanner();
+};
+
+// ══════════════════════════════════════════════════════════════
+//  Verbindungs-Reset: bei hängenden Writes hilft es Firebase's
+//  WebSocket zu killen und neu aufbauen zu lassen.
+// ══════════════════════════════════════════════════════════════
+window.milchForceReconnect = function() {
+  try {
+    if(typeof firebase === 'undefined' || !firebase.database) {
+      alert('Firebase nicht verfügbar');
+      return;
+    }
+    firebase.database().goOffline();
+    if(window.showSaveToast) window.showSaveToast('🔌 Verbindung getrennt…');
+    setTimeout(() => {
+      firebase.database().goOnline();
+      if(window.showSaveToast) window.showSaveToast('🔌 Verbindung neu aufgebaut');
+      setTimeout(() => {
+        syncMilchPending();
+        updateSyncBanner();
+      }, 1000);
+    }, 1500);
+  } catch(e) {
+    console.error('[Milch v2] Reconnect err:', e);
+    alert('Fehler beim Neuverbinden: ' + e.message);
+  }
+};
+
+// ── Zusätzlich: Firebase-Verbindungs-Status live abfragen ──
+window.getFirebaseConnected = function(cb) {
+  try {
+    if(typeof firebase === 'undefined' || !firebase.database) { cb(false); return; }
+    firebase.database().ref('.info/connected').once('value')
+      .then(s => cb(!!s.val()))
+      .catch(() => cb(null));
+  } catch(e) { cb(null); }
 };
 
 // ── Sync-Fehler sichtbar machen (nicht nur Konsole)
@@ -234,7 +276,12 @@ window.syncMilchPending = function() {
       };
     });
 
-    firebase.database().ref('milch/' + entryKey).update(updatePayload)
+    // Timeout auf Retry-Sync (15s pro Termin)
+    const wp = firebase.database().ref('milch/' + entryKey).update(updatePayload);
+    const tp = new Promise((_, reject) =>
+      setTimeout(() => reject(new Error('Retry-Timeout (15s) — Verbindung neu aufbauen')), 15000)
+    );
+    Promise.race([wp, tp])
       .then(() => console.log('[Milch v2] Retry-Sync OK für', entryKey))
       .catch(e => handleSyncError(e, 'retry-sync'));
   });
@@ -418,11 +465,12 @@ window.showMilchPendingDetails = function() {
         '<button class="close-btn" onclick="document.getElementById(\'milch-debug-overlay\').remove()">✕</button>' +
       '</div>' +
       '<div class="form-body">' +
-        '<div style="font-size:.75rem;color:var(--text2);background:var(--bg2);padding:.5rem .7rem;border-radius:6px;margin-bottom:.7rem;line-height:1.5">' +
+        '<div id="milch-debug-info" style="font-size:.75rem;color:var(--text2);background:var(--bg2);padding:.5rem .7rem;border-radius:6px;margin-bottom:.7rem;line-height:1.5">' +
           '<b>Modul-Version:</b> v' + (window.MILCH_V2_VERSION || '?') + '<br>' +
           '<b>Session-ID:</b> <span style="font-family:monospace;font-size:.7rem">' + getMilchSessionId() + '</span><br>' +
-          '<b>Firebase online:</b> ' + (typeof firebase !== 'undefined' && firebase.database ? 'ja' : 'NEIN!') + '<br>' +
+          '<b>Firebase geladen:</b> ' + (typeof firebase !== 'undefined' && firebase.database ? 'ja' : 'NEIN!') + '<br>' +
           '<b>navigator.onLine:</b> ' + navigator.onLine + '<br>' +
+          '<b>Firebase-Socket:</b> <span id="milch-debug-conn">wird geprüft…</span><br>' +
           '<b>Ausstehend:</b> ' + total + ' Wert' + (total > 1 ? 'e' : '') +
         '</div>' +
         '<div style="font-size:.75rem;color:var(--text3);margin-bottom:.4rem">' +
@@ -430,12 +478,22 @@ window.showMilchPendingDetails = function() {
           '<b>„✗ nicht in Cloud"</b> = Wert kam nie beim Server an. „Verwerfen" nur wenn du sicher bist dass er weg darf.' +
         '</div>' +
         rowsHtml +
-        '<div style="display:flex;gap:.5rem;margin-top:1rem;padding-top:.8rem;border-top:1px solid var(--border)">' +
-          '<button class="btn-secondary" style="flex:1" onclick="syncMilchPending();setTimeout(showMilchPendingDetails,800)">🔄 Retry alle</button>' +
-          '<button style="flex:1;background:rgba(200,60,60,.15);border:1px solid rgba(200,60,60,.5);color:#e05a5a;padding:.5rem;border-radius:8px;font-family:inherit;cursor:pointer;font-weight:600" onclick="clearMilchPending();document.getElementById(\'milch-debug-overlay\').remove()">🗑 ALLE verwerfen</button>' +
+        '<div style="display:flex;gap:.5rem;margin-top:1rem;padding-top:.8rem;border-top:1px solid var(--border);flex-wrap:wrap">' +
+          '<button class="btn-secondary" style="flex:1;min-width:8rem" onclick="syncMilchPending();setTimeout(showMilchPendingDetails,1500)">🔄 Retry alle</button>' +
+          '<button class="btn-secondary" style="flex:1;min-width:8rem;background:rgba(74,184,232,.15);border-color:#4ab8e8;color:#4ab8e8" onclick="milchForceReconnect();setTimeout(showMilchPendingDetails,3000)">🔌 Neu verbinden</button>' +
+          '<button style="flex:1;min-width:8rem;background:rgba(200,60,60,.15);border:1px solid rgba(200,60,60,.5);color:#e05a5a;padding:.5rem;border-radius:8px;font-family:inherit;cursor:pointer;font-weight:600" onclick="clearMilchPending();document.getElementById(\'milch-debug-overlay\').remove()">🗑 ALLE verwerfen</button>' +
         '</div>' +
       '</div>' +
     '</div>';
+
+  // Live Firebase-Socket-Status abfragen und einblenden
+  window.getFirebaseConnected(function(connected) {
+    const el = document.getElementById('milch-debug-conn');
+    if(!el) return;
+    if(connected === true) el.innerHTML = '<span style="color:var(--green)">✓ verbunden</span>';
+    else if(connected === false) el.innerHTML = '<span style="color:var(--orange)">✗ getrennt (WebSocket tot!)</span>';
+    else el.innerHTML = '<span style="color:var(--text3)">unbekannt</span>';
+  });
 };
 
 // ── Einzelnen Pending-Wert verwerfen (aus Debug-Dialog) ──
