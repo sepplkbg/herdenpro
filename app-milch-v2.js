@@ -1,8 +1,8 @@
 // ══════════════════════════════════════════════════════════════
 //  HERDENPRO – MILCH v2  (LocalStorage-first Persistence)
-//  MODUL-VERSION: 2.4  ← wenn du das siehst, ist der Fix geladen
+//  MODUL-VERSION: 2.5  ← wenn du das siehst, ist der Fix geladen
 // ══════════════════════════════════════════════════════════════
-window.MILCH_V2_VERSION = '2.4';
+window.MILCH_V2_VERSION = '2.5';
 //  Löst die alten Probleme (Datenverlust, hängende Saves offline,
 //  Multi-Melker-Kollisionen, Aggregations-Verdopplung).
 //
@@ -296,10 +296,19 @@ window.onMilchEintraegeChanged = function() {
         return;
       }
       // Legacy-Struktur (Objekt mit .wert): Backward-Compat für alte v2-Zwischenversion
-      if(typeof fbVal === 'object' && fbVal.session === payload.session && (fbVal.ts || 0) >= (payload.ts || 0)) {
-        delete p[entryKey][kuhId];
-        if(Object.keys(p[entryKey]).length === 0) delete p[entryKey];
-        changed = true;
+      if(typeof fbVal === 'object') {
+        // Session/ts-Match → bestätigt
+        if(fbVal.session === payload.session && (fbVal.ts || 0) >= (payload.ts || 0)) {
+          delete p[entryKey][kuhId];
+          if(Object.keys(p[entryKey]).length === 0) delete p[entryKey];
+          changed = true;
+        }
+        // Auto-Confirm: wenn .wert in Firebase ≈ unser pending-Wert → bereits synced
+        else if(fbVal.wert != null && Math.abs(parseFloat(fbVal.wert) - payload.wert) < 0.05) {
+          delete p[entryKey][kuhId];
+          if(Object.keys(p[entryKey]).length === 0) delete p[entryKey];
+          changed = true;
+        }
       }
     });
   });
@@ -362,34 +371,89 @@ window.updateSyncBanner = function() {
   }
 };
 
-// ── Debug: zeigt was in pending steckt ──
+// ── Debug: zeigt was in pending steckt (mit Aktions-Buttons) ──
 window.showMilchPendingDetails = function() {
   const p = getPending();
   const entries = Object.entries(p);
   if(entries.length === 0) {
-    alert('Keine ausstehenden Werte.');
+    alert('✓ Keine ausstehenden Werte. Alles synchron.');
     return;
   }
-  let msg = 'Milch-Modul v' + (window.MILCH_V2_VERSION || '?') + '\n\n';
-  msg += 'Session-ID: ' + getMilchSessionId() + '\n';
-  msg += 'Firebase online: ' + (typeof firebase !== 'undefined' && firebase.database ? 'ja' : 'NEIN!') + '\n';
-  msg += 'navigator.onLine: ' + navigator.onLine + '\n\n';
-  msg += 'Ausstehende Werte (' + entries.reduce((s,[,c]) => s + Object.keys(c).length, 0) + '):\n\n';
+
+  // Statt alert(): richtiges Overlay mit Aktions-Buttons
+  let ov = document.getElementById('milch-debug-overlay');
+  if(!ov) {
+    ov = document.createElement('div');
+    ov.id = 'milch-debug-overlay';
+    ov.className = 'form-overlay';
+    ov.style.cssText = 'display:flex;z-index:700';
+    document.body.appendChild(ov);
+  }
+
+  const total = entries.reduce((s,[,c]) => s + Object.keys(c).length, 0);
+  let rowsHtml = '';
   entries.forEach(([entryKey, cows]) => {
-    msg += '📅 ' + entryKey.replace(/^v2_/, '') + ':\n';
+    const raw = entryKey.replace(/^v2_/, '');
+    rowsHtml += '<div style="margin:.7rem 0 .3rem;font-weight:700;color:var(--gold);font-size:.82rem">📅 ' + raw + '</div>';
     Object.entries(cows).forEach(([kuhId, payload]) => {
       const k = (window.kuehe || {})[kuhId];
-      const nr = k ? '#' + k.nr : kuhId.slice(0, 6);
-      const name = k ? k.name : '';
-      msg += '  ' + nr + ' ' + name + ': ' + payload.wert + ' L (Melker: ' + (payload.userName || '?') + ')\n';
+      const nr = k ? '#' + k.nr : ('?' + kuhId.slice(-6));
+      const name = k ? (k.name || '') : '(unbekannte Kuh)';
+      const fbHas = ((window.milchEintraege||{})[entryKey]||{}).prokuh?.[kuhId];
+      const fbMark = fbHas != null ? ' <span style="color:var(--green);font-size:.7rem">✓ in Cloud</span>' : ' <span style="color:var(--orange);font-size:.7rem">✗ nicht in Cloud</span>';
+      rowsHtml += '<div style="display:flex;justify-content:space-between;align-items:center;padding:.35rem .5rem;border:1px solid var(--border);border-radius:6px;margin-bottom:.25rem;font-size:.78rem">' +
+        '<span>' + nr + ' ' + name + fbMark + '</span>' +
+        '<div style="display:flex;align-items:center;gap:.5rem">' +
+          '<b style="color:var(--gold)">' + payload.wert + ' L</b>' +
+          '<button onclick="discardMilchPending(\'' + entryKey + '\',\'' + kuhId + '\')" style="background:rgba(200,60,60,.15);border:1px solid rgba(200,60,60,.5);color:#e05a5a;padding:.2rem .5rem;border-radius:4px;font-size:.68rem;cursor:pointer">Verwerfen</button>' +
+        '</div>' +
+      '</div>';
     });
-    msg += '\n';
   });
-  msg += '\n💡 Tipp: Wenn hier Werte sind die du löschen willst,\nkannst du "clearMilchPending()" in der Konsole aufrufen.';
-  alert(msg);
+
+  ov.innerHTML =
+    '<div class="form-sheet" style="max-height:85vh;overflow-y:auto">' +
+      '<div class="form-header">' +
+        '<h3>🔍 Milch-Sync Details</h3>' +
+        '<button class="close-btn" onclick="document.getElementById(\'milch-debug-overlay\').remove()">✕</button>' +
+      '</div>' +
+      '<div class="form-body">' +
+        '<div style="font-size:.75rem;color:var(--text2);background:var(--bg2);padding:.5rem .7rem;border-radius:6px;margin-bottom:.7rem;line-height:1.5">' +
+          '<b>Modul-Version:</b> v' + (window.MILCH_V2_VERSION || '?') + '<br>' +
+          '<b>Session-ID:</b> <span style="font-family:monospace;font-size:.7rem">' + getMilchSessionId() + '</span><br>' +
+          '<b>Firebase online:</b> ' + (typeof firebase !== 'undefined' && firebase.database ? 'ja' : 'NEIN!') + '<br>' +
+          '<b>navigator.onLine:</b> ' + navigator.onLine + '<br>' +
+          '<b>Ausstehend:</b> ' + total + ' Wert' + (total > 1 ? 'e' : '') +
+        '</div>' +
+        '<div style="font-size:.75rem;color:var(--text3);margin-bottom:.4rem">' +
+          '<b>„✓ in Cloud"</b> = Wert ist bereits am Server, wird gleich als synced markiert.<br>' +
+          '<b>„✗ nicht in Cloud"</b> = Wert kam nie beim Server an. „Verwerfen" nur wenn du sicher bist dass er weg darf.' +
+        '</div>' +
+        rowsHtml +
+        '<div style="display:flex;gap:.5rem;margin-top:1rem;padding-top:.8rem;border-top:1px solid var(--border)">' +
+          '<button class="btn-secondary" style="flex:1" onclick="syncMilchPending();setTimeout(showMilchPendingDetails,800)">🔄 Retry alle</button>' +
+          '<button style="flex:1;background:rgba(200,60,60,.15);border:1px solid rgba(200,60,60,.5);color:#e05a5a;padding:.5rem;border-radius:8px;font-family:inherit;cursor:pointer;font-weight:600" onclick="clearMilchPending();document.getElementById(\'milch-debug-overlay\').remove()">🗑 ALLE verwerfen</button>' +
+        '</div>' +
+      '</div>' +
+    '</div>';
 };
 
-// ── Notfall: alle pending löschen (nur für Debug) ──
+// ── Einzelnen Pending-Wert verwerfen (aus Debug-Dialog) ──
+window.discardMilchPending = function(entryKey, kuhId) {
+  const p = getPending();
+  if(p[entryKey] && p[entryKey][kuhId]) {
+    const wert = p[entryKey][kuhId].wert;
+    delete p[entryKey][kuhId];
+    if(Object.keys(p[entryKey]).length === 0) delete p[entryKey];
+    setPending(p);
+    updateSyncBanner();
+    if(window.showSaveToast) window.showSaveToast('✓ Wert ' + wert + ' L verworfen');
+    // Dialog neu rendern
+    setTimeout(showMilchPendingDetails, 100);
+  }
+};
+
+// ── Notfall: alle pending löschen ──
 window.clearMilchPending = function() {
   if(!confirm('Wirklich ALLE ' + countPending() + ' ausstehenden Milchwerte VERWERFEN?\n\nDies löscht sie nur lokal — Werte die schon in der Cloud sind bleiben. Fortfahren?')) return;
   try { localStorage.removeItem('milchPendingV2'); } catch(e) {}
