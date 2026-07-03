@@ -1,8 +1,8 @@
 // ══════════════════════════════════════════════════════════════
 //  HERDENPRO – MILCH v2  (LocalStorage-first Persistence)
-//  MODUL-VERSION: 2.6  ← wenn du das siehst, ist der Fix geladen
+//  MODUL-VERSION: 2.7  ← wenn du das siehst, ist der Fix geladen
 // ══════════════════════════════════════════════════════════════
-window.MILCH_V2_VERSION = '2.6';
+window.MILCH_V2_VERSION = '2.7';
 //  Löst die alten Probleme (Datenverlust, hängende Saves offline,
 //  Multi-Melker-Kollisionen, Aggregations-Verdopplung).
 //
@@ -220,27 +220,76 @@ window.getFirebaseConnected = function(cb) {
   } catch(e) { cb(null); }
 };
 
-// ── Sync-Fehler sichtbar machen (nicht nur Konsole)
+// ── Sync-Fehler PERSISTENT machen (Banner nicht mehr überschreiben lassen) ──
+window._milchSyncError = null;  // { msg, op, ts }
+
 function handleSyncError(err, op) {
   console.error('[Milch v2] Sync-Fehler (' + op + '):', err);
   const msg = err && err.message ? err.message : String(err);
-  const banner = document.getElementById('milch-sync-banner');
-  if(banner) {
-    banner._wasVisible = true;
-    banner.style.display = 'flex';
-    banner.className = 'milch-sync-banner milch-sync-error';
-    banner.innerHTML = '<span>❌</span><span>Sync-Fehler: ' + msg + '</span>' +
-      '<button class="milch-sync-action" onclick="syncMilchPending()">Retry</button>';
-  }
-  // Toast mit Details für Melker
-  if(window.showSaveToast) {
+  // Persistent speichern damit updateSyncBanner nicht überschreibt
+  window._milchSyncError = { msg: msg, op: op, ts: Date.now() };
+  // Auch in localStorage loggen für spätere Diagnose
+  try {
+    const log = JSON.parse(localStorage.getItem('milchSyncErrorLog') || '[]');
+    log.push({ msg, op, ts: Date.now() });
+    if(log.length > 20) log.splice(0, log.length - 20);
+    localStorage.setItem('milchSyncErrorLog', JSON.stringify(log));
+  } catch(e) {}
+  updateSyncBanner();
+  // Toast (nur einmal pro Session, nicht spammen)
+  if(!window._milchErrorToastShown && window.showSaveToast) {
+    window._milchErrorToastShown = true;
     if(msg.toLowerCase().includes('permission')) {
       window.showSaveToast('❌ Firebase-Rechte verweigern Schreiben. Admin kontaktieren.');
+    } else if(msg.toLowerCase().includes('timeout')) {
+      window.showSaveToast('❌ Firebase-Timeout — auf „🔌 Neu verbinden" tippen');
     } else {
-      window.showSaveToast('❌ Sync-Fehler: ' + msg.slice(0, 60));
+      window.showSaveToast('❌ Sync-Fehler: ' + msg.slice(0, 80));
     }
+    setTimeout(() => { window._milchErrorToastShown = false; }, 60000);
   }
 }
+
+window.clearMilchSyncError = function() {
+  window._milchSyncError = null;
+  window._milchErrorToastShown = false;
+  updateSyncBanner();
+};
+
+// ── Test-Write: schreibt eine Test-Zahl in Firebase und zeigt Ergebnis ──
+window.milchTestWrite = function() {
+  if(typeof firebase === 'undefined' || !firebase.database) {
+    alert('Firebase nicht verfügbar');
+    return;
+  }
+  const testKey = 'milch_test_' + Date.now();
+  const testPath = 'milch_debug/' + testKey;
+  const startTime = Date.now();
+  const wp = firebase.database().ref(testPath).set({
+    ts: startTime,
+    session: getMilchSessionId(),
+    test: true
+  });
+  const tp = new Promise((_, reject) => setTimeout(() => reject(new Error('Test-Timeout 10s')), 10000));
+  Promise.race([wp, tp])
+    .then(() => {
+      const duration = Date.now() - startTime;
+      alert('✓ TEST-WRITE ERFOLGREICH!\n\nDauer: ' + duration + 'ms\nPfad: ' + testPath + '\n\n' +
+        'Firebase-Schreiben funktioniert grundsätzlich.\nWenn Milch-Werte trotzdem hängen, sind es die\nRules oder ein spezieller Pfad-Fehler.');
+      // Cleanup
+      setTimeout(() => firebase.database().ref(testPath).remove(), 5000);
+    })
+    .catch(e => {
+      const duration = Date.now() - startTime;
+      alert('❌ TEST-WRITE FEHLGESCHLAGEN!\n\nDauer: ' + duration + 'ms\nFehler: ' + (e.message || e) + '\n\n' +
+        'Firebase ist erreichbar aber Writes gehen nicht durch.\n' +
+        'Wahrscheinliche Ursachen:\n' +
+        '• Firebase-Rules blockieren\n' +
+        '• Auth-Token abgelaufen\n' +
+        '• Netzwerk-Filter (Firewall)\n\n' +
+        'Auf „🔌 Neu verbinden" tippen oder ausloggen und neu einloggen.');
+    });
+};
 
 // ══════════════════════════════════════════════════════════════
 //  Retry-Sync: alle pending Werte nochmal an Firebase pushen
@@ -376,6 +425,18 @@ window.updateSyncBanner = function() {
   const konfl = getKonflikte().length;
   const online = navigator.onLine;
 
+  // ── PERSISTENT-ERROR hat Priorität: bleibt sichtbar bis explicitly cleared ──
+  if(window._milchSyncError && n > 0) {
+    const err = window._milchSyncError;
+    banner._wasVisible = true;
+    banner.style.display = 'flex';
+    banner.className = 'milch-sync-banner milch-sync-error';
+    banner.innerHTML = '<span>❌</span><span>Sync-Fehler: ' + err.msg.slice(0, 80) + '</span>' +
+      '<button class="milch-sync-action" onclick="showMilchPendingDetails()">Details</button>' +
+      '<button class="milch-sync-action" onclick="clearMilchSyncError();syncMilchPending()">Retry</button>';
+    return;
+  }
+
   if(n === 0 && konfl === 0) {
     // Alles sauber
     if(banner._wasVisible) {
@@ -472,6 +533,7 @@ window.showMilchPendingDetails = function() {
           '<b>navigator.onLine:</b> ' + navigator.onLine + '<br>' +
           '<b>Firebase-Socket:</b> <span id="milch-debug-conn">wird geprüft…</span><br>' +
           '<b>Ausstehend:</b> ' + total + ' Wert' + (total > 1 ? 'e' : '') +
+          (window._milchSyncError ? '<br><b style="color:#e05a5a">Letzter Fehler:</b> <span style="color:#e05a5a">' + window._milchSyncError.msg + '</span>' : '') +
         '</div>' +
         '<div style="font-size:.75rem;color:var(--text3);margin-bottom:.4rem">' +
           '<b>„✓ in Cloud"</b> = Wert ist bereits am Server, wird gleich als synced markiert.<br>' +
@@ -479,9 +541,10 @@ window.showMilchPendingDetails = function() {
         '</div>' +
         rowsHtml +
         '<div style="display:flex;gap:.5rem;margin-top:1rem;padding-top:.8rem;border-top:1px solid var(--border);flex-wrap:wrap">' +
-          '<button class="btn-secondary" style="flex:1;min-width:8rem" onclick="syncMilchPending();setTimeout(showMilchPendingDetails,1500)">🔄 Retry alle</button>' +
-          '<button class="btn-secondary" style="flex:1;min-width:8rem;background:rgba(74,184,232,.15);border-color:#4ab8e8;color:#4ab8e8" onclick="milchForceReconnect();setTimeout(showMilchPendingDetails,3000)">🔌 Neu verbinden</button>' +
-          '<button style="flex:1;min-width:8rem;background:rgba(200,60,60,.15);border:1px solid rgba(200,60,60,.5);color:#e05a5a;padding:.5rem;border-radius:8px;font-family:inherit;cursor:pointer;font-weight:600" onclick="clearMilchPending();document.getElementById(\'milch-debug-overlay\').remove()">🗑 ALLE verwerfen</button>' +
+          '<button class="btn-secondary" style="flex:1;min-width:7rem" onclick="milchTestWrite()">🧪 Test-Write</button>' +
+          '<button class="btn-secondary" style="flex:1;min-width:7rem" onclick="syncMilchPending();setTimeout(showMilchPendingDetails,1500)">🔄 Retry alle</button>' +
+          '<button class="btn-secondary" style="flex:1;min-width:7rem;background:rgba(74,184,232,.15);border-color:#4ab8e8;color:#4ab8e8" onclick="milchForceReconnect();setTimeout(showMilchPendingDetails,3000)">🔌 Neu verbinden</button>' +
+          '<button style="flex:1;min-width:7rem;background:rgba(200,60,60,.15);border:1px solid rgba(200,60,60,.5);color:#e05a5a;padding:.5rem;border-radius:8px;font-family:inherit;cursor:pointer;font-weight:600" onclick="clearMilchPending();document.getElementById(\'milch-debug-overlay\').remove()">🗑 ALLE verwerfen</button>' +
         '</div>' +
       '</div>' +
     '</div>';
