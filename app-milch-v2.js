@@ -1,8 +1,8 @@
 // ══════════════════════════════════════════════════════════════
 //  HERDENPRO – MILCH v2  (LocalStorage-first Persistence)
-//  MODUL-VERSION: 3.0  ← wenn du das siehst, ist der Fix geladen
+//  MODUL-VERSION: 3.3  ← wenn du das siehst, ist der Fix geladen
 // ══════════════════════════════════════════════════════════════
-window.MILCH_V2_VERSION = '3.0';
+window.MILCH_V2_VERSION = '3.3';
 //  Löst die alten Probleme (Datenverlust, hängende Saves offline,
 //  Multi-Melker-Kollisionen, Aggregations-Verdopplung).
 //
@@ -301,6 +301,11 @@ window._milchSyncError = null;  // { msg, op, ts }
 function handleSyncError(err, op) {
   console.error('[Milch v2] Sync-Fehler (' + op + '):', err);
   const msg = err && err.message ? err.message : String(err);
+  // Timeout-Fehler bei offline sind normal → nur loggen, kein Banner
+  if(msg.toLowerCase().includes('timeout') && !navigator.onLine) {
+    console.log('[Milch v2] Timeout offline — ignoriert, wird bei online neu versucht');
+    return;
+  }
   // Persistent speichern damit updateSyncBanner nicht überschreibt
   window._milchSyncError = { msg: msg, op: op, ts: Date.now() };
   // Auch in localStorage loggen für spätere Diagnose
@@ -1004,17 +1009,27 @@ window.milchQuickAdd = function() {
     return;
   }
 
-  // Kuh mit dieser Nummer finden (String-Vergleich damit "07" auch matcht)
-  const kuhEintrag = Object.entries(window.kuehe || {}).find(([id, k]) =>
-    String(k?.nr).trim() === nrRaw
-  );
+  // Kuh mit dieser Nummer finden — SMART MATCHING: String, Integer, führende Nullen tolerieren
+  const nrInt = parseInt(nrRaw, 10);
+  const kuhEintrag = Object.entries(window.kuehe || {}).find(([id, k]) => {
+    if(!k) return false;
+    const knr = k.nr;
+    if(knr == null) return false;
+    // Direktvergleich als String
+    if(String(knr).trim() === nrRaw) return true;
+    // Integer-Vergleich (falls "03" vs 3)
+    const knrInt = parseInt(knr, 10);
+    if(!isNaN(nrInt) && !isNaN(knrInt) && knrInt === nrInt) return true;
+    return false;
+  });
 
   if(!kuhEintrag) {
-    // Nicht gefunden — visuelles Feedback
+    // Nicht gefunden — visuelles Feedback + Diagnose
     nrInp.style.borderColor = 'var(--orange)';
     nrInp.style.background = 'rgba(230,126,34,.15)';
     setTimeout(() => { nrInp.style.borderColor = ''; nrInp.style.background = ''; }, 1500);
-    if(window.showSaveToast) window.showSaveToast('⚠ Keine Kuh mit Nummer ' + nrRaw);
+    const anzahl = Object.keys(window.kuehe || {}).length;
+    if(window.showSaveToast) window.showSaveToast('⚠ Keine Kuh mit Nr "' + nrRaw + '" (von ' + anzahl + ' Kühen)');
     if(navigator.vibrate) navigator.vibrate([50, 50, 50]);
     nrInp.focus(); nrInp.select();
     return;
@@ -1320,10 +1335,23 @@ window.addEventListener('load', () => {
 
 // Online/Offline Handler
 window.addEventListener('online', () => {
+  // Alte Timeout-Fehler aus Offline-Phase löschen — sind nicht mehr relevant
+  if(window._milchSyncError && (window._milchSyncError.msg||'').toLowerCase().includes('timeout')) {
+    window._milchSyncError = null;
+    window._milchErrorToastShown = false;
+  }
   updateSyncBanner();
-  setTimeout(() => { syncMilchPending(); }, 500);
+  setTimeout(() => {
+    syncMilchPending();
+    // Nach kurzer Wartezeit Bestätigung prüfen (viele Werte könnten synced sein)
+    setTimeout(() => { if(window._milchConfirmAllPendingSilent) window._milchConfirmAllPendingSilent(); }, 3000);
+  }, 500);
 });
 window.addEventListener('offline', () => {
+  // Bereits gemerkte Timeout-Fehler nicht als Fehler anzeigen — offline ist normal
+  if(window._milchSyncError && (window._milchSyncError.msg||'').toLowerCase().includes('timeout')) {
+    window._milchSyncError = null;
+  }
   updateSyncBanner();
 });
 

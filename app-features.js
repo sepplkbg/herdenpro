@@ -2359,8 +2359,15 @@ function renderMilch() {
       tagesMilchMorgens[tag] = (tagesMilchMorgens[tag]||0) + (g.gesamt||0);
     }
   });
+  // Tagesmilch = Abend + nächst folgender Morgen (auch wenn mehrere Tage dazwischen liegen)
+  const tagesMilchGesamt = {};
+  if(typeof window.computeMilchTagesPairs === 'function') {
+    const _pairs = window.computeMilchTagesPairs();
+    _pairs.forEach(p => { tagesMilchGesamt[p.abendTag] = p.gesamt; });
+  }
   const chartTageMorgens = Object.entries(tagesMilchMorgens).sort((a,b)=>a[0].localeCompare(b[0]));
   const chartTageAbends  = Object.entries(tagesMilchAbends).sort((a,b)=>a[0].localeCompare(b[0]));
+  const chartTageGesamt  = Object.entries(tagesMilchGesamt).sort((a,b)=>a[0].localeCompare(b[0]));
   const chartTage = chartTageMorgens.length >= chartTageAbends.length ? chartTageMorgens : chartTageAbends;
 
   // Build chart JSON for canvas
@@ -2374,7 +2381,18 @@ function renderMilch() {
       <div class="stat-card" onclick="exportMilchMolkerei()"><div class="stat-icon">📤</div><div class="stat-num" style="font-size:.9rem">Export</div><div class="stat-label">→ Molkerei</div></div>
     </div>
 
-    ${(chartTageMorgens.length >= 2 || chartTageAbends.length >= 2) ? `
+    ${(chartTageMorgens.length >= 2 || chartTageAbends.length >= 2 || chartTageGesamt.length >= 2) ? `
+    <!-- 🥛 Tagesmilch-Chart (morgens + abends kombiniert) -->
+    ${chartTageGesamt.length >= 2 ? `
+    <div style="background:var(--bg3);border:1px solid rgba(212,168,75,.3);border-radius:14px;padding:.7rem .8rem .4rem;margin-bottom:.6rem">
+      <div style="font-size:.68rem;color:var(--gold);font-weight:700;letter-spacing:.06em;margin-bottom:.4rem">🥛 TAGESMILCH — SAISON</div>
+      <canvas id="milch-saison-canvas-tag" height="110" style="width:100%;display:block;border-radius:6px"></canvas>
+      <div style="display:flex;justify-content:space-between;font-size:.6rem;color:var(--text3);margin-top:.3rem;padding:0 2px">
+        <span>${new Date(chartTageGesamt[0][0]+'T12:00').toLocaleDateString('de-AT',{day:'numeric',month:'short'})}</span>
+        <span style="color:var(--gold)">${chartTageGesamt.length} Tage · Ø ${Math.round(chartTageGesamt.reduce((s,[,l])=>s+l,0)/chartTageGesamt.length*10)/10}L</span>
+        <span>${new Date(chartTageGesamt[chartTageGesamt.length-1][0]+'T12:00').toLocaleDateString('de-AT',{day:'numeric',month:'short'})}</span>
+      </div>
+    </div>` : ''}
     <!-- 🌅 Morgens-Chart -->
     ${chartTageMorgens.length >= 2 ? `
     <div style="background:var(--bg3);border:1px solid rgba(122,203,255,.3);border-radius:14px;padding:.7rem .8rem .4rem;margin-bottom:.6rem">
@@ -3488,7 +3506,15 @@ window.showMilchForm = function() {
   if(letzte) {
     const diff = Math.floor((Date.now()-letzte.datum)/86400000);
     const wann = diff===0?'heute':diff===1?'gestern':diff+' Tage zuvor';
-    hintEl.textContent = 'Letzter: '+Math.round(letzte.gesamt*10)/10+'L · '+(letzte.zeit==='abend'?'🌇':'🌅')+' '+wann;
+    // gesamt aus prokuh berechnen falls Feld fehlt (v2-Einträge haben keinen gesamt)
+    let gesL = letzte.gesamt;
+    if((gesL == null || isNaN(gesL)) && letzte.prokuh) {
+      const _mW = window.milchWert || function(v){ return typeof v === 'number' ? v : (v && v.wert != null ? parseFloat(v.wert) || 0 : parseFloat(v) || 0); };
+      gesL = 0;
+      Object.values(letzte.prokuh).forEach(v => gesL += _mW(v));
+    }
+    gesL = gesL || 0;
+    hintEl.textContent = 'Letzter: '+Math.round(gesL*10)/10+'L · '+(letzte.zeit==='abend'?'🌇':'🌅')+' '+wann;
   }
   // Edit ID reset
   const eid = document.getElementById('m-edit-id'); if(eid) eid.value='';

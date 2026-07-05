@@ -441,8 +441,10 @@ function render() {
     if(currentView==='kuh-detail' && typeof window.attachKuhDetailSwipe === 'function') {
       window.attachKuhDetailSwipe();
     }
-    // Milch Saison Charts (Morgens + Abends getrennt)
+    // Milch Saison Charts (Tagesmilch + Morgens + Abends)
     if(currentView==='milch') {
+      var mcT=document.getElementById('milch-saison-canvas-tag');
+      if(mcT && typeof drawMilchSaisonChart === 'function') drawMilchSaisonChart(mcT, 'tag');
       var mcM=document.getElementById('milch-saison-canvas-morgens');
       if(mcM && typeof drawMilchSaisonChart === 'function') drawMilchSaisonChart(mcM, 'morgen');
       var mcA=document.getElementById('milch-saison-canvas-abends');
@@ -477,25 +479,122 @@ function render() {
 // ══════════════════════════════════════════════════════════════
 //  MILCH SAISON CHART (Canvas)
 // ══════════════════════════════════════════════════════════════
+// Helper: gesamt für einen Eintrag berechnen (v2-Einträge haben kein gesamt-Feld, nur prokuh)
+window.milchEintragGesamt = function(e) {
+  if(!e) return 0;
+  if(typeof e.gesamt === 'number' && e.gesamt > 0) return e.gesamt;
+  if(!e.prokuh) return e.gesamt || 0;
+  var mW = window.milchWert || function(v){ return typeof v === 'number' ? v : (v && v.wert != null ? parseFloat(v.wert) || 0 : parseFloat(v) || 0); };
+  var sum = 0;
+  Object.values(e.prokuh).forEach(function(v){ sum += mW(v); });
+  return sum;
+};
+
+// ── Tagesmilch-Pairing: Abend + nächst folgender Morgen ──
+// optKuhId: wenn gesetzt, nur Werte dieser einen Kuh berücksichtigen
+window.computeMilchTagesPairs = function(optKuhId) {
+  var mW = window.milchWert || function(v){ return typeof v === 'number' ? v : (v && v.wert != null ? parseFloat(v.wert) || 0 : parseFloat(v) || 0); };
+  // Aggregiere alle Einträge nach (Kalendertag+zeit)
+  var perTagZeit = {};
+  Object.values(milchEintraege || {}).forEach(function(e) {
+    if(!e || !e.datum) return;
+    var iso = new Date(e.datum).toISOString().slice(0,10);
+    var zeit = e.zeit || 'morgen';
+    var key = iso + '_' + zeit;
+    if(!perTagZeit[key]) perTagZeit[key] = { tag: iso, zeit: zeit, datum: e.datum, gesamt: 0 };
+    if(optKuhId) {
+      // Nur diese Kuh
+      if(e.prokuh && e.prokuh[optKuhId] != null) {
+        perTagZeit[key].gesamt += mW(e.prokuh[optKuhId]);
+      }
+    } else {
+      perTagZeit[key].gesamt += window.milchEintragGesamt(e);
+    }
+  });
+  // Chronologisch sortieren (bei gleichem Datum: Morgen VOR Abend)
+  var entries = Object.values(perTagZeit)
+    .filter(function(x){ return x.gesamt > 0; })
+    .sort(function(a,b){
+      if(a.datum !== b.datum) return a.datum - b.datum;
+      return a.zeit === 'morgen' ? -1 : 1;
+    });
+  // Walk chronologisch: paare jeden Morgen mit dem NÄCHSTEN vorherigen (noch nicht gepairten) Abend
+  var pairs = [];
+  var pendingAbend = null;
+  entries.forEach(function(e) {
+    if(e.zeit === 'abend') {
+      // Wenn schon ein Abend ohne Paar existiert, wird der alte verworfen (kein Morgen dazwischen)
+      pendingAbend = e;
+    } else if(e.zeit === 'morgen' && pendingAbend) {
+      var diffTage = Math.round((e.datum - pendingAbend.datum) / 86400000);
+      pairs.push({
+        abendTag: pendingAbend.tag,
+        morgenTag: e.tag,
+        abendDatum: pendingAbend.datum,
+        morgenDatum: e.datum,
+        abendL: Math.round(pendingAbend.gesamt * 10) / 10,
+        morgenL: Math.round(e.gesamt * 10) / 10,
+        gesamt: Math.round((pendingAbend.gesamt + e.gesamt) * 10) / 10,
+        // Für Chart: mittlerer Zeitpunkt der Nacht (12h nach dem Abend)
+        datum: pendingAbend.datum + (e.datum - pendingAbend.datum) / 2,
+        diffTage: diffTage
+      });
+      pendingAbend = null;
+    }
+    // Morgen ohne vorherigen Abend: keine Paar-Bildung (überspringen)
+  });
+  return pairs;
+};
+
+// Letzte Tagesmilch für eine Kuh
+window.getLetzteTagesmilch = function(kuhId) {
+  var pairs = window.computeMilchTagesPairs(kuhId);
+  if(!pairs.length) return null;
+  return pairs[pairs.length - 1];
+};
+
 window.drawMilchSaisonChart = function(canvas, zeitFilter) {
   if(!canvas) return;
   var tage={};
-  Object.values(milchEintraege).forEach(function(e){
-    if(!e.datum) return;
-    // Wenn Zeit-Filter angegeben, nur passende Schicht
-    if(zeitFilter && (e.zeit||'morgen') !== zeitFilter) return;
-    var tag=new Date(e.datum).toISOString().slice(0,10);
-    tage[tag]=(tage[tag]||0)+(e.gesamt||0);
-  });
+  // zeitFilter kann sein: 'morgen', 'abend', 'tag' (Abend+nächster Morgen), oder null
+  if(zeitFilter === 'tag') {
+    // Tagesmilch = jeder Abend + der nächst folgende Morgen (auch wenn mehrere Tage dazwischen)
+    var pairs = window.computeMilchTagesPairs();
+    pairs.forEach(function(p){
+      // Key = Abend-Datum, damit Sortierung stimmt und Datum-Label sinnvoll ist
+      tage[p.abendTag] = p.gesamt;
+    });
+  } else {
+    Object.values(milchEintraege).forEach(function(e){
+      if(!e.datum) return;
+      var zeit = e.zeit || 'morgen';
+      if(zeitFilter && zeit !== zeitFilter) return;
+      var tag=new Date(e.datum).toISOString().slice(0,10);
+      tage[tag]=(tage[tag]||0)+window.milchEintragGesamt(e);
+    });
+  }
   var data=Object.entries(tage).sort(function(a,b){return a[0].localeCompare(b[0]);})
     .map(function(d){return {d:new Date(d[0]+'T12:00').getTime(), l:Math.round(d[1]*10)/10};});
   if(data.length<2){canvas.style.display='none';return;}
 
-  // Schicht-spezifische Farben
-  var farbeHaupt   = zeitFilter === 'abend' ? '#e67e22' : '#7acbff';
-  var farbeAreaHi  = zeitFilter === 'abend' ? 'rgba(230,126,34,.30)' : 'rgba(122,203,255,.30)';
-  var farbeAreaLo  = zeitFilter === 'abend' ? 'rgba(230,126,34,.02)' : 'rgba(122,203,255,.02)';
-  var farbeMarker  = zeitFilter === 'abend' ? 'rgba(230,126,34,.25)' : 'rgba(122,203,255,.25)';
+  // Schicht-spezifische Farben (Morgens = blau, Abends = orange, Tagesmilch = gold)
+  var farbeHaupt, farbeAreaHi, farbeAreaLo, farbeMarker;
+  if(zeitFilter === 'abend') {
+    farbeHaupt   = '#e67e22';
+    farbeAreaHi  = 'rgba(230,126,34,.30)';
+    farbeAreaLo  = 'rgba(230,126,34,.02)';
+    farbeMarker  = 'rgba(230,126,34,.25)';
+  } else if(zeitFilter === 'tag') {
+    farbeHaupt   = '#d4a84b';
+    farbeAreaHi  = 'rgba(212,168,75,.30)';
+    farbeAreaLo  = 'rgba(212,168,75,.02)';
+    farbeMarker  = 'rgba(212,168,75,.25)';
+  } else {
+    farbeHaupt   = '#7acbff';
+    farbeAreaHi  = 'rgba(122,203,255,.30)';
+    farbeAreaLo  = 'rgba(122,203,255,.02)';
+    farbeMarker  = 'rgba(122,203,255,.25)';
+  }
 
   // ── Lineare Regression für Prognose ──
   var zeigPrognose = window._milchPrognoseSaison;
