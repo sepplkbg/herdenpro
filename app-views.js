@@ -7192,11 +7192,24 @@ function renderBauerDetail() {
   const b = bauern[id];
   if(!b) return '<div class="empty-state">Nicht gefunden</div>';
   const kueheList = Object.entries(kuehe).filter(([,k])=>k.bauer===b.name).sort((a,b2)=>parseInt(a[1].nr)-parseInt(b2[1].nr));
-  const bListe = Object.entries(behandlungen).filter(([,beh])=>kueheList.some(([kid])=>kid===beh.kuhId)).sort((a,b2)=>b2[1].datum-a[1].datum).slice(0,5);
-  const bsListe = Object.entries(besamungen).filter(([,bs])=>kueheList.some(([kid])=>kid===bs.kuhId)&&bs.status==='tragend');
-  const milchGesamt = Object.values(milchEintraege).reduce((s,m)=>s+(m.gesamt||0),0);
-  const aktivBehandlungen = Object.values(behandlungen).filter(beh=>kueheList.some(([kid])=>kid===beh.kuhId)&&beh.aktiv).length;
-  
+  const kueheIds = new Set(kueheList.map(([kid])=>kid));
+
+  // Alle Behandlungen des Bauern (chronologisch neu → alt)
+  const alleBList = Object.entries(behandlungen).filter(([,beh])=>kueheIds.has(beh.kuhId)).sort((a,b2)=>(b2[1].datum||0)-(a[1].datum||0));
+  const bsListe = Object.entries(besamungen).filter(([,bs])=>kueheIds.has(bs.kuhId)&&bs.status==='tragend');
+  const aktivBehandlungen = alleBList.filter(([,beh])=>beh.aktiv).length;
+
+  // Milch-Summe für diesen Bauern über die Saison (aus prokuh, nur Werte für seine Kühe)
+  const _mW = window.milchWert || function(v){ return typeof v === 'number' ? v : (v && v.wert != null ? parseFloat(v.wert) || 0 : parseFloat(v) || 0); };
+  let bauerMilchGesamt = 0;
+  Object.values(milchEintraege||{}).forEach(e=>{
+    if(!e || !e.prokuh) return;
+    kueheIds.forEach(kid => { if(e.prokuh[kid]!=null) bauerMilchGesamt += _mW(e.prokuh[kid]); });
+  });
+  bauerMilchGesamt = Math.round(bauerMilchGesamt);
+
+  const heute = Date.now();
+
   return `
     <div class="page-header">
       <button class="back-btn" onclick="navigate('bauern_menu')">‹ Bauern</button>
@@ -7205,7 +7218,7 @@ function renderBauerDetail() {
         <button class="btn-xs-danger" onclick="deleteBauer('${id}')">Löschen</button>
       </div>
     </div>
-    
+
     <!-- Hero -->
     <div style="text-align:center;padding:1rem 0 1.2rem">
       <div style="width:64px;height:64px;border-radius:50%;background:linear-gradient(135deg,var(--gold2),var(--bg3));display:flex;align-items:center;justify-content:center;font-size:2rem;margin:0 auto .5rem;border:2px solid var(--gold2)">👤</div>
@@ -7219,33 +7232,104 @@ function renderBauerDetail() {
     </div>
 
     <!-- Stats -->
-    <div class="stats-grid" style="grid-template-columns:1fr 1fr 1fr;margin-bottom:1rem">
+    <div class="stats-grid" style="grid-template-columns:1fr 1fr 1fr 1fr;margin-bottom:1rem">
       <div class="stat-card"><div class="stat-icon">🐄</div><div class="stat-num">${kueheList.length}</div><div class="stat-label">Kühe</div></div>
+      <div class="stat-card"><div class="stat-icon">🥛</div><div class="stat-num" style="font-size:1.2rem">${bauerMilchGesamt}L</div><div class="stat-label">Saison</div></div>
       <div class="stat-card ${aktivBehandlungen?'stat-warn':''}"><div class="stat-icon">⚕</div><div class="stat-num">${aktivBehandlungen}</div><div class="stat-label">Behandlung</div></div>
       <div class="stat-card"><div class="stat-icon">🐮</div><div class="stat-num">${bsListe.length}</div><div class="stat-label">Trächtig</div></div>
     </div>
 
-    <!-- Kühe -->
+    <!-- Kühe mit Detail-Infos -->
     <div class="section-title">Kühe (${kueheList.length})</div>
     <div class="card-list" style="margin-bottom:.8rem">
-      ${kueheList.map(([kid,k])=>`
-        <div class="list-card list-card-sm" onclick="showKuhDetail('${kid}')">
-          <span class="nr-badge">#${k.nr}</span>
-          <span class="list-card-title">${k.name||'–'}</span>
-          <span style="font-size:.72rem;color:var(--text3)">${k.rasse||''} ${k.laktation?'· '+k.laktation:''}</span>
-          ${Object.values(behandlungen).some(beh=>beh.kuhId===kid&&beh.aktiv)?'<span class="tag tag-red">⚕</span>':''}
-          <span class="chevron">›</span>
-        </div>`).join('')||'<div class="empty-state">Keine Kühe</div>'}
+      ${kueheList.map(([kid,k])=>{
+        // Letzte Tagesmilch (Abend + nächster Morgen) — pro Kuh
+        const tm = typeof window.getLetzteTagesmilch === 'function' ? window.getLetzteTagesmilch(kid) : null;
+        let tmHTML = '';
+        if(tm) {
+          const tmDatum = new Date(tm.abendDatum).toLocaleDateString('de-AT',{day:'numeric',month:'short'});
+          tmHTML = `<div style="font-size:.72rem;color:var(--text2);margin-top:.15rem">🥛 <b style="color:var(--gold)">${tm.gesamt} L</b> <span style="color:var(--text3)">Tagesmilch (Ab. ${tm.abendL} + Mo. ${tm.morgenL} · ${tmDatum})</span></div>`;
+        } else {
+          tmHTML = `<div style="font-size:.7rem;color:var(--text3);margin-top:.15rem">🥛 <span>Noch keine Tagesmilch erfasst</span></div>`;
+        }
+
+        // Letzte Zellzahl
+        let zzHTML = '';
+        if(typeof window.getLetzteZellzahl === 'function') {
+          const zz = window.getLetzteZellzahl(kid);
+          if(zz) {
+            const zzFarbe = typeof window.zellzahlAmpel === 'function' ? window.zellzahlAmpel(zz.wert) : 'var(--text2)';
+            const zzDatum = new Date(zz.datum).toLocaleDateString('de-AT',{day:'numeric',month:'short'});
+            zzHTML = `<div style="font-size:.72rem;color:var(--text2);margin-top:.1rem">🔬 Zellzahl: <b style="color:${zzFarbe}">${zz.wert}</b> <span style="color:var(--text3)">· ${zzDatum}</span></div>`;
+          }
+        }
+
+        // Aktive Behandlungen + Wartezeit-Info
+        const kuhBehalt = Object.entries(behandlungen).filter(([,beh])=>beh.kuhId===kid);
+        const aktBeh = kuhBehalt.filter(([,beh])=>beh.aktiv);
+        const wzM = aktBeh.filter(([,beh])=>beh.wzMilchEnde && beh.wzMilchEnde > heute).map(([,beh])=>beh.wzMilchEnde);
+        const wzF = aktBeh.filter(([,beh])=>beh.wzFleischEnde && beh.wzFleischEnde > heute).map(([,beh])=>beh.wzFleischEnde);
+        let wzHTML = '';
+        if(wzM.length) {
+          const t = Math.ceil((Math.min(...wzM) - heute) / 86400000);
+          wzHTML += `<span class="tag tag-orange" style="font-size:.65rem;margin-left:.3rem">🥛 WZ ${t}T</span>`;
+        }
+        if(wzF.length) {
+          const t = Math.ceil((Math.min(...wzF) - heute) / 86400000);
+          wzHTML += `<span class="tag tag-orange" style="font-size:.65rem;margin-left:.3rem">🥩 WZ ${t}T</span>`;
+        }
+
+        const behBadge = kuhBehalt.length ? `<span style="font-size:.68rem;color:var(--text3);margin-left:.3rem">⚕ ${kuhBehalt.length}${aktBeh.length?' · '+aktBeh.length+' aktiv':''}</span>` : '';
+
+        // Melkstatus
+        const laktBadge = k.laktation === 'trocken' || k.laktation === 'trockengestellt'
+          ? '<span style="font-size:.65rem;color:#c88030;background:rgba(200,120,0,.15);padding:1px 6px;border-radius:8px">TROCKEN</span>'
+          : '<span style="font-size:.65rem;color:var(--green);background:rgba(77,184,78,.12);padding:1px 6px;border-radius:8px">MELKEND</span>';
+
+        return `
+        <div class="list-card" onclick="showKuhDetail('${kid}')" style="cursor:pointer">
+          <div class="list-card-left">
+            <span class="nr-badge">#${k.nr}</span>
+            <div style="flex:1;min-width:0">
+              <div style="display:flex;align-items:center;gap:.4rem;flex-wrap:wrap">
+                <span class="list-card-title">${k.name||'–'}</span>
+                ${laktBadge}
+                ${aktBeh.length?'<span class="tag tag-red" style="font-size:.65rem">⚕ aktiv</span>':''}
+                ${wzHTML}
+              </div>
+              <div style="font-size:.7rem;color:var(--text3);margin-top:.1rem">${k.rasse||'–'} ${behBadge}</div>
+              ${tmHTML}
+              ${zzHTML}
+            </div>
+          </div>
+          <span class="chevron" style="align-self:center">›</span>
+        </div>`;
+      }).join('')||'<div class="empty-state">Keine Kühe</div>'}
     </div>
 
-    <!-- Aktive Behandlungen -->
-    ${bListe.length?`
-    <div class="section-title">Letzte Behandlungen</div>
-    ${bListe.map(([bid,beh])=>{const k=kuehe[beh.kuhId];return`<div class="history-card">
-      <div class="history-top"><span class="history-date">${new Date(beh.datum).toLocaleDateString('de-AT')}</span>${beh.aktiv?'<span class="tag tag-red">aktiv</span>':''}</div>
-      <div class="history-title">${beh.diagnose||beh.medikament||'–'} <span style="font-size:.75rem;color:var(--text3)">· #${k?.nr||''} ${k?.name||''}</span></div>
-      ${beh.medikament?`<div class="history-sub">${beh.medikament}${beh.dosis?' · '+beh.dosis:''}</div>`:''}
-    </div>`;}).join('')}`:''}
+    <!-- Alle Behandlungen (nicht mehr nur 5) -->
+    ${alleBList.length?`
+    <div class="section-title">Behandlungen (${alleBList.length})<span style="color:var(--text3);font-size:.72rem;font-weight:400"> · alle Einträge</span></div>
+    <div class="card-list" style="margin-bottom:1rem">
+      ${alleBList.map(([bid,beh])=>{
+        const k=kuehe[beh.kuhId];
+        const wzMActive = beh.wzMilchEnde && beh.wzMilchEnde > heute;
+        const wzFActive = beh.wzFleischEnde && beh.wzFleischEnde > heute;
+        return `<div class="history-card">
+          <div class="history-top">
+            <span class="history-date">${new Date(beh.datum).toLocaleDateString('de-AT')}</span>
+            ${beh.aktiv?'<span class="tag tag-red">aktiv</span>':'<span class="tag tag-green">abgeschlossen</span>'}
+          </div>
+          <div class="history-title">${beh.diagnose||beh.medikament||'–'} <span style="font-size:.75rem;color:var(--text3)">· #${k?.nr||''} ${k?.name||''}</span></div>
+          ${beh.medikament?`<div class="history-sub">${beh.medikament}${beh.dosis?' · '+beh.dosis:''}</div>`:''}
+          ${(wzMActive || wzFActive) ? `<div style="font-size:.68rem;color:var(--orange);margin-top:.2rem">
+            ${wzMActive?`🥛 WZ Milch bis ${new Date(beh.wzMilchEnde).toLocaleDateString('de-AT')}`:''}
+            ${wzMActive && wzFActive?' · ':''}
+            ${wzFActive?`🥩 WZ Fleisch bis ${new Date(beh.wzFleischEnde).toLocaleDateString('de-AT')}`:''}
+          </div>`:''}
+        </div>`;
+      }).join('')}
+    </div>`:''}
 
     <!-- Trächtige Kühe -->
     ${bsListe.length?`
