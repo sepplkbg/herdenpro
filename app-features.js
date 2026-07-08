@@ -2343,9 +2343,14 @@ function renderMilch() {
     const m = new Date(g.datum).toLocaleDateString('de-AT', {month:'short', year:'numeric'});
     proMonat[m] = (proMonat[m] || 0) + (g.gesamt || 0);
   });
-  const kueheOben = Object.entries(kuehe).sort((a,b) => {
+  // Nur Melkkühe im Formular anzeigen. Fallback: wenn keine Kuh in "Melkkühe" ist, alle zeigen.
+  const alleKueheSorted = Object.entries(kuehe).sort((a,b) => {
     const nA = parseInt(a[1].nr)||0, nB = parseInt(b[1].nr)||0; return nA - nB;
   });
+  const melkKuehe = alleKueheSorted.filter(([id, k]) =>
+    typeof window.kuhInGruppe === 'function' ? window.kuhInGruppe(k, 'Melkkühe', id) : true
+  );
+  const kueheOben = melkKuehe.length > 0 ? melkKuehe : alleKueheSorted;
 
   // Saison-Chart Daten: getrennt nach Morgens und Abends
   const tagesMilchMorgens = {};
