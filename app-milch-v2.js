@@ -1,8 +1,8 @@
 // ══════════════════════════════════════════════════════════════
 //  HERDENPRO – MILCH v2  (LocalStorage-first Persistence)
-//  MODUL-VERSION: 3.3  ← wenn du das siehst, ist der Fix geladen
+//  MODUL-VERSION: 3.4  ← wenn du das siehst, ist der Fix geladen
 // ══════════════════════════════════════════════════════════════
-window.MILCH_V2_VERSION = '3.3';
+window.MILCH_V2_VERSION = '3.4';
 //  Löst die alten Probleme (Datenverlust, hängende Saves offline,
 //  Multi-Melker-Kollisionen, Aggregations-Verdopplung).
 //
