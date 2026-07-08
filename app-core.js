@@ -246,6 +246,9 @@ let kuehe={}, behandlungen={}, besamungen={}, zaehlSession=null;
 let milchEintraege={}, weideTage={}, weiden={}, bauern={};
 let saisonInfo=null;
 let gruppen={}, fotos={}, zaehlVerlauf={}, chatNachrichten={}, kraftfutter={}, schalmtest={}, zellzahl={};
+// Sofort auf window spiegeln — damit IIFE-Module (app-milch-v2.js) darauf zugreifen können
+window.kuehe = kuehe; window.behandlungen = behandlungen; window.besamungen = besamungen;
+window.milchEintraege = milchEintraege; window.bauern = bauern; window.gruppen = gruppen;
 let kalenderTermine={};   // manuelle Kalendertermine
 let traenkeLog={};         // Tränke/Wasser-Protokoll
 let saisonArchiv={};       // Saisonvergleich-Archivdaten
@@ -275,16 +278,16 @@ function initApp() {
     return;
   }
 
-  onValue(ref(db,'kuehe'),        s=>{ kuehe=s.val()||{};          render(); checkWartezeiten(); });
-  onValue(ref(db,'behandlungen'), s=>{ behandlungen=s.val()||{};   render(); checkWartezeiten(); });
-  onValue(ref(db,'besamungen'),   s=>{ besamungen=s.val()||{};     render(); });
+  onValue(ref(db,'kuehe'),        s=>{ kuehe=s.val()||{};          window.kuehe=kuehe; render(); checkWartezeiten(); });
+  onValue(ref(db,'behandlungen'), s=>{ behandlungen=s.val()||{};   window.behandlungen=behandlungen; render(); checkWartezeiten(); });
+  onValue(ref(db,'besamungen'),   s=>{ besamungen=s.val()||{};     window.besamungen=besamungen; render(); });
   onValue(ref(db,'zaehlung'),     s=>{ zaehlSession=s.val();       render(); });
-  onValue(ref(db,'milch'),        s=>{ milchEintraege=s.val()||{}; render(); });
+  onValue(ref(db,'milch'),        s=>{ milchEintraege=s.val()||{}; window.milchEintraege=milchEintraege; render(); });
   onValue(ref(db,'schalmtest'),   s=>{ schalmtest=s.val()||{}; window.schalmtest=schalmtest; render(); });
   onValue(ref(db,'zellzahl'),     s=>{ zellzahl=s.val()||{}; window.zellzahl=zellzahl; render(); });
   onValue(ref(db,'weideTage'),    s=>{ weideTage=s.val()||{};      render(); });
   onValue(ref(db,'weiden'),       s=>{ weiden=s.val()||{};         render(); });
-  onValue(ref(db,'bauern'),       s=>{ bauern=s.val()||{};         render(); });
+  onValue(ref(db,'bauern'),       s=>{ bauern=s.val()||{}; window.bauern=bauern; render(); });
   onValue(ref(db,'saison'),       s=>{ saisonInfo=s.val();         render(); });
   onValue(ref(db,'journal'),      s=>{ journal=s.val()||{};        render(); });
   onValue(ref(db,'kontakte'),     s=>{ kontakte=s.val()||{};       render(); });
