@@ -7339,6 +7339,49 @@ function renderBauerDetail() {
       ${bs.erwartetGeburt?`<div class="history-sub">Geburt erw.: ${new Date(bs.erwartetGeburt).toLocaleDateString('de-AT')}</div>`:''}
     </div>`;}).join('')}`:''}
 
+    <!-- Notizen zum Bauern -->
+    <div class="section-title" style="display:flex;justify-content:space-between;align-items:center">
+      <span>📝 Notizen ${b.notizen ? '('+Object.keys(b.notizen).length+')' : ''}</span>
+      <button class="btn-secondary" style="padding:.3rem .7rem;font-size:.75rem" onclick="showBauerNotizForm('${id}')">+ Neue Notiz</button>
+    </div>
+    ${b.notizen && Object.keys(b.notizen).length ? `
+    <div class="card-list" style="margin-bottom:1rem">
+      ${Object.entries(b.notizen).sort((a,b2)=>(b2[1].datum||0)-(a[1].datum||0)).map(([nid, n])=>`
+        <div class="history-card" style="position:relative">
+          <div class="history-top">
+            <span class="history-date">${new Date(n.datum).toLocaleDateString('de-AT',{day:'numeric',month:'short',year:'numeric'})} · ${new Date(n.datum).toLocaleTimeString('de-AT',{hour:'2-digit',minute:'2-digit'})}</span>
+            ${n.autor?`<span style="font-size:.68rem;color:var(--text3)">${n.autor}</span>`:''}
+          </div>
+          <div style="white-space:pre-wrap;font-size:.85rem;color:var(--text);margin:.2rem 0 .4rem;line-height:1.4">${(n.text||'').replace(/</g,'&lt;')}</div>
+          <div style="display:flex;gap:.3rem;justify-content:flex-end">
+            <button class="btn-ghost" style="padding:.2rem .5rem;font-size:.7rem" onclick="showBauerNotizForm('${id}','${nid}')">✎ Bearbeiten</button>
+            <button class="btn-xs-danger" style="padding:.2rem .5rem;font-size:.7rem" onclick="deleteBauerNotiz('${id}','${nid}')">✕ Löschen</button>
+          </div>
+        </div>
+      `).join('')}
+    </div>` : `<div class="empty-state" style="padding:.7rem;font-size:.8rem;color:var(--text3);margin-bottom:1rem">Noch keine Notizen. Tippe „+ Neue Notiz" um die erste zu erstellen.</div>`}
+
+    <!-- Notiz-Overlay -->
+    <div id="bauer-notiz-overlay" class="form-overlay" style="display:none">
+      <div class="form-sheet">
+        <div class="form-header">
+          <h3 id="bauer-notiz-title">📝 Neue Notiz</h3>
+          <button class="close-btn" onclick="closeForm('bauer-notiz-overlay')">✕</button>
+        </div>
+        <div class="form-body">
+          <input type="hidden" id="bauer-notiz-bauer-id" />
+          <input type="hidden" id="bauer-notiz-id" />
+          <label class="inp-label">Notiz</label>
+          <textarea id="bauer-notiz-text" class="inp" rows="8" placeholder="Beobachtungen, Absprachen, Zahlungen, Termine…" style="width:100%;box-sizing:border-box;font-size:.9rem;font-family:inherit;resize:vertical;min-height:8rem"></textarea>
+          <div style="font-size:.7rem;color:var(--text3);margin-top:.3rem">Datum &amp; Uhrzeit werden automatisch gesetzt.</div>
+          <div class="form-actions" style="margin-top:.8rem">
+            <button class="btn-secondary" onclick="closeForm('bauer-notiz-overlay')">Abbrechen</button>
+            <button class="btn-primary" onclick="saveBauerNotiz()">💾 Speichern</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- Bauer-Bearbeiten Overlay (wird direkt hier eingebettet) -->
     <div id="bauer-overlay" class="form-overlay" style="display:none">
       <div class="form-sheet">
@@ -7388,6 +7431,73 @@ window.saveBauer = async function() {
   }
   window.showSaveToast&&showSaveToast('Bauer gespeichert');
   closeForm('bauer-overlay');
+};
+
+// ══════════════════════════════════════════════════════════════
+//  BAUER-NOTIZEN
+// ══════════════════════════════════════════════════════════════
+window.showBauerNotizForm = function(bauerId, notizId) {
+  const ov = document.getElementById('bauer-notiz-overlay');
+  if(!ov) return;
+  document.getElementById('bauer-notiz-bauer-id').value = bauerId || '';
+  document.getElementById('bauer-notiz-id').value = notizId || '';
+  const titleEl = document.getElementById('bauer-notiz-title');
+  const textEl = document.getElementById('bauer-notiz-text');
+  if(notizId) {
+    const b = bauern[bauerId];
+    const n = b && b.notizen && b.notizen[notizId];
+    if(titleEl) titleEl.textContent = '✎ Notiz bearbeiten';
+    if(textEl) textEl.value = n?.text || '';
+  } else {
+    if(titleEl) titleEl.textContent = '📝 Neue Notiz';
+    if(textEl) textEl.value = '';
+  }
+  ov.style.display = 'flex';
+  setTimeout(() => { textEl?.focus(); }, 100);
+};
+
+window.saveBauerNotiz = async function() {
+  const bauerId = document.getElementById('bauer-notiz-bauer-id')?.value;
+  const notizId = document.getElementById('bauer-notiz-id')?.value;
+  const text = document.getElementById('bauer-notiz-text')?.value.trim();
+  if(!bauerId) { alert('Fehler: kein Bauer'); return; }
+  if(!text) { alert('Bitte Text eingeben'); return; }
+  const cu = window._currentUser || {};
+  const autor = cu.name || cu.displayName || (cu.email ? cu.email.split('@')[0] : '') || '';
+  try {
+    if(notizId) {
+      // Bearbeiten: text und updatedAt aktualisieren, datum + autor bleiben
+      await update(ref(db, 'bauern/'+bauerId+'/notizen/'+notizId), {
+        text: text,
+        updatedAt: Date.now()
+      });
+      window.showSaveToast && showSaveToast('✓ Notiz aktualisiert');
+    } else {
+      // Neue Notiz: unter Firebase-Auto-Key ablegen
+      await push(ref(db, 'bauern/'+bauerId+'/notizen'), {
+        text: text,
+        datum: Date.now(),
+        autor: autor
+      });
+      window.showSaveToast && showSaveToast('✓ Notiz gespeichert');
+    }
+    closeForm('bauer-notiz-overlay');
+  } catch(e) {
+    console.error('[Bauer-Notiz] save err:', e);
+    alert('Fehler beim Speichern: ' + (e.message || e));
+  }
+};
+
+window.deleteBauerNotiz = async function(bauerId, notizId) {
+  if(!bauerId || !notizId) return;
+  if(!confirm('Notiz wirklich löschen?')) return;
+  try {
+    await remove(ref(db, 'bauern/'+bauerId+'/notizen/'+notizId));
+    window.showSaveToast && showSaveToast('✓ Notiz gelöscht');
+  } catch(e) {
+    console.error('[Bauer-Notiz] delete err:', e);
+    alert('Fehler beim Löschen: ' + (e.message || e));
+  }
 };
 
 // ══════════════════════════════════════════════════════════════
