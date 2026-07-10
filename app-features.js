@@ -2343,14 +2343,19 @@ function renderMilch() {
     const m = new Date(g.datum).toLocaleDateString('de-AT', {month:'short', year:'numeric'});
     proMonat[m] = (proMonat[m] || 0) + (g.gesamt || 0);
   });
-  // Nur Melkkühe im Formular anzeigen. Fallback: wenn keine Kuh in "Melkkühe" ist, alle zeigen.
+  // Melkkühe-Filter: standardmäßig NICHT-trockene Kühe. User kann per Toggle alle zeigen.
   const alleKueheSorted = Object.entries(kuehe).sort((a,b) => {
     const nA = parseInt(a[1].nr)||0, nB = parseInt(b[1].nr)||0; return nA - nB;
   });
-  const melkKuehe = alleKueheSorted.filter(([id, k]) =>
-    typeof window.kuhInGruppe === 'function' ? window.kuhInGruppe(k, 'Melkkühe', id) : true
-  );
-  const kueheOben = melkKuehe.length > 0 ? melkKuehe : alleKueheSorted;
+  const zeigeAlleKuehe = window._milchZeigeAlle === true;
+  const nurMelkkuehe = alleKueheSorted.filter(([id, k]) => {
+    const l = String(k?.laktation || '').toLowerCase();
+    // Explizit trocken → NICHT anzeigen
+    if(l === 'trocken' || l === 'trockengestellt') return false;
+    return true;
+  });
+  const kueheOben = zeigeAlleKuehe ? alleKueheSorted : (nurMelkkuehe.length > 0 ? nurMelkkuehe : alleKueheSorted);
+  const kuhFilterCounter = { melk: nurMelkkuehe.length, alle: alleKueheSorted.length };
 
   // Saison-Chart Daten: getrennt nach Morgens und Abends
   const tagesMilchMorgens = {};
@@ -6470,15 +6475,21 @@ window.spielSpring = function() {
   }
 };
 
-// Leertaste & Pfeil-oben für Sprung
+// Leertaste & Pfeil-oben für Sprung — ABER nicht wenn User in einem Textfeld tippt!
 window._spielKeyHandler = function(e) {
-  if(e.code === 'Space' || e.code === 'ArrowUp') {
-    e.preventDefault();
-    if(window._spielState && window._spielState.running) {
-      spielSpring();
-    } else if(document.getElementById('spiel-start') && currentView === 'spiel') {
-      startSpiel();
-    }
+  if(e.code !== 'Space' && e.code !== 'ArrowUp') return;
+  // Kein Interception wenn wir gar nicht im Spiel-View sind
+  if(currentView !== 'spiel' && !(window._spielState && window._spielState.running)) return;
+  // Kein Interception wenn Fokus auf einem Textfeld/Textarea/contenteditable liegt
+  const t = e.target;
+  const tag = t && t.tagName;
+  if(tag === 'INPUT' || tag === 'TEXTAREA' || (t && t.isContentEditable)) return;
+  // Nur JETZT preventDefault + Spiel-Aktion auslösen
+  e.preventDefault();
+  if(window._spielState && window._spielState.running) {
+    spielSpring();
+  } else if(document.getElementById('spiel-start') && currentView === 'spiel') {
+    startSpiel();
   }
 };
 document.addEventListener('keydown', window._spielKeyHandler);
