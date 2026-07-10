@@ -1,8 +1,8 @@
 // ══════════════════════════════════════════════════════════════
 //  HERDENPRO – MILCH v2  (LocalStorage-first Persistence)
-//  MODUL-VERSION: 3.4  ← wenn du das siehst, ist der Fix geladen
+//  MODUL-VERSION: 3.6  ← wenn du das siehst, ist der Fix geladen
 // ══════════════════════════════════════════════════════════════
-window.MILCH_V2_VERSION = '3.4';
+window.MILCH_V2_VERSION = '3.6';
 //  Löst die alten Probleme (Datenverlust, hängende Saves offline,
 //  Multi-Melker-Kollisionen, Aggregations-Verdopplung).
 //
@@ -29,26 +29,59 @@ window.milchWert = function(v) {
   return parseFloat(v) || 0;
 };
 
-// ── Session-ID: gekoppelt an user.uid (persistent, nicht pro Tab)
-// Fällt zurück auf firebase.auth().currentUser wenn window._currentUser noch nicht gesetzt ist
-window.getMilchSessionId = function() {
-  const u = window._currentUser;
-  if(u && u.uid) return 'user_' + u.uid;
-  // Fallback 1: Firebase Auth direkt (verfügbar sobald Session restored, vor DB-Load)
+// ── User-UID: STABILE Identität, überlebt App-Neustarts und Session-Wechsel
+// Vorzug: Firebase-Auth → sofort in localStorage cachen → nachfolgende Aufrufe stabil
+window.getMilchUserUid = function() {
+  // 1) Firebase Auth direkt (wenn verfügbar)
   try {
     if(typeof firebase !== 'undefined' && firebase.auth) {
       const authUser = firebase.auth().currentUser;
-      if(authUser && authUser.uid) return 'user_' + authUser.uid;
+      if(authUser && authUser.uid) {
+        localStorage.setItem('milkUserUid_v2', authUser.uid);
+        return authUser.uid;
+      }
     }
   } catch(e) {}
-  // Fallback 2: sessionStorage
-  let sid = sessionStorage.getItem('milkSessionId');
-  if(!sid) {
-    sid = 'anon_' + Math.random().toString(36).slice(2, 10);
-    sessionStorage.setItem('milkSessionId', sid);
+  // 2) window._currentUser
+  const u = window._currentUser;
+  if(u && u.uid) {
+    localStorage.setItem('milkUserUid_v2', u.uid);
+    return u.uid;
   }
-  return sid;
+  // 3) LocalStorage-Cache (aus früherer Session — SEHR wichtig!)
+  const cached = localStorage.getItem('milkUserUid_v2');
+  if(cached) return cached;
+  // 4) Kein Login → anonymous, aber persistent
+  let anon = localStorage.getItem('milkAnonUid_v2');
+  if(!anon) {
+    anon = 'anon_' + Math.random().toString(36).slice(2, 12);
+    localStorage.setItem('milkAnonUid_v2', anon);
+  }
+  return anon;
 };
+
+// ── Session-ID: nutzt die stabile UID
+window.getMilchSessionId = function() {
+  const uid = window.getMilchUserUid();
+  return uid.startsWith('anon_') ? uid : 'user_' + uid;
+};
+
+// ── Prüfen ob eine Meta-Eintrag zum aktuellen User gehört (auch Legacy-Vergleich)
+function isOwnMeta(meta) {
+  if(!meta) return false;
+  const myUid = window.getMilchUserUid();
+  // Neu: userUid direkt vergleichen
+  if(meta.userUid && meta.userUid === myUid) return true;
+  // Legacy: session = 'user_UID' extrahieren
+  if(meta.session && meta.session.startsWith('user_')) {
+    const uid = meta.session.slice(5);
+    if(uid === myUid) return true;
+  }
+  // Legacy: session = 'anon_XXX' — für früher gespeicherte Werte großzügig sein
+  // (kann nur derselbe Tab gewesen sein, aber nicht garantiert derselbe User)
+  return false;
+}
+window._milchIsOwnMeta = isOwnMeta;
 
 // ── User-Name für Attribution
 function getUserName() {
@@ -111,18 +144,19 @@ window.pushMilchWert = function(kuhId, wert, datum, zeit) {
   if(!kuhId || datum == null) return;
   const entryKey = getMilchEntryKey(datum, zeit);
   const sessionId = getMilchSessionId();
+  const userUid = window.getMilchUserUid();
   const userName = getUserName();
   const now = Date.now();
   const wertVal = Math.round((parseFloat(wert) || 0) * 10) / 10;
 
-  // Attribution separat vom Wert speichern (Firebase-Rules-freundlich: prokuh bleibt Zahl!)
-  const metaPayload = { session: sessionId, userName: userName, ts: now };
+  // Attribution: NEUE stabile userUid + Session-ID (kompatibel mit alter Logik)
+  const metaPayload = { session: sessionId, userUid: userUid, userName: userName, ts: now };
 
   // 1. LocalStorage sofort (Wahrheit auf Gerät). Kombinierte Payload für internes Tracking.
   const pending = getPending();
   if(wertVal > 0) {
     if(!pending[entryKey]) pending[entryKey] = {};
-    pending[entryKey][kuhId] = { wert: wertVal, session: sessionId, userName: userName, ts: now };
+    pending[entryKey][kuhId] = { wert: wertVal, session: sessionId, userUid: userUid, userName: userName, ts: now };
     setPending(pending);
   } else {
     // Wert 0 = löschen
@@ -522,7 +556,7 @@ window.syncMilchPending = function() {
 window.onMilchEintraegeChanged = function() {
   const p = getPending();
   const eintraege = window.milchEintraege || {};
-  const mySession = getMilchSessionId();
+  const isOwn = window._milchIsOwnMeta;
   let changed = false;
 
   Object.entries(p).forEach(([entryKey, cows]) => {
@@ -535,15 +569,15 @@ window.onMilchEintraegeChanged = function() {
       if(fbVal == null) return;
       // Neue Struktur: Wert ist Zahl, Attribution in meta/
       if(typeof fbVal === 'number' || typeof fbVal === 'string') {
-        // Wenn Meta vorhanden und session/ts passen → bestätigt
-        if(meta && meta.session === payload.session && (meta.ts || 0) >= (payload.ts || 0)) {
+        // Wenn Meta zum eigenen User gehört und ts >= mein ts → bestätigt
+        if(meta && isOwn && isOwn(meta) && (meta.ts || 0) >= (payload.ts || 0)) {
           delete p[entryKey][kuhId];
           if(Object.keys(p[entryKey]).length === 0) delete p[entryKey];
           changed = true;
           return;
         }
-        // Konflikt: Meta zeigt andere Session mit späterem ts → anderer Melker hat überschrieben
-        if(meta && meta.session && meta.session !== payload.session && (meta.ts || 0) > (payload.ts || 0)) {
+        // Konflikt: ANDERER User mit späterem ts → hat überschrieben
+        if(meta && (meta.userUid || meta.session) && isOwn && !isOwn(meta) && (meta.ts || 0) > (payload.ts || 0)) {
           addKonflikt({
             entryKey, kuhId,
             meinWert: payload.wert,
@@ -616,17 +650,25 @@ window.updateSyncBanner = function() {
   }
 
   if(n === 0 && konfl === 0) {
-    // Alles sauber
+    // Auch wenn nichts pending ist: OFFLINE-Zustand IMMER sichtbar machen
+    if(!online) {
+      banner._wasVisible = true;
+      banner.style.display = 'flex';
+      banner.className = 'milch-sync-banner milch-sync-offline';
+      banner.innerHTML = '<span>📵</span><span>Offline — Änderungen werden gespeichert sobald wieder online <span style="opacity:.5;font-size:.65rem">[v' + (window.MILCH_V2_VERSION || '?') + ']</span></span>';
+      if(banner._hideTimer) { clearTimeout(banner._hideTimer); banner._hideTimer = null; }
+      return;
+    }
+    // Alles sauber & online — Banner bleibt 15s als Bestätigung
     if(banner._wasVisible) {
-      // Kurz „✓" zeigen, dann ausblenden
       banner.style.display = 'flex';
       banner.className = 'milch-sync-banner milch-sync-ok';
-      banner.innerHTML = '<span>✓</span><span>Alle Milchwerte in der Cloud gesichert</span>';
+      banner.innerHTML = '<span>✓</span><span>Alle Milchwerte in der Cloud gesichert <span style="opacity:.5;font-size:.65rem">[v' + (window.MILCH_V2_VERSION || '?') + ']</span></span>';
       if(banner._hideTimer) clearTimeout(banner._hideTimer);
       banner._hideTimer = setTimeout(() => {
         banner.style.display = 'none';
         banner._wasVisible = false;
-      }, 3000);
+      }, 15000);
     } else {
       banner.style.display = 'none';
     }
@@ -1083,8 +1125,9 @@ window.updateAndereMelkerHinweise = function() {
   const entryKey = getMilchEntryKey(datum, zeit);
   const fbEntry = (window.milchEintraege || {})[entryKey];
 
-  // Werte anderer Sessions einsammeln
+  // Werte anderer USER einsammeln (per userUid-Vergleich, nicht Session)
   const andereWerte = {}; // kuhId → {wert, name}
+  const isOwn = window._milchIsOwnMeta;
   if(fbEntry && fbEntry.prokuh) {
     const meta = fbEntry.meta || {};
     Object.entries(fbEntry.prokuh).forEach(([kuhId, v]) => {
@@ -1094,37 +1137,19 @@ window.updateAndereMelkerHinweise = function() {
       // Neue Struktur: Wert ist Zahl, Attribution in meta/kuhId
       if(typeof v === 'number' || typeof v === 'string') {
         const m = meta[kuhId];
-        if(m && m.session && m.session !== mySession) {
+        // Nur wenn wir SICHER sind dass es ein ANDERER User war
+        if(m && (m.userUid || m.session) && isOwn && !isOwn(m)) {
           andereWerte[kuhId] = { wert: w, name: m.userName || 'Anderer' };
         }
-        // Ohne Meta: können wir Melker nicht unterscheiden → ignorieren
       }
       // Legacy-Objekt-Struktur
-      else if(typeof v === 'object') {
-        if(v.session && v.session !== mySession) {
+      else if(typeof v === 'object' && v.session) {
+        if(isOwn && !isOwn(v)) {
           andereWerte[kuhId] = { wert: w, name: v.userName || 'Anderer' };
         }
       }
     });
   }
-
-  // Auch alte Firebase-Einträge (mit random-key + _session) berücksichtigen für Übergangsphase
-  const datumTs = new Date(datum + 'T12:00').getTime();
-  const startTag = new Date(datumTs); startTag.setHours(0,0,0,0);
-  const endeTag = startTag.getTime() + 86400000;
-  Object.values(window.milchEintraege || {}).forEach(e => {
-    if(!e || !e.datum) return;
-    if(e.datum < startTag.getTime() || e.datum >= endeTag) return;
-    if((e.zeit || 'morgen') !== zeit) return;
-    if(e._session === mySession) return;
-    if(!e.prokuh) return;
-    Object.entries(e.prokuh).forEach(([kuhId, v]) => {
-      const w = milchWert(v);
-      if(w > 0 && !andereWerte[kuhId]) {
-        andereWerte[kuhId] = { wert: w, name: e._userName || 'Anderer' };
-      }
-    });
-  });
 
   // DOM updaten
   document.querySelectorAll('#milch-form-overlay .milch-kuh-row').forEach(row => {
@@ -1193,19 +1218,26 @@ window.resetMilchAutoSaveState = function() {
         const mySession = getMilchSessionId();
         const fbEntry = (window.milchEintraege || {})[entryKey];
 
-        // Aus Firebase-Eintrag: EIGENE Werte übernehmen (per Meta-Attribution identifiziert)
+        // Aus Firebase-Eintrag: EIGENE Werte übernehmen (per userUid-Attribution)
         const eigene = {};
         if(fbEntry && fbEntry.prokuh) {
           const meta = fbEntry.meta || {};
           Object.entries(fbEntry.prokuh).forEach(([kuhId, v]) => {
             const w = milchWert(v);
+            if(w <= 0) return;
             const m = meta[kuhId];
-            if(m && m.session === mySession && w > 0) {
+            // Neue Struktur: userUid- oder session-basierte Zuordnung zum aktuellen User
+            if(m && window._milchIsOwnMeta && window._milchIsOwnMeta(m)) {
               eigene[kuhId] = w;
             }
-            // Legacy-Objekt-Struktur (Zwischen-Version)
-            else if(typeof v === 'object' && v && v.session === mySession) {
+            // Legacy-Objekt-Struktur (Zwischen-Version) mit .wert und .session
+            else if(typeof v === 'object' && v && window._milchIsOwnMeta && window._milchIsOwnMeta(v)) {
               eigene[kuhId] = parseFloat(v.wert) || 0;
+            }
+            // Fallback: wenn KEIN meta existiert (ganz alte Werte oder legacy random-key),
+            // dann trotzdem restaurieren — Melker sieht was da ist, verwaltet selbst
+            else if(!m || (!m.userUid && !m.session)) {
+              eigene[kuhId] = w;
             }
           });
         }
@@ -1320,10 +1352,12 @@ window.resetMilchAutoSaveState = function() {
 })();
 
 // ══════════════════════════════════════════════════════════════
-//  App-Start: initial pending sync + Banner
+//  App-Start: User-UID cachen + initial pending sync + Banner
 // ══════════════════════════════════════════════════════════════
 window.addEventListener('load', () => {
   setTimeout(() => {
+    // Sofort User-UID etablieren und in localStorage sichern
+    try { window.getMilchUserUid(); } catch(e) {}
     updateSyncBanner();
     if(navigator.onLine) {
       syncMilchPending();
@@ -1331,7 +1365,24 @@ window.addEventListener('load', () => {
       setTimeout(() => { if(window._milchConfirmAllPendingSilent) window._milchConfirmAllPendingSilent(); }, 3500);
     }
   }, 1500);
+  // Firebase-Auth-State: bei Login/Logout UID neu setzen
+  try {
+    if(typeof firebase !== 'undefined' && firebase.auth) {
+      firebase.auth().onAuthStateChanged(function(user) {
+        if(user && user.uid) {
+          localStorage.setItem('milkUserUid_v2', user.uid);
+        }
+      });
+    }
+  } catch(e) {}
 });
+
+// ── System-Offline-Banner (das orangene ganz oben) automatisch togglen
+function toggleSystemOfflineBanner() {
+  const el = document.getElementById('offline-banner');
+  if(!el) return;
+  el.style.display = navigator.onLine ? 'none' : 'flex';
+}
 
 // Online/Offline Handler
 window.addEventListener('online', () => {
@@ -1340,6 +1391,7 @@ window.addEventListener('online', () => {
     window._milchSyncError = null;
     window._milchErrorToastShown = false;
   }
+  toggleSystemOfflineBanner();
   updateSyncBanner();
   setTimeout(() => {
     syncMilchPending();
@@ -1352,7 +1404,13 @@ window.addEventListener('offline', () => {
   if(window._milchSyncError && (window._milchSyncError.msg||'').toLowerCase().includes('timeout')) {
     window._milchSyncError = null;
   }
+  toggleSystemOfflineBanner();
   updateSyncBanner();
+});
+
+// Beim Start einmal den System-Offline-Banner-Status prüfen
+window.addEventListener('load', () => {
+  setTimeout(toggleSystemOfflineBanner, 500);
 });
 
 // Retry-Loop alle 30s
