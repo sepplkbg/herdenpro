@@ -490,7 +490,26 @@ function renderKuhDetail() {
 
   const bList   = Object.entries(behandlungen).filter(([,b])=>b.kuhId===id).sort((a,b)=>b[1].datum-a[1].datum);
   const bsList  = Object.entries(besamungen).filter(([,b])=>b.kuhId===id).sort((a,b)=>b[1].datum-a[1].datum);
-  const mListAll= Object.entries(milchEintraege).filter(([,m])=>m.prokuh?.[id]).sort((a,b)=>a[1].datum-b[1].datum);
+  // Milch-Einträge: nach Datum+Zeit aggregieren (verhindert Duplikate bei alten random-key + neuen v2 Einträgen)
+  const _mWkd0 = window.milchWert || function(v){ return typeof v === 'number' ? v : (v && v.wert != null ? parseFloat(v.wert) || 0 : parseFloat(v) || 0); };
+  const _milchAggMap = new Map();
+  Object.entries(milchEintraege).forEach(([mid, m]) => {
+    if(!m || !m.datum || !m.prokuh || m.prokuh[id] == null) return;
+    const w = _mWkd0(m.prokuh[id]);
+    if(w <= 0) return;
+    const tag = new Date(m.datum).toISOString().slice(0,10);
+    const key = tag + '_' + (m.zeit || 'morgen');
+    // Attribution & ts (für „letzter gewinnt")
+    let ts = 0;
+    if(m.meta && m.meta[id] && typeof m.meta[id].ts === 'number') ts = m.meta[id].ts;
+    else if(typeof m.prokuh[id] === 'object' && m.prokuh[id]) ts = m.prokuh[id].ts || 0;
+    if(!ts) ts = m.lastUpdate || m.createdAt || m.datum || 0;
+    const existing = _milchAggMap.get(key);
+    if(!existing || ts > existing._ts) {
+      _milchAggMap.set(key, { ...m, prokuh: {...m.prokuh}, _id: mid, _ts: ts });
+    }
+  });
+  const mListAll = [..._milchAggMap.entries()].map(([k,m]) => [m._id, m]).sort((a,b) => a[1].datum - b[1].datum);
   const mList   = [...mListAll].reverse().slice(0,30);
   const aktBeh  = bList.filter(([,b])=>b.aktiv);
   const archBeh = bList.filter(([,b])=>!b.aktiv);
@@ -522,9 +541,62 @@ function renderKuhDetail() {
   // Canvas chart data encoded as JSON for JS — ALLE Einträge (kein Limit)
   const chartJson = JSON.stringify(chartDaten);
 
+  // ── EXTRAS für den Chart: Behandlungen, WZ-Zonen, Trockenstellung, Herden-Ø, Tagesmilch ──
+  const _kdExtras = {
+    behMarkers: bList.map(([, b]) => ({
+      d: b.datum,
+      aktiv: !!b.aktiv,
+      diagnose: b.diagnose || b.medikament || 'Behandlung'
+    })).filter(m => m.d),
+    wzZonen: bList
+      .filter(([, b]) => b.wzMilchEnde && b.datum)
+      .map(([, b]) => ({ von: b.datum, bis: b.wzMilchEnde })),
+    trockenAb: (k.laktation === 'trocken' || k.laktation === 'trockengestellt')
+      ? (chartDaten.length ? chartDaten[chartDaten.length - 1].d : null)
+      : null,
+    kalbDatum: (function(){
+      // Letzte abgeschlossene Kalbung aus Besamungen
+      const b = bsList.find(([, x]) => x.kalbDatum);
+      return b ? b[1].kalbDatum : null;
+    })()
+  };
+
+  // Herden-Durchschnitt pro (tag+zeit) für Vergleich mit anderen Melkkühen berechnen
+  const _kdHerdAvg = (function(){
+    const _mW = window.milchWert || function(v){ return typeof v === 'number' ? v : (v && v.wert != null ? parseFloat(v.wert) || 0 : parseFloat(v) || 0); };
+    const perTagZeit = {}; // key: iso_zeit → {sum, count}
+    Object.values(milchEintraege || {}).forEach(m => {
+      if(!m || !m.datum || !m.prokuh) return;
+      const iso = new Date(m.datum).toISOString().slice(0,10);
+      const zeit = m.zeit || 'morgen';
+      const key = iso + '_' + zeit;
+      if(!perTagZeit[key]) perTagZeit[key] = { sum: 0, count: 0, datum: m.datum, zeit };
+      Object.entries(m.prokuh).forEach(([kid, v]) => {
+        const kk = kuehe[kid];
+        if(!kk) return;
+        const lakt = String(kk.laktation||'').toLowerCase();
+        if(lakt === 'trocken' || lakt === 'trockengestellt') return;
+        const val = _mW(v);
+        if(val > 0) { perTagZeit[key].sum += val; perTagZeit[key].count++; }
+      });
+    });
+    const map = {};  // key → avg
+    Object.entries(perTagZeit).forEach(([k, v]) => {
+      if(v.count > 0) map[k] = { d: v.datum, z: v.zeit, l: v.sum / v.count };
+    });
+    return map;
+  })();
+  _kdExtras.herdAvg = _kdHerdAvg;
+
+  // Tagesmilch für diese Kuh (Abend + nächst folgender Morgen)
+  _kdExtras.tagesmilch = typeof window.computeMilchTagesPairs === 'function'
+    ? window.computeMilchTagesPairs(id).map(p => ({ d: p.datum, l: p.gesamt, abendL: p.abendL, morgenL: p.morgenL, abendD: p.abendDatum, morgenD: p.morgenDatum }))
+    : [];
+
   // ⚠ WICHTIG: Chart-Daten und Draw-Trigger MÜSSEN vor dem return stehen,
   // sonst sind sie unreachable code und der Chart bleibt leer.
   window._kdChartData = chartDaten;
+  window._kdExtras = _kdExtras;
   setTimeout(function(){ window.kdDrawWithRetry && window.kdDrawWithRetry(0); }, 50);
 
   return `
@@ -820,12 +892,44 @@ function renderKuhDetail() {
       </div>
     </div>
 
-    <!-- Canvas Charts: Morgens und Abends getrennt -->
-    <div style="background:var(--bg3);border:1px solid var(--border);border-radius:12px;padding:.7rem .7rem .4rem;margin-bottom:.5rem">
+    <!-- Chart-Anzeige-Umschaltung: welche Charts sichtbar sind -->
+    ${(function(){
+      const vis = (function(){ try { return JSON.parse(localStorage.getItem('kdChartVisible')||'null') || {morgen:true, abend:true, tag:true}; } catch(e){ return {morgen:true, abend:true, tag:true}; } })();
+      window._kdChartVis = vis;
+      return `
+      <div style="display:flex;gap:.5rem;flex-wrap:wrap;margin-bottom:.5rem;padding:.4rem .6rem;background:var(--bg3);border:1px solid var(--border);border-radius:10px">
+        <label style="display:flex;align-items:center;gap:.3rem;font-size:.75rem;color:var(--text2);cursor:pointer">
+          <input type="checkbox" ${vis.morgen?'checked':''} onchange="kdToggleChart('morgen',this.checked)" style="cursor:pointer;accent-color:#7acbff" />
+          <span style="color:#7acbff">🌅 Morgens</span>
+        </label>
+        <label style="display:flex;align-items:center;gap:.3rem;font-size:.75rem;color:var(--text2);cursor:pointer">
+          <input type="checkbox" ${vis.abend?'checked':''} onchange="kdToggleChart('abend',this.checked)" style="cursor:pointer;accent-color:#e67e22" />
+          <span style="color:#e67e22">🌇 Abends</span>
+        </label>
+        <label style="display:flex;align-items:center;gap:.3rem;font-size:.75rem;color:var(--text2);cursor:pointer">
+          <input type="checkbox" ${vis.tag?'checked':''} onchange="kdToggleChart('tag',this.checked)" style="cursor:pointer;accent-color:#d4a84b" />
+          <span style="color:var(--gold)">🥛 Tagesmilch</span>
+        </label>
+        <div style="margin-left:auto;font-size:.7rem;color:var(--text3);display:flex;align-items:center;gap:.5rem">
+          <label style="display:flex;align-items:center;gap:.25rem;cursor:pointer" title="Ø-Linie">
+            <input type="checkbox" checked onchange="window._kdShowAvg=this.checked;window.drawKdChart&&window.drawKdChart()" style="cursor:pointer" /> <span>Ø-Linie</span>
+          </label>
+          <label style="display:flex;align-items:center;gap:.25rem;cursor:pointer" title="Herden-Durchschnitt vergleichen">
+            <input type="checkbox" checked onchange="window._kdShowHerd=this.checked;window.drawKdChart&&window.drawKdChart()" style="cursor:pointer" /> <span>Herde</span>
+          </label>
+          <label style="display:flex;align-items:center;gap:.25rem;cursor:pointer" title="Behandlungen &amp; Wartezeiten markieren">
+            <input type="checkbox" checked onchange="window._kdShowMed=this.checked;window.drawKdChart&&window.drawKdChart()" style="cursor:pointer" /> <span>⚕</span>
+          </label>
+        </div>
+      </div>`;
+    })()}
+    <!-- Canvas Charts: Morgens, Abends und Tagesmilch (Sichtbarkeit via kdChartVisible) -->
+    <div id="kd-chart-wrap-morgens" style="background:var(--bg3);border:1px solid var(--border);border-radius:12px;padding:.7rem .7rem .4rem;margin-bottom:.5rem;display:${window._kdChartVis?.morgen===false?'none':'block'}">
       <div style="font-size:.68rem;color:#7acbff;font-weight:600;letter-spacing:.05em;margin-bottom:.35rem">🌅 MORGENS — VERLAUF</div>
-      <canvas id="kd-chart-canvas-morgens" height="100"></canvas>
+      <canvas id="kd-chart-canvas-morgens" style="width:100%;height:130px;display:block"></canvas>
+      <div class="kd-chart-label" id="kd-chart-label-morgens"></div>
     </div>
-    <div style="background:var(--bg3);border:1px solid var(--border);border-radius:12px;padding:.7rem .7rem .4rem;margin-bottom:.7rem">
+    <div id="kd-chart-wrap-abends" style="background:var(--bg3);border:1px solid var(--border);border-radius:12px;padding:.7rem .7rem .4rem;margin-bottom:.5rem;display:${window._kdChartVis?.abend===false?'none':'block'}">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.35rem">
         <div style="font-size:.68rem;color:#e67e22;font-weight:600;letter-spacing:.05em">🌇 ABENDS — VERLAUF</div>
         <button onclick="window._kdPrognose=!window._kdPrognose;kdDrawWithRetry(0)"
@@ -833,16 +937,15 @@ function renderKuhDetail() {
           ${window._kdPrognose?'✓':'+'} Prognose
         </button>
       </div>
-      <canvas id="kd-chart-canvas-abends" height="100"></canvas>
-      <!-- Versteckter Original-Canvas (für Kompatibilität wenn von anderen Stellen aufgerufen) -->
+      <canvas id="kd-chart-canvas-abends" style="width:100%;height:130px;display:block"></canvas>
       <canvas id="kd-chart-canvas" style="display:none"></canvas>
       ${window._kdPrognose?`<div id="kd-prognose-info" style="margin-top:.4rem;padding:.4rem .6rem;background:rgba(212,168,75,.06);border:1px solid rgba(212,168,75,.2);border-radius:8px;font-size:.7rem;color:var(--text3)">Wird berechnet…</div>`:''}
-
-      <div class="kd-chart-label">
-        <span>${chartDaten.length?new Date(chartDaten[0].d).toLocaleDateString('de-AT',{day:'numeric',month:'short'}):''}</span>
-        <span style="color:var(--gold)">max ${chartMax}L</span>
-        <span>${chartDaten.length?new Date(chartDaten[chartDaten.length-1].d).toLocaleDateString('de-AT',{day:'numeric',month:'short'}):''}</span>
-      </div>
+      <div class="kd-chart-label" id="kd-chart-label-abends"></div>
+    </div>
+    <div id="kd-chart-wrap-tag" style="background:var(--bg3);border:1px solid rgba(212,168,75,.3);border-radius:12px;padding:.7rem .7rem .4rem;margin-bottom:.7rem;display:${window._kdChartVis?.tag===false?'none':'block'}">
+      <div style="font-size:.68rem;color:var(--gold);font-weight:600;letter-spacing:.05em;margin-bottom:.35rem">🥛 TAGESMILCH — VERLAUF (Abend + nächst folgender Morgen)</div>
+      <canvas id="kd-chart-canvas-tag" style="width:100%;height:130px;display:block"></canvas>
+      <div class="kd-chart-label" id="kd-chart-label-tag"></div>
     </div>
 
     <!-- Einträge Liste – max-height entfernt damit der Platz nach unten genutzt wird -->
@@ -889,9 +992,9 @@ window._kdChartData = null;
 // Retry-Zeichnung: versucht bis zu 20x alle 60ms
 window.kdDrawWithRetry = function(attempt) {
   attempt = attempt || 0;
-  // Auf die neuen geteilten Canvas warten (eines reicht für den Width-Check)
   var canvas = document.getElementById('kd-chart-canvas-morgens') ||
-               document.getElementById('kd-chart-canvas-abends');
+               document.getElementById('kd-chart-canvas-abends') ||
+               document.getElementById('kd-chart-canvas-tag');
   if(!canvas) { if(attempt < 20) setTimeout(function(){ window.kdDrawWithRetry(attempt+1); }, 60); return; }
   var data = window._kdChartData;
   if(!data || data.length < 1) return;
@@ -899,26 +1002,77 @@ window.kdDrawWithRetry = function(attempt) {
   window.drawKdChart();
 };
 
-// Canvas Milch Chart (pro Kuh)
-window.drawKdChart = function() {
-  // Beide Canvas nacheinander zeichnen, gefiltert nach Schicht
-  var allData = window._kdChartData;
-  if(!allData) return;
-  var datenMorgens = allData.filter(function(d){return (d.z||'morgen') === 'morgen';});
-  var datenAbends  = allData.filter(function(d){return (d.z||'morgen') === 'abend';});
-  _drawKdChartSingle('kd-chart-canvas-morgens', datenMorgens, '#7acbff', 'rgba(122,203,255,.3)', 'rgba(122,203,255,.02)');
-  _drawKdChartSingle('kd-chart-canvas-abends',  datenAbends,  '#e67e22', 'rgba(230,126,34,.3)',  'rgba(230,126,34,.02)');
+// Default-Optionen einmal setzen (kann Toggle überschreiben)
+if(window._kdShowAvg === undefined) window._kdShowAvg = true;
+if(window._kdShowHerd === undefined) window._kdShowHerd = true;
+if(window._kdShowMed === undefined) window._kdShowMed = true;
+
+// Toggle-Handler für die Chart-Auswahl
+window.kdToggleChart = function(kind, checked) {
+  const vis = window._kdChartVis || { morgen:true, abend:true, tag:true };
+  vis[kind] = !!checked;
+  window._kdChartVis = vis;
+  try { localStorage.setItem('kdChartVisible', JSON.stringify(vis)); } catch(e) {}
+  const wrap = document.getElementById('kd-chart-wrap-' + kind);
+  if(wrap) wrap.style.display = checked ? 'block' : 'none';
+  if(checked) setTimeout(function(){ window.drawKdChart(); }, 30);
 };
 
-function _drawKdChartSingle(canvasId, data, hauptFarbe, areaHi, areaLo) {
+// Canvas Milch Chart (pro Kuh) — jetzt mit Extras
+window.drawKdChart = function() {
+  var allData = window._kdChartData;
+  if(!allData) return;
+  var extras = window._kdExtras || {};
+  var vis = window._kdChartVis || { morgen:true, abend:true, tag:true };
+
+  var datenMorgens = allData.filter(function(d){return (d.z||'morgen') === 'morgen';});
+  var datenAbends  = allData.filter(function(d){return (d.z||'morgen') === 'abend';});
+  var datenTag     = extras.tagesmilch || [];
+
+  // Herden-Ø pro Chart-Typ als Array
+  var herdMap = extras.herdAvg || {};
+  var herdMorgens = Object.values(herdMap).filter(function(x){return x.z === 'morgen';}).sort(function(a,b){return a.d - b.d;});
+  var herdAbends  = Object.values(herdMap).filter(function(x){return x.z === 'abend';}).sort(function(a,b){return a.d - b.d;});
+  // Tagesmilch-Herde: für jedes Datum von Kuh-Tagesmilch die entsprechende Herden-Tagesmilch berechnen
+  // (Summe der Tages-Ø aus Morgens + Abends demselben Tag) — vereinfacht: kein Herd-Vergleich für Tag
+  var herdTag = [];
+
+  if(vis.morgen !== false) {
+    _drawKdChartSingle('kd-chart-canvas-morgens', datenMorgens, '#7acbff', 'rgba(122,203,255,.3)', 'rgba(122,203,255,.02)', {
+      extras: extras,
+      herdData: window._kdShowHerd ? herdMorgens : null,
+      labelId: 'kd-chart-label-morgens',
+      zeit: 'morgen'
+    });
+  }
+  if(vis.abend !== false) {
+    _drawKdChartSingle('kd-chart-canvas-abends', datenAbends, '#e67e22', 'rgba(230,126,34,.3)', 'rgba(230,126,34,.02)', {
+      extras: extras,
+      herdData: window._kdShowHerd ? herdAbends : null,
+      labelId: 'kd-chart-label-abends',
+      zeit: 'abend',
+      allowPrognose: true
+    });
+  }
+  if(vis.tag !== false) {
+    _drawKdChartSingle('kd-chart-canvas-tag', datenTag, '#d4a84b', 'rgba(212,168,75,.3)', 'rgba(212,168,75,.02)', {
+      extras: extras,
+      herdData: null,
+      labelId: 'kd-chart-label-tag',
+      zeit: 'tag'
+    });
+  }
+};
+
+function _drawKdChartSingle(canvasId, data, hauptFarbe, areaHi, areaLo, opts) {
+  opts = opts || {};
   var canvas = document.getElementById(canvasId);
   if(!canvas) return;
   var dpr = window.devicePixelRatio||1;
-  var H = 110;
-  var W = canvas.offsetWidth;
+  var H = 130;
+  var W = canvas.offsetWidth || canvas.parentElement?.offsetWidth || 0;
   if(W < 10) {
-    // Wenn Canvas-Width 0 (z.B. tab nicht sichtbar), kurz retry
-    setTimeout(function(){ _drawKdChartSingle(canvasId, data, hauptFarbe, areaHi, areaLo); }, 100);
+    setTimeout(function(){ _drawKdChartSingle(canvasId, data, hauptFarbe, areaHi, areaLo, opts); }, 100);
     return;
   }
   canvas.width = W*dpr; canvas.height = H*dpr;
@@ -926,17 +1080,21 @@ function _drawKdChartSingle(canvasId, data, hauptFarbe, areaHi, areaLo) {
   var ctx = canvas.getContext('2d');
   ctx.scale(dpr,dpr);
 
+  // Label-Zeile für Datum-Span + Max unter dem Canvas
+  var labelEl = opts.labelId ? document.getElementById(opts.labelId) : null;
+
   // Leer-Zustand
   if(!data || data.length === 0) {
     ctx.fillStyle = 'rgba(255,255,255,.35)';
     ctx.font = '12px sans-serif';
     ctx.textAlign = 'center';
     ctx.fillText('Noch keine Daten', W/2, H/2);
+    if(labelEl) labelEl.innerHTML = '';
     return;
   }
 
-  // ── Prognose ──
-  var zeigPrognose = window._kdPrognose;
+  // ── Prognose (nur bei Abends erlaubt) ──
+  var zeigPrognose = window._kdPrognose && opts.allowPrognose;
   var progPts = [];
   if(zeigPrognose && data.length >= 4) {
     var n=data.length, sumX=0,sumY=0,sumXY=0,sumX2=0;
@@ -949,28 +1107,49 @@ function _drawKdChartSingle(canvasId, data, hauptFarbe, areaHi, areaLo) {
   }
 
   var allData = zeigPrognose ? data.concat(progPts) : data;
-  var pad = {t:14,r:12,b:8,l:34};
+  var pad = {t:14,r:12,b:20,l:34};   // ↑ Bottom-Padding größer für Marker-Zeile
   var gW = W-pad.l-pad.r, gH = H-pad.t-pad.b;
+
+  // maxV: Kuh-Werte + Herden-Ø + Ø-Linie
   var maxV = Math.max.apply(null, allData.map(function(d){return d.l;}));
+  var extras = opts.extras || {};
+  var herdData = opts.herdData || null;
+  if(herdData && herdData.length) {
+    var herdMaxL = Math.max.apply(null, herdData.map(function(d){return d.l;}));
+    maxV = Math.max(maxV, herdMaxL);
+  }
   maxV = Math.max(maxV, 1);
   var minV = 0;
   var range = maxV-minV||1;
   var totalN = allData.length;
 
-  // Bei nur 1 Punkt: x-Position mittig (sonst Division durch 0)
   var xStep = totalN > 1 ? gW/(totalN-1) : 0;
   var startX = totalN > 1 ? pad.l : pad.l + gW/2;
 
   var pts = data.map(function(d,i){return {
     x: startX + i*xStep,
     y: pad.t + gH - ((d.l-minV)/range)*gH,
-    l: d.l, d: d.d, istPrognose: false
+    l: d.l, d: d.d, z: d.z, istPrognose: false, abendL: d.abendL, morgenL: d.morgenL
   };});
   var pPts = progPts.map(function(d,j){return {
     x: startX + (data.length+j)*xStep,
     y: pad.t + gH - ((d.l-minV)/range)*gH,
     l: d.l, d: d.d, istPrognose: true
   };});
+
+  // Datumsspanne der Kuh-Daten für X-Achsen-Mapping (Marker/Zonen an Datum ausrichten)
+  var xFromDatum = null;
+  if(data.length >= 2) {
+    var firstD = data[0].d, lastD = data[data.length-1].d;
+    var totalTime = lastD - firstD || 1;
+    xFromDatum = function(ts) {
+      if(ts == null) return null;
+      // Vor erstem Datum: clamp am linken Rand
+      if(ts < firstD) return null;
+      if(ts > lastD) return pad.l + gW;
+      return pad.l + ((ts - firstD) / totalTime) * gW;
+    };
+  }
 
   // Grid
   [0.33,0.66,1].forEach(function(f){
@@ -980,6 +1159,48 @@ function _drawKdChartSingle(canvasId, data, hauptFarbe, areaHi, areaLo) {
     ctx.fillStyle='rgba(255,255,255,.35)'; ctx.font='10px sans-serif'; ctx.textAlign='right';
     ctx.fillText(Math.round(minV+range*f)+'L', pad.l-4, y+3);
   });
+
+  // ── WARTEZEIT-ZONEN (grau schattierter Bereich hinter Grid) ──
+  if(window._kdShowMed !== false && xFromDatum && extras.wzZonen && extras.wzZonen.length) {
+    extras.wzZonen.forEach(function(z){
+      var x1 = xFromDatum(z.von);
+      var x2 = xFromDatum(z.bis);
+      if(x1 == null && z.von <= (data[0]?.d||0)) x1 = pad.l;
+      if(x2 == null) return;
+      if(x1 == null) return;
+      if(x2 < pad.l || x1 > pad.l+gW) return;
+      x1 = Math.max(x1, pad.l);
+      x2 = Math.min(x2, pad.l+gW);
+      if(x2 <= x1) return;
+      ctx.fillStyle = 'rgba(230,126,34,.08)';
+      ctx.fillRect(x1, pad.t, x2-x1, gH);
+      // Zwei dünne Grenzlinien
+      ctx.strokeStyle = 'rgba(230,126,34,.35)';
+      ctx.lineWidth = 1;
+      ctx.setLineDash([2,3]);
+      ctx.beginPath(); ctx.moveTo(x1, pad.t); ctx.lineTo(x1, pad.t+gH); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(x2, pad.t); ctx.lineTo(x2, pad.t+gH); ctx.stroke();
+      ctx.setLineDash([]);
+    });
+  }
+
+  // ── HERDEN-Ø LINIE (dünn grau, hinter Kuh-Linie) ──
+  if(herdData && herdData.length >= 2 && xFromDatum) {
+    ctx.strokeStyle = 'rgba(200,200,200,.42)';
+    ctx.lineWidth = 1.3;
+    ctx.setLineDash([3,3]);
+    ctx.beginPath();
+    var first = true;
+    herdData.forEach(function(hd){
+      var hx = xFromDatum(hd.d);
+      if(hx == null) return;
+      var hy = pad.t + gH - ((hd.l - minV) / range) * gH;
+      if(first) { ctx.moveTo(hx, hy); first = false; }
+      else ctx.lineTo(hx, hy);
+    });
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
 
   // Area & Linie nur wenn >=2 Punkte
   if(pts.length >= 2) {
@@ -1009,6 +1230,58 @@ function _drawKdChartSingle(canvasId, data, hauptFarbe, areaHi, areaLo) {
     }
   }
 
+  // ── Ø-LINIE (waagrecht, gestrichelt) ──
+  var avgL = 0;
+  if(data.length) {
+    avgL = data.reduce(function(s,d){ return s + d.l; }, 0) / data.length;
+    avgL = Math.round(avgL * 10) / 10;
+    if(window._kdShowAvg !== false) {
+      var ay = pad.t + gH - ((avgL - minV) / range) * gH;
+      ctx.strokeStyle = 'rgba(255,255,255,.35)';
+      ctx.lineWidth = 1;
+      ctx.setLineDash([4,4]);
+      ctx.beginPath(); ctx.moveTo(pad.l, ay); ctx.lineTo(pad.l+gW, ay); ctx.stroke();
+      ctx.setLineDash([]);
+      // Ø-Beschriftung rechts oben
+      ctx.fillStyle = 'rgba(255,255,255,.7)';
+      ctx.font = 'bold 9px sans-serif';
+      ctx.textAlign = 'right';
+      ctx.fillText('Ø ' + avgL + 'L', pad.l + gW - 3, ay - 3);
+    }
+  }
+
+  // ── TROCKENSTELLUNGS-MARKER (vertikale Linie zum letzten gemolkenen Tag) ──
+  if(extras.trockenAb && xFromDatum) {
+    var tx = xFromDatum(extras.trockenAb);
+    if(tx != null) {
+      ctx.strokeStyle = 'rgba(200,120,0,.75)';
+      ctx.lineWidth = 1.5;
+      ctx.setLineDash([5,3]);
+      ctx.beginPath(); ctx.moveTo(tx, pad.t); ctx.lineTo(tx, pad.t+gH); ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.fillStyle = 'rgba(200,120,0,.9)';
+      ctx.font = 'bold 9px sans-serif';
+      ctx.textAlign = 'left';
+      ctx.fillText('💧 trocken', tx + 3, pad.t + 10);
+    }
+  }
+
+  // ── KALBUNGS-MARKER (vertikale Linie zum Kalbedatum) ──
+  if(extras.kalbDatum && xFromDatum) {
+    var kx = xFromDatum(extras.kalbDatum);
+    if(kx != null) {
+      ctx.strokeStyle = 'rgba(77,184,78,.6)';
+      ctx.lineWidth = 1.5;
+      ctx.setLineDash([5,3]);
+      ctx.beginPath(); ctx.moveTo(kx, pad.t); ctx.lineTo(kx, pad.t+gH); ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.fillStyle = 'rgba(77,184,78,.9)';
+      ctx.font = 'bold 9px sans-serif';
+      ctx.textAlign = 'left';
+      ctx.fillText('🐮 Kalbung', kx + 3, pad.t + 10);
+    }
+  }
+
   // Datenpunkte mit deutlichem Ring – auch bei nur 1 Punkt sichtbar
   pts.forEach(function(p, i){
     var istLetzter = i === pts.length-1;
@@ -1023,35 +1296,99 @@ function _drawKdChartSingle(canvasId, data, hauptFarbe, areaHi, areaLo) {
     ctx.fillStyle = 'rgba(255,255,255,.7)'; ctx.fill();
   });
 
+  // ── BEHANDLUNGS-MARKER (⚕ Icons in der Marker-Zeile unten) ──
+  if(window._kdShowMed !== false && xFromDatum && extras.behMarkers && extras.behMarkers.length) {
+    extras.behMarkers.forEach(function(bm){
+      var bx = xFromDatum(bm.d);
+      if(bx == null) return;
+      var by = pad.t + gH + 8;
+      ctx.beginPath();
+      ctx.arc(bx, by, 6.5, 0, Math.PI*2);
+      ctx.fillStyle = bm.aktiv ? 'rgba(200,60,60,.95)' : 'rgba(150,150,150,.5)';
+      ctx.fill();
+      // Kreuz-Icon
+      ctx.strokeStyle = '#fff';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(bx-2.5, by); ctx.lineTo(bx+2.5, by);
+      ctx.moveTo(bx, by-2.5); ctx.lineTo(bx, by+2.5);
+      ctx.stroke();
+      // Feine gestrichelte vertikale Linie zum Chart
+      ctx.strokeStyle = bm.aktiv ? 'rgba(200,60,60,.25)' : 'rgba(150,150,150,.15)';
+      ctx.lineWidth = 1;
+      ctx.setLineDash([2,3]);
+      ctx.beginPath(); ctx.moveTo(bx, pad.t); ctx.lineTo(bx, pad.t+gH); ctx.stroke();
+      ctx.setLineDash([]);
+    });
+  }
+
+  // Label-Zeile unter dem Canvas mit Datum · Kennzahlen · max
+  if(labelEl) {
+    var f0 = data[0], fL = data[data.length-1];
+    var dStart = f0 && f0.d ? new Date(f0.d).toLocaleDateString('de-AT',{day:'numeric',month:'short'}) : '';
+    var dEnd = fL && fL.d ? new Date(fL.d).toLocaleDateString('de-AT',{day:'numeric',month:'short'}) : '';
+    var minL = Math.min.apply(null, data.map(function(d){return d.l;}));
+    var maxL = Math.max.apply(null, data.map(function(d){return d.l;}));
+    labelEl.innerHTML =
+      '<span>' + dStart + '</span>' +
+      '<span style="color:var(--text3)">min ' + (Math.round(minL*10)/10) + 'L · Ø ' + avgL + 'L · <span style="color:var(--gold)">max ' + (Math.round(maxL*10)/10) + 'L</span> · ' + data.length + ' Tage</span>' +
+      '<span>' + dEnd + '</span>';
+  }
+
   // Tooltip-Touch- und Hover-Handler (einmal pro Canvas)
   if(!canvas._kdTooltipBound) {
     canvas._kdTooltipBound = true;
     var showTooltip = function(clientX) {
-      // Re-draw chart base
-      _drawKdChartSingle(canvasId, data, hauptFarbe, areaHi, areaLo);
+      // Re-draw komplett (mit allen Extras)
+      _drawKdChartSingle(canvasId, data, hauptFarbe, areaHi, areaLo, opts);
       var rect = canvas.getBoundingClientRect();
       var tx = (clientX - rect.left) * (W/rect.width);
-      var allPts = (data.length>=2 ? pts : pts).concat(zeigPrognose ? pPts : []);
+      var allPts = pts.concat(zeigPrognose ? pPts : []);
       var closest = allPts[0], minD = Infinity;
       allPts.forEach(function(p){
         var d = Math.abs(p.x - tx);
         if(d < minD) { minD = d; closest = p; }
       });
       if(!closest) return;
-      // Tooltip-Box
-      var datumStr = closest.d ? new Date(closest.d).toLocaleDateString('de-AT',{day:'numeric',month:'short'}) : '';
-      var label = (closest.istPrognose?'~':'') + closest.l + 'L';
-      if(datumStr) label += ' · ' + datumStr;
-      var tw = Math.max(50, label.length * 6.5), th = 22;
+      // Tooltip-Text — mehrzeilig bei Tagesmilch (Abend + Morgen aufgeschlüsselt)
+      var datumStr = closest.d ? new Date(closest.d).toLocaleDateString('de-AT',{day:'numeric',month:'short',year:'numeric'}) : '';
+      var lines = [];
+      if(closest.istPrognose) {
+        lines.push('~ ' + closest.l + ' L (Prognose)');
+        if(datumStr) lines.push(datumStr);
+      } else if(opts.zeit === 'tag' && closest.abendL != null && closest.morgenL != null) {
+        lines.push(closest.l + ' L Tagesmilch');
+        lines.push('🌇 ' + closest.abendL + ' L + 🌅 ' + closest.morgenL + ' L');
+        if(datumStr) lines.push(datumStr);
+      } else {
+        var zeitLabel = opts.zeit === 'abend' ? 'abends' : (opts.zeit === 'morgen' ? 'morgens' : '');
+        lines.push(closest.l + ' L ' + zeitLabel);
+        if(datumStr) lines.push(datumStr);
+        // Vergleich mit Ø
+        if(avgL > 0) {
+          var diff = Math.round((closest.l - avgL) * 10) / 10;
+          lines.push('vs. Ø: ' + (diff >= 0 ? '+' : '') + diff + 'L');
+        }
+      }
+      var lineH = 14, padX = 8, padY = 6;
+      var tw = 0;
+      ctx.font = 'bold 11px sans-serif';
+      lines.forEach(function(l){ tw = Math.max(tw, ctx.measureText(l).width); });
+      tw += padX * 2;
+      var th = lines.length * lineH + padY;
       var tx2 = Math.min(W-tw-4, Math.max(4, closest.x - tw/2));
       var ty = closest.y - th - 10;
       if(ty < 4) ty = closest.y + 12;
+      // Box
       ctx.fillStyle = closest.istPrognose ? 'rgba(212,168,75,.95)' : hauptFarbe;
-      if(ctx.roundRect) { ctx.beginPath(); ctx.roundRect(tx2,ty,tw,th,5); ctx.fill(); }
+      if(ctx.roundRect) { ctx.beginPath(); ctx.roundRect(tx2,ty,tw,th,6); ctx.fill(); }
       else { ctx.fillRect(tx2,ty,tw,th); }
       ctx.fillStyle = closest.istPrognose ? '#0a0800' : '#fff';
-      ctx.font='bold 11px sans-serif'; ctx.textAlign='center';
-      ctx.fillText(label, tx2+tw/2, ty+th/2+4);
+      ctx.font = 'bold 11px sans-serif';
+      ctx.textAlign = 'center';
+      lines.forEach(function(l, i){
+        ctx.fillText(l, tx2 + tw/2, ty + padY + i*lineH + 8);
+      });
       // Marker am Punkt
       ctx.beginPath(); ctx.arc(closest.x, closest.y, 9, 0, Math.PI*2);
       ctx.strokeStyle = closest.istPrognose ? 'rgba(212,168,75,.7)' : hauptFarbe;
@@ -1060,7 +1397,7 @@ function _drawKdChartSingle(canvasId, data, hauptFarbe, areaHi, areaLo) {
     canvas.addEventListener('touchstart', function(e){ e.preventDefault(); showTooltip(e.touches[0].clientX); }, {passive:false});
     canvas.addEventListener('touchmove',  function(e){ e.preventDefault(); showTooltip(e.touches[0].clientX); }, {passive:false});
     canvas.addEventListener('mousemove',  function(e){ showTooltip(e.clientX); });
-    canvas.addEventListener('mouseleave', function(){ _drawKdChartSingle(canvasId, data, hauptFarbe, areaHi, areaLo); });
+    canvas.addEventListener('mouseleave', function(){ _drawKdChartSingle(canvasId, data, hauptFarbe, areaHi, areaLo, opts); });
   }
 }
 
