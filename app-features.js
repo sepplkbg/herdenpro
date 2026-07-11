@@ -4063,40 +4063,47 @@ function initAuth() {
 
   firebase.auth().onAuthStateChanged(async function(user) {
     if(user) {
-      // Load role from DB
+      // ── Benutzer-Rolle laden: mit TIMEOUT + LOKALEM CACHE (für Offline) ──
+      let userData = null;
       try {
-        const snap = await firebase.database().ref('benutzer/' + user.uid).get();
-        const userData = snap.val() || {};
-        window._currentUser = {...user, ...userData};
-        window._currentRole = userData.rolle || 'hirte';
-
-        // Check if approved
-        if(userData.aktiv === false) {
-          await firebase.auth().signOut();
-          versteckeAuthLadeBildschirm();
-          document.getElementById('login-screen').style.display = 'flex';
-          showLoginError('Dein Konto wurde noch nicht freigegeben. Bitte Admin kontaktieren.');
-          return;
-        }
-
-        // Show app
-        versteckeAuthLadeBildschirm();
-        document.getElementById('login-screen').style.display = 'none';
-        document.getElementById('root').style.display = '';
-
-        // Update topbar with user info
-        updateUserDisplay();
-
-        // Init app
-        if(typeof initApp === 'function' && !window._appInitialized) {
-          window._appInitialized = true;
-          initApp();
-        }
+        // Mit 4s Timeout — offline würde sonst endlos hängen
+        const getPromise = firebase.database().ref('benutzer/' + user.uid).get()
+          .then(snap => snap.val() || {});
+        const timeoutPromise = new Promise((_, rej) => setTimeout(() => rej(new Error('Timeout')), 4000));
+        userData = await Promise.race([getPromise, timeoutPromise]);
+        // Erfolg → in localStorage cachen für spätere Offline-Nutzung
+        try { localStorage.setItem('cache_userProfile_' + user.uid, JSON.stringify(userData)); } catch(e) {}
       } catch(e) {
-        console.error('Role load error:', e);
+        // Offline oder Fehler → aus localStorage-Cache laden
+        console.warn('Rolle-Load-Fehler (nutze Cache):', e.message || e);
+        try { userData = JSON.parse(localStorage.getItem('cache_userProfile_' + user.uid) || 'null'); } catch(x) {}
+        if(!userData) userData = { rolle: 'hirte' };  // Notfall-Default
+      }
+
+      window._currentUser = {...user, ...userData};
+      window._currentRole = userData.rolle || 'hirte';
+
+      // Nur bei explizit gesetztem aktiv=false abweisen — Cache-Fallback lässt das durchgehen
+      if(userData.aktiv === false) {
+        try { await firebase.auth().signOut(); } catch(e) {}
         versteckeAuthLadeBildschirm();
         document.getElementById('login-screen').style.display = 'flex';
-        showLoginError && showLoginError('Fehler beim Laden. Bitte neu laden.');
+        showLoginError('Dein Konto wurde noch nicht freigegeben. Bitte Admin kontaktieren.');
+        return;
+      }
+
+      // Show app
+      versteckeAuthLadeBildschirm();
+      document.getElementById('login-screen').style.display = 'none';
+      document.getElementById('root').style.display = '';
+
+      // Update topbar with user info
+      updateUserDisplay();
+
+      // Init app
+      if(typeof initApp === 'function' && !window._appInitialized) {
+        window._appInitialized = true;
+        initApp();
       }
     } else {
       // Niemand angemeldet → erst jetzt die Login-Maske zeigen
