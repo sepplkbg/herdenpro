@@ -246,9 +246,37 @@ let kuehe={}, behandlungen={}, besamungen={}, zaehlSession=null;
 let milchEintraege={}, weideTage={}, weiden={}, bauern={};
 let saisonInfo=null;
 let gruppen={}, fotos={}, zaehlVerlauf={}, chatNachrichten={}, kraftfutter={}, schalmtest={}, zellzahl={};
-// Sofort auf window spiegeln — damit IIFE-Module (app-milch-v2.js) darauf zugreifen können
+
+// ── OFFLINE-CACHE: bei Start Daten aus localStorage laden (sofort verfügbar, auch offline) ──
+function _hpLoadCache(name) {
+  try { return JSON.parse(localStorage.getItem('cache_' + name) || 'null'); }
+  catch(e) { return null; }
+}
+function _hpSaveCache(name, data) {
+  try { localStorage.setItem('cache_' + name, JSON.stringify(data)); }
+  catch(e) { /* localStorage voll oder disabled */ }
+}
+window._hpSaveCache = _hpSaveCache;
+window._hpLoadCache = _hpLoadCache;
+
+// Initial: aus localStorage laden falls vorhanden (das sind die letzten Firebase-Daten)
+kuehe = _hpLoadCache('kuehe') || {};
+behandlungen = _hpLoadCache('behandlungen') || {};
+besamungen = _hpLoadCache('besamungen') || {};
+milchEintraege = _hpLoadCache('milchEintraege') || {};
+weideTage = _hpLoadCache('weideTage') || {};
+weiden = _hpLoadCache('weiden') || {};
+bauern = _hpLoadCache('bauern') || {};
+saisonInfo = _hpLoadCache('saisonInfo');
+gruppen = _hpLoadCache('gruppen') || {};
+kraftfutter = _hpLoadCache('kraftfutter') || {};
+schalmtest = _hpLoadCache('schalmtest') || {};
+zellzahl = _hpLoadCache('zellzahl') || {};
+
+// Auf window spiegeln — damit IIFE-Module (app-milch-v2.js) darauf zugreifen können
 window.kuehe = kuehe; window.behandlungen = behandlungen; window.besamungen = besamungen;
 window.milchEintraege = milchEintraege; window.bauern = bauern; window.gruppen = gruppen;
+window.schalmtest = schalmtest; window.zellzahl = zellzahl;
 let kalenderTermine={};   // manuelle Kalendertermine
 let traenkeLog={};         // Tränke/Wasser-Protokoll
 let saisonArchiv={};       // Saisonvergleich-Archivdaten
@@ -278,23 +306,23 @@ function initApp() {
     return;
   }
 
-  onValue(ref(db,'kuehe'),        s=>{ kuehe=s.val()||{};          window.kuehe=kuehe; render(); checkWartezeiten(); });
-  onValue(ref(db,'behandlungen'), s=>{ behandlungen=s.val()||{};   window.behandlungen=behandlungen; render(); checkWartezeiten(); });
-  onValue(ref(db,'besamungen'),   s=>{ besamungen=s.val()||{};     window.besamungen=besamungen; render(); });
+  onValue(ref(db,'kuehe'),        s=>{ kuehe=s.val()||{};          window.kuehe=kuehe; _hpSaveCache('kuehe',kuehe); render(); checkWartezeiten(); });
+  onValue(ref(db,'behandlungen'), s=>{ behandlungen=s.val()||{};   window.behandlungen=behandlungen; _hpSaveCache('behandlungen',behandlungen); render(); checkWartezeiten(); });
+  onValue(ref(db,'besamungen'),   s=>{ besamungen=s.val()||{};     window.besamungen=besamungen; _hpSaveCache('besamungen',besamungen); render(); });
   onValue(ref(db,'zaehlung'),     s=>{ zaehlSession=s.val();       render(); });
-  onValue(ref(db,'milch'),        s=>{ milchEintraege=s.val()||{}; window.milchEintraege=milchEintraege; render(); });
-  onValue(ref(db,'schalmtest'),   s=>{ schalmtest=s.val()||{}; window.schalmtest=schalmtest; render(); });
-  onValue(ref(db,'zellzahl'),     s=>{ zellzahl=s.val()||{}; window.zellzahl=zellzahl; render(); });
-  onValue(ref(db,'weideTage'),    s=>{ weideTage=s.val()||{};      render(); });
-  onValue(ref(db,'weiden'),       s=>{ weiden=s.val()||{};         render(); });
-  onValue(ref(db,'bauern'),       s=>{ bauern=s.val()||{}; window.bauern=bauern; render(); });
-  onValue(ref(db,'saison'),       s=>{ saisonInfo=s.val();         render(); });
+  onValue(ref(db,'milch'),        s=>{ milchEintraege=s.val()||{}; window.milchEintraege=milchEintraege; _hpSaveCache('milchEintraege',milchEintraege); render(); });
+  onValue(ref(db,'schalmtest'),   s=>{ schalmtest=s.val()||{}; window.schalmtest=schalmtest; _hpSaveCache('schalmtest',schalmtest); render(); });
+  onValue(ref(db,'zellzahl'),     s=>{ zellzahl=s.val()||{}; window.zellzahl=zellzahl; _hpSaveCache('zellzahl',zellzahl); render(); });
+  onValue(ref(db,'weideTage'),    s=>{ weideTage=s.val()||{};      _hpSaveCache('weideTage',weideTage); render(); });
+  onValue(ref(db,'weiden'),       s=>{ weiden=s.val()||{};         _hpSaveCache('weiden',weiden); render(); });
+  onValue(ref(db,'bauern'),       s=>{ bauern=s.val()||{}; window.bauern=bauern; _hpSaveCache('bauern',bauern); render(); });
+  onValue(ref(db,'saison'),       s=>{ saisonInfo=s.val();         _hpSaveCache('saisonInfo',saisonInfo); render(); });
   onValue(ref(db,'journal'),      s=>{ journal=s.val()||{};        render(); });
   onValue(ref(db,'kontakte'),     s=>{ kontakte=s.val()||{};       render(); });
-  onValue(ref(db,'gruppen'),       s=>{ gruppen=s.val()||{}; window.gruppen=gruppen; render(); });
+  onValue(ref(db,'gruppen'),       s=>{ gruppen=s.val()||{}; window.gruppen=gruppen; _hpSaveCache('gruppen',gruppen); render(); });
   onValue(ref(db,'fotos'),         s=>{ fotos=s.val()||{};          render(); });
   onValue(ref(db,'chat'),           s=>{ chatNachrichten=s.val()||{}; renderChat(); });
-  onValue(ref(db,'kraftfutter'),    s=>{ kraftfutter=s.val()||{};      render(); });
+  onValue(ref(db,'kraftfutter'),    s=>{ kraftfutter=s.val()||{}; _hpSaveCache('kraftfutter',kraftfutter); render(); });
   onValue(ref(db,'zaehlVerlauf'),   s=>{ zaehlVerlauf=s.val()||{};   render(); });
   onValue(ref(db,'kalenderTermine'),s=>{ kalenderTermine=s.val()||{}; render(); });
   onValue(ref(db,'traenkeLog'),     s=>{ traenkeLog=s.val()||{};      render(); });
