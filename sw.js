@@ -1,4 +1,4 @@
-const CACHE = 'herdenpro-v197';
+const CACHE = 'herdenpro-v198';
 const SHELL = [
   '/herdenpro/',
   '/herdenpro/manifest.json'
@@ -21,25 +21,64 @@ self.addEventListener('activate', e => {
 });
 
 self.addEventListener('fetch', e => {
-  // Firebase & externe APIs: nie anfassen
+  const url = e.request.url;
+
+  // Firebase Realtime DB (WebSocket) und Auth-API: NIE cachen — braucht Live-Verbindung
   if(
-    e.request.url.includes('firebase') ||
-    e.request.url.includes('googleapis') ||
-    e.request.url.includes('openmeteo') ||
-    e.request.url.includes('open-meteo') ||
-    e.request.url.includes('qrserver')
+    url.includes('firebaseio.com') ||
+    url.includes('firebasedatabase.app') ||
+    url.includes('identitytoolkit.googleapis.com') ||
+    url.includes('securetoken.googleapis.com')
+  ) {
+    return;  // Browser default-handling
+  }
+
+  // Wetter-API und QR-Code-Generator: nicht cachen (Live-Daten)
+  if(
+    url.includes('openmeteo') ||
+    url.includes('open-meteo') ||
+    url.includes('qrserver')
   ) {
     return;
   }
 
-  // index.html, app-*.js, styles.css IMMER frisch aus dem Netz holen
-  // (network-first ohne Cache-Speicherung) – damit Updates sofort durchschlagen.
-  const url = e.request.url;
+  // Firebase SDK JS (gstatic.com/firebasejs) + externe Libraries (Leaflet, jsQR):
+  // stale-while-revalidate → offline verfügbar
+  if(
+    url.includes('gstatic.com/firebasejs') ||
+    url.includes('unpkg.com/leaflet') ||
+    url.includes('cdn.jsdelivr.net') ||
+    url.includes('cdnjs.cloudflare.com')
+  ) {
+    e.respondWith(
+      caches.match(e.request).then(cached => {
+        const fresh = fetch(e.request).then(response => {
+          if(response && response.status === 200) {
+            const clone = response.clone();
+            caches.open(CACHE).then(c => c.put(e.request, clone));
+          }
+          return response;
+        }).catch(() => cached);
+        return cached || fresh;
+      })
+    );
+    return;
+  }
+
+  // App-Kern-Dateien: network-first mit Cache-Fallback (auch für Offline-Nutzung!)
   const isCritical = /\/(index\.html|app-[a-z0-9\-]+\.js|styles\.css|sw\.js|manifest\.json)$/i.test(url) || url.endsWith('/herdenpro/');
   if(isCritical) {
     e.respondWith(
       fetch(e.request, { cache: 'no-store' })
-        .catch(() => caches.match(e.request).then(r => r || caches.match('/herdenpro/index.html')))
+        .then(response => {
+          // Frische Version im Cache speichern für Offline-Fallback
+          if(response && response.status === 200) {
+            const clone = response.clone();
+            caches.open(CACHE).then(c => c.put(e.request, clone));
+          }
+          return response;
+        })
+        .catch(() => caches.match(e.request).then(r => r || caches.match('/herdenpro/index.html') || caches.match('/herdenpro/')))
     );
     return;
   }
