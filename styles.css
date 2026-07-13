@@ -102,11 +102,17 @@ body{
 /* ── Main Content ── */
 #main-content{
   flex:1;overflow-y:auto;overflow-x:hidden;
-  /* Kompakteres Top-Padding (0.5rem statt 1rem) für bessere iPhone-Platznutzung */
   padding:.5rem 1rem calc(var(--nav-h) + var(--safe-b) + 1rem);
   scroll-behavior:smooth;
+  /* Pull-to-refresh sperren — sonst reloadet Android Chrome beim Runterziehen und Eingaben gehen verloren */
+  overscroll-behavior-y:contain;
 }
 #main-content::-webkit-scrollbar{width:0}
+
+/* Auch in Formularen kein Pull-to-refresh */
+.form-overlay, .form-sheet {
+  overscroll-behavior-y:contain;
+}
 
 /* ── Top Bar ── */
 #topbar{
