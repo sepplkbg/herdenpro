@@ -2429,12 +2429,31 @@ window.saveKalbung=async function(){const{bsid,kuhId}=_kalbungIds;const d=docume
 window.closeForm=function(id){
   const el=document.getElementById(id);
   if(el) el.style.display='none';
+  // Body-Klasse aktualisieren: nur wenn KEIN Formular mehr offen ist, "form-open" entfernen
+  window._updateBodyFormClass && window._updateBodyFormClass();
   // Nach Schließen einer Form, die während offen den Render blockiert hat,
   // einen frischen Render erzwingen damit Listen den aktuellen Stand zeigen.
   if(id === 'milch-form-overlay' && typeof render === 'function') {
     setTimeout(()=>{ try { render(); } catch(e){ console.warn('post-close render:', e); } }, 30);
   }
 };
+
+// Body-Klasse setzen/entfernen basierend auf offenen Formularen (JS-Fallback für Browser ohne :has())
+window._updateBodyFormClass = function() {
+  const anyOpen = Array.from(document.querySelectorAll('.form-overlay')).some(el => el.style.display === 'flex');
+  document.body.classList.toggle('form-open', anyOpen);
+};
+
+// Beobachter: reagiert wenn Formulare via display umgeschaltet werden
+if(!window._formObserverInit) {
+  window._formObserverInit = true;
+  const mo = new MutationObserver(() => window._updateBodyFormClass());
+  // Auf gesamtes Body-Subtree beobachten (form-overlays werden dynamisch erstellt)
+  setTimeout(() => {
+    mo.observe(document.body, { attributes: true, subtree: true, attributeFilter: ['style'] });
+    window._updateBodyFormClass();
+  }, 500);
+}
 window.switchTab=function(show,hide,btn){show.split(',').forEach(id=>{const el=document.getElementById(id);if(el)el.style.display='';});hide.split(',').forEach(id=>{const el=document.getElementById(id);if(el)el.style.display='none';});btn.closest('.detail-tabs').querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));btn.classList.add('active');};
 function attachListeners(){document.querySelectorAll('.form-overlay').forEach(el=>{el.onclick=e=>{if(e.target===el)closeForm(el.id);};});}
 function statusLabel(s){return{besamt:'Besamt',tragend:'Trächtig',leer:'Leer',kalbung:'Gekälbert'}[s]||s;}
