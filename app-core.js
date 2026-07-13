@@ -375,12 +375,39 @@ function render() {
   const milchFormOpen = document.getElementById('milch-form-overlay');
   if(milchFormOpen && milchFormOpen.style.display === 'flex') {
     // Form ist offen – Re-Render würde es zerstören.
-    // Aber: Kollisions-Hinweise (anderer Melker) live aktualisieren – das ist ungefährlich,
-    // weil nur einzelne DOM-Elemente angepasst werden, nicht das ganze Formular.
     if(typeof window.updateAndereMelkerHinweise === 'function') {
       try { window.updateAndereMelkerHinweise(); } catch(e) { console.warn('updateAndereMelkerHinweise:', e); }
     }
     return;
+  }
+  // Auch andere wichtige Formulare vor Re-Render schützen — sonst gehen Eingaben verloren
+  const _blockingForms = [
+    'behandlung-form-overlay',
+    'besamung-form-overlay',
+    'kalbung-form-overlay',
+    'bauer-notiz-overlay',
+    'bauer-overlay',
+    'kuh-form-overlay',
+    'zaehl-form-overlay',
+    'weide-form-overlay',
+    'kraftfutter-form-overlay',
+    'gruppe-form-overlay',
+    'kontakt-form-overlay',
+    'aufgabe-form-overlay',
+    'wartung-form-overlay',
+    'lager-form-overlay',
+    'milchqualitaet-form-overlay',
+    'kontrolle-form-overlay',
+    'klauen-form-overlay',
+    'journal-form-overlay',
+    'saison-wizard-ov',
+    'schalm-viertel-overlay',
+    'milch-konflikt-overlay',
+    'milch-debug-overlay'
+  ];
+  for(const fId of _blockingForms) {
+    const ov = document.getElementById(fId);
+    if(ov && ov.style.display === 'flex') return;
   }
 
   // Richtung der Animation bestimmen

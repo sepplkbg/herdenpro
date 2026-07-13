@@ -2864,18 +2864,25 @@ window.deleteKontakt = async function(id) {
 function renderGruppen() {
   const gruppenListe = Object.entries(gruppen).sort((a,b)=>a[1].name?.localeCompare(b[1].name));
   const aktiveGruppe = window._gruppeEdit||null;
-  const gruppeKuehe = aktiveGruppe ? Object.entries(kuehe).filter(([id,k])=>kuhInGruppe(k, aktiveGruppe, id)) : [];
-  // Kühe ohne Gruppe: weder in k.gruppe-Liste noch in irgend einer gruppen.mitglieder enthalten
-  const ohneGruppe = Object.entries(kuehe).filter(([id,k])=>{
-    const list = String(k.gruppe||'').split(/\s*[,;\/]\s*/).filter(Boolean);
-    if(list.length > 0) return false;
+  const gruppeKuehe = aktiveGruppe
+    ? Object.entries(kuehe).filter(([id,k])=>kuhInGruppe(k, aktiveGruppe, id))
+        .sort((a,b)=>parseInt(a[1].nr)-parseInt(b[1].nr))
+    : [];
+  // Kühe die NICHT in dieser Gruppe sind — nach Nummer sortiert (mit ihren aktuellen Gruppen)
+  const nichtInDieserGruppe = aktiveGruppe
+    ? Object.entries(kuehe).filter(([id,k])=>!kuhInGruppe(k, aktiveGruppe, id))
+        .sort((a,b)=>parseInt(a[1].nr)-parseInt(b[1].nr))
+    : [];
+  // Helper: alle Gruppen einer Kuh finden (für Anzeige)
+  const kuhGruppen = (id, k) => {
+    const set = new Set(String(k.gruppe||'').split(/\s*[,;\/]\s*/).filter(Boolean));
     if(window.gruppen) {
-      for(const g of Object.values(window.gruppen)) {
-        if(g && g.mitglieder && g.mitglieder[id]) return false;
-      }
+      Object.values(window.gruppen).forEach(g => {
+        if(g && g.mitglieder && g.mitglieder[id] && g.name) set.add(g.name);
+      });
     }
-    return true;
-  }).sort((a,b)=>parseInt(a[1].nr)-parseInt(b[1].nr));
+    return [...set];
+  };
 
   return `
     <div class="page-header"><h2>🏷 Gruppen</h2><button class="btn-primary" onclick="showGruppeForm()">+ Gruppe</button></div>
@@ -2901,23 +2908,34 @@ function renderGruppen() {
         </div>
         ${isActive ? `
         <div style="background:var(--bg3);border:1px solid var(--border2);border-radius:10px;padding:.8rem;margin-top:-.3rem;margin-bottom:.4rem">
-          <div style="font-size:.72rem;color:var(--text3);margin-bottom:.5rem;letter-spacing:1px">KÜHE IN DIESER GRUPPE</div>
+          <div style="font-size:.72rem;color:var(--text3);margin-bottom:.5rem;letter-spacing:1px">KÜHE IN DIESER GRUPPE (${gruppeKuehe.length})</div>
           ${gruppeKuehe.length?gruppeKuehe.map(([kid,k])=>`
-            <div class="list-card list-card-sm" style="margin-bottom:.3rem">
+            <div class="list-card list-card-sm" style="margin-bottom:.3rem;padding:.4rem .5rem">
               <span class="nr-badge">#${k.nr}</span>
-              <span class="list-card-title">${k.name||'–'}</span>
-              <button class="btn-xs-danger" onclick="setKuhGruppe('${kid}','')">entfernen</button>
+              <div style="flex:1;min-width:0">
+                <div class="list-card-title" style="font-size:.85rem">${k.name||'–'}</div>
+                ${(function(){
+                  const groupNames = kuhGruppen(kid, k).filter(gn => gn !== g.name);
+                  return groupNames.length ? `<div style="font-size:.65rem;color:var(--text3);margin-top:.1rem">auch in: ${groupNames.join(', ')}</div>` : '';
+                })()}
+              </div>
+              <button class="btn-xs-danger" onclick="removeKuhAusGruppe('${kid}','${g.name.replace(/'/g,"\\'")}')">✕ entfernen</button>
             </div>`).join(''):`<div style="font-size:.8rem;color:var(--text3);padding:.3rem 0">Noch keine Kühe zugewiesen</div>`}
-          
-          ${ohneGruppe.length?`
-          <div style="font-size:.72rem;color:var(--text3);margin:.6rem 0 .4rem;letter-spacing:1px">HINZUFÜGEN (ohne Gruppe)</div>
-          <div style="display:flex;flex-wrap:wrap;gap:.3rem">
-            ${ohneGruppe.map(([kid,k])=>`
-              <button class="kuh-chip" onclick="setKuhGruppe('${kid}','${g.name}')">
+
+          <div style="font-size:.72rem;color:var(--text3);margin:.7rem 0 .4rem;letter-spacing:1px">KUH HINZUFÜGEN (${nichtInDieserGruppe.length} verfügbar)</div>
+          <input type="text" id="gruppe-suche-${id}" class="inp" placeholder="🔎 Suchen nach Nr. oder Name…" style="margin-bottom:.5rem;width:100%;font-size:.82rem;padding:.35rem .5rem"
+            oninput="filterGruppeHinzufuegen('${id}',this.value)" />
+          <div id="gruppe-add-list-${id}" style="display:flex;flex-wrap:wrap;gap:.3rem">
+            ${nichtInDieserGruppe.length?nichtInDieserGruppe.map(([kid,k])=>{
+              const groupNames = kuhGruppen(kid, k);
+              const gruppenLabel = groupNames.length ? ' · in: ' + groupNames.join(', ') : '';
+              return `<button class="kuh-chip gruppe-add-item" data-nr="${k.nr}" data-name="${(k.name||'').toLowerCase()}" onclick="fugeKuhZuGruppe('${kid}','${g.name.replace(/'/g,"\\'")}')" title="Zu ${g.name} hinzufügen${gruppenLabel}">
                 <span class="chip-nr">#${k.nr}</span>
                 ${k.name?`<span class="chip-kuh">${k.name}</span>`:''}
-              </button>`).join('')}
-          </div>`:'<div style="font-size:.75rem;color:var(--text3);margin-top:.4rem">Alle Kühe haben bereits eine Gruppe</div>'}
+                ${groupNames.length?`<span style="font-size:.6rem;color:var(--text3);margin-left:.2rem">(${groupNames.length})</span>`:''}
+              </button>`;
+            }).join('') : '<div style="font-size:.75rem;color:var(--text3)">Alle Kühe sind bereits in dieser Gruppe</div>'}
+          </div>
         </div>` : ''}`;
       }).join('') : `<div class="empty-state">Noch keine Gruppen – jetzt anlegen</div>`}
     </div>
@@ -2957,7 +2975,55 @@ window.toggleGruppeEdit = function(name) {
   render();
 };
 window.setKuhGruppe = async function(kuhId, gruppe) {
+  // Alt-Kompatibilität: setzt die Kuh auf GENAU DIESE Gruppe
   await update(ref(db,'kuehe/'+kuhId), {gruppe, updatedAt:Date.now()});
+};
+
+// Kuh zu Gruppe hinzufügen (multi-group aware) — bestehende Gruppen bleiben!
+window.fugeKuhZuGruppe = async function(kuhId, gruppenName) {
+  const k = kuehe[kuhId];
+  if(!k) return;
+  // 1) k.gruppe erweitern (Komma-Liste)
+  const set = new Set(String(k.gruppe||'').split(/\s*[,;\/]\s*/).filter(Boolean));
+  set.add(gruppenName);
+  const neueListe = [...set].join(', ');
+  const updates = { ['kuehe/'+kuhId+'/gruppe']: neueListe, ['kuehe/'+kuhId+'/updatedAt']: Date.now() };
+  // 2) In gruppen[gid].mitglieder eintragen
+  const gEntry = Object.entries(gruppen).find(([, g]) => g && g.name === gruppenName);
+  if(gEntry) updates['gruppen/'+gEntry[0]+'/mitglieder/'+kuhId] = true;
+  try {
+    await update(ref(db, '/'), updates);
+    window.showSaveToast && showSaveToast('✓ ' + (k.name || '#'+k.nr) + ' → ' + gruppenName);
+  } catch(e) { console.error('fugeKuhZuGruppe:', e); alert('Fehler: '+e.message); }
+};
+
+// Kuh aus einer Gruppe entfernen (andere Gruppen bleiben!)
+window.removeKuhAusGruppe = async function(kuhId, gruppenName) {
+  const k = kuehe[kuhId];
+  if(!k) return;
+  // 1) Aus k.gruppe entfernen (Komma-Liste)
+  const list = String(k.gruppe||'').split(/\s*[,;\/]\s*/).filter(Boolean).filter(x => x !== gruppenName);
+  const updates = { ['kuehe/'+kuhId+'/gruppe']: list.join(', '), ['kuehe/'+kuhId+'/updatedAt']: Date.now() };
+  // 2) Aus gruppen[gid].mitglieder entfernen
+  const gEntry = Object.entries(gruppen).find(([, g]) => g && g.name === gruppenName);
+  if(gEntry) updates['gruppen/'+gEntry[0]+'/mitglieder/'+kuhId] = null;
+  try {
+    await update(ref(db, '/'), updates);
+    window.showSaveToast && showSaveToast('✓ ' + (k.name || '#'+k.nr) + ' aus „' + gruppenName + '" entfernt');
+  } catch(e) { console.error('removeKuhAusGruppe:', e); alert('Fehler: '+e.message); }
+};
+
+// Live-Filter der Hinzufügen-Liste
+window.filterGruppeHinzufuegen = function(gId, query) {
+  const container = document.getElementById('gruppe-add-list-'+gId);
+  if(!container) return;
+  const q = String(query||'').trim().toLowerCase();
+  container.querySelectorAll('.gruppe-add-item').forEach(btn => {
+    const nr = btn.dataset.nr || '';
+    const name = btn.dataset.name || '';
+    const match = !q || nr.startsWith(q) || name.includes(q);
+    btn.style.display = match ? '' : 'none';
+  });
 };
 window.saveGruppe = async function() {
   const name = document.getElementById('g-name')?.value.trim();
@@ -2972,8 +3038,21 @@ window.saveGruppe = async function() {
   }
 };
 window.deleteGruppe = async function(id, name) {
-  if(!confirm(`Gruppe "${name}" löschen?`)) return;
-  await remove(ref(db,'gruppen/'+id));
+  if(!confirm(`Gruppe "${name}" löschen?\n\nKühe werden nicht gelöscht — nur die Gruppen-Zuordnung entfernt.`)) return;
+  // Aus allen Kühen den Gruppen-Namen entfernen + Gruppe selbst löschen
+  const updates = {};
+  Object.entries(kuehe).forEach(([kid, k]) => {
+    if(!k) return;
+    const list = String(k.gruppe||'').split(/\s*[,;\/]\s*/).filter(Boolean);
+    if(list.includes(name)) {
+      updates['kuehe/'+kid+'/gruppe'] = list.filter(x => x !== name).join(', ');
+    }
+  });
+  updates['gruppen/'+id] = null;
+  try {
+    await update(ref(db, '/'), updates);
+    window.showSaveToast && showSaveToast('✓ Gruppe „' + name + '" gelöscht');
+  } catch(e) { console.error('deleteGruppe:', e); alert('Fehler: '+e.message); }
 };
 
 // ══════════════════════════════════════════════════════════════════════════════
