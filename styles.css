@@ -568,13 +568,21 @@ textarea.inp{resize:vertical;min-height:64px}
 .form-overlay{
   position:fixed !important; inset:0 !important;
   background:var(--bg) !important;
-  z-index:100;
+  z-index:500;
   align-items:stretch !important; justify-content:center !important;
   padding:0 !important;
   /* display:none/flex bleibt steuerbar via inline */
 }
 .form-overlay[style*="display:flex"], .form-overlay[style*="display: flex"] {
   display:flex !important;
+}
+
+/* Wenn ein Formular offen ist: Bottom-Nav ausblenden damit der Speichern-Button
+   unten nicht verdeckt wird. Zwei Wege für Browser-Kompatibilität: :has() und body-Klasse. */
+body:has(.form-overlay[style*="display:flex"]) #bottom-nav,
+body:has(.form-overlay[style*="display: flex"]) #bottom-nav,
+body.form-open #bottom-nav {
+  display:none !important;
 }
 .form-sheet{
   background:linear-gradient(180deg,var(--bg2),var(--bg)) !important;
