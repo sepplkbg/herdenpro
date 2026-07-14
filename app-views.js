@@ -7927,26 +7927,49 @@ window.saveBauerNotiz = async function() {
   try {
     if(!db || typeof firebase === 'undefined') throw new Error('Firebase nicht verfügbar');
 
+    const jetzt = Date.now();
+    let newKey = null;
+
     // Mit Timeout — sonst hängt der Save offline endlos ohne Feedback
     let writePromise;
     if(notizId) {
       writePromise = firebase.database().ref('bauern/'+bauerId+'/notizen/'+notizId).update({
         text: text,
-        updatedAt: Date.now()
+        updatedAt: jetzt
       });
     } else {
-      writePromise = firebase.database().ref('bauern/'+bauerId+'/notizen').push({
+      // Push generiert den Key SYNCHRON via ThenableReference
+      const pushRef = firebase.database().ref('bauern/'+bauerId+'/notizen').push({
         text: text,
-        datum: Date.now(),
+        datum: jetzt,
         autor: autor
       });
+      newKey = pushRef.key;
+      writePromise = pushRef;
     }
     const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout (10s) — Netzwerk-Problem?')), 10000));
     await Promise.race([writePromise, timeoutPromise]);
-    console.log('[Bauer-Notiz] Server-Bestätigt');
+    console.log('[Bauer-Notiz] Server-Bestätigt', newKey || notizId);
+
+    // ── SOFORT LOKAL EINTRAGEN — nicht auf Firebase-Listener warten
+    // Dann sieht der User die Notiz auch wenn der Listener verzögert feuert.
+    try {
+      if(window.bauern && window.bauern[bauerId]) {
+        window.bauern[bauerId].notizen = window.bauern[bauerId].notizen || {};
+        if(notizId) {
+          const alt = window.bauern[bauerId].notizen[notizId] || {};
+          window.bauern[bauerId].notizen[notizId] = { ...alt, text: text, updatedAt: jetzt };
+        } else if(newKey) {
+          window.bauern[bauerId].notizen[newKey] = { text: text, datum: jetzt, autor: autor };
+        }
+      }
+    } catch(x) { console.warn('[Bauer-Notiz] local update:', x); }
+
     window.showSaveToast && showSaveToast(notizId ? '✓ Notiz aktualisiert' : '✓ Notiz gespeichert');
     restoreBtn();
     closeForm('bauer-notiz-overlay');
+    // Render EXPLIZIT triggern damit UI sofort refresht
+    setTimeout(() => { try { if(typeof render === 'function') render(); } catch(e){} }, 50);
   } catch(e) {
     console.error('[Bauer-Notiz] save err:', e);
     restoreBtn();
@@ -7959,7 +7982,12 @@ window.deleteBauerNotiz = async function(bauerId, notizId) {
   if(!confirm('Notiz wirklich löschen?')) return;
   try {
     await remove(ref(db, 'bauern/'+bauerId+'/notizen/'+notizId));
+    // Lokal sofort entfernen — UI refresht ohne Warten auf Firebase-Listener
+    try {
+      if(window.bauern?.[bauerId]?.notizen?.[notizId]) delete window.bauern[bauerId].notizen[notizId];
+    } catch(x) {}
     window.showSaveToast && showSaveToast('✓ Notiz gelöscht');
+    setTimeout(() => { try { if(typeof render === 'function') render(); } catch(e){} }, 50);
   } catch(e) {
     console.error('[Bauer-Notiz] delete err:', e);
     alert('Fehler beim Löschen: ' + (e.message || e));
