@@ -372,42 +372,23 @@ function render() {
   // Eingaben erzeugen Duplikate die in der Gruppen-Ansicht aufsummiert werden.
   // Stattdessen die Liste im Hintergrund einfach unverändert lassen – Auto-Save
   // schreibt eh in Firebase. ──
+  // ── Re-Render blockieren solange IRGENDEIN Formular-Overlay offen ist ──
+  // Sonst wird das Formular vom Live-Update zerstört und der User verliert seine Eingaben.
+  // Milch-Formular: dabei zusätzlich live die Kollisions-Hinweise aktualisieren.
   const milchFormOpen = document.getElementById('milch-form-overlay');
   if(milchFormOpen && milchFormOpen.style.display === 'flex') {
-    // Form ist offen – Re-Render würde es zerstören.
     if(typeof window.updateAndereMelkerHinweise === 'function') {
       try { window.updateAndereMelkerHinweise(); } catch(e) { console.warn('updateAndereMelkerHinweise:', e); }
     }
     return;
   }
-  // Auch andere wichtige Formulare vor Re-Render schützen — sonst gehen Eingaben verloren
-  const _blockingForms = [
-    'behandlung-form-overlay',
-    'besamung-form-overlay',
-    'kalbung-form-overlay',
-    'bauer-notiz-overlay',
-    'bauer-overlay',
-    'kuh-form-overlay',
-    'zaehl-form-overlay',
-    'weide-form-overlay',
-    'kraftfutter-form-overlay',
-    'gruppe-form-overlay',
-    'kontakt-form-overlay',
-    'aufgabe-form-overlay',
-    'wartung-form-overlay',
-    'lager-form-overlay',
-    'milchqualitaet-form-overlay',
-    'kontrolle-form-overlay',
-    'klauen-form-overlay',
-    'journal-form-overlay',
-    'saison-wizard-ov',
-    'schalm-viertel-overlay',
-    'milch-konflikt-overlay',
-    'milch-debug-overlay'
-  ];
-  for(const fId of _blockingForms) {
-    const ov = document.getElementById(fId);
-    if(ov && ov.style.display === 'flex') return;
+  // Alle anderen: schon eines offen → re-render blockieren.
+  const anyOpenOverlay = document.querySelector('.form-overlay');
+  if(anyOpenOverlay) {
+    const _overlays = document.querySelectorAll('.form-overlay');
+    for(const ov of _overlays) {
+      if(ov.style.display === 'flex') return;
+    }
   }
 
   // Richtung der Animation bestimmen
