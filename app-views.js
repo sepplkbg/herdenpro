@@ -2444,11 +2444,18 @@ window._updateBodyFormClass = function() {
   document.body.classList.toggle('form-open', anyOpen);
 };
 
-// Beobachter: reagiert wenn Formulare via display umgeschaltet werden
+// Beobachter mit Debounce (max alle 200ms) — sonst rennt er bei jeder DOM-Änderung
 if(!window._formObserverInit) {
   window._formObserverInit = true;
-  const mo = new MutationObserver(() => window._updateBodyFormClass());
-  // Auf gesamtes Body-Subtree beobachten (form-overlays werden dynamisch erstellt)
+  let _formObsTimer = null;
+  const scheduleUpdate = () => {
+    if(_formObsTimer) return;
+    _formObsTimer = setTimeout(() => {
+      _formObsTimer = null;
+      try { window._updateBodyFormClass(); } catch(e) {}
+    }, 200);
+  };
+  const mo = new MutationObserver(scheduleUpdate);
   setTimeout(() => {
     mo.observe(document.body, { attributes: true, subtree: true, attributeFilter: ['style'] });
     window._updateBodyFormClass();
@@ -7892,34 +7899,58 @@ window.showBauerNotizForm = function(bauerId, notizId) {
 };
 
 window.saveBauerNotiz = async function() {
-  const bauerId = document.getElementById('bauer-notiz-bauer-id')?.value;
-  const notizId = document.getElementById('bauer-notiz-id')?.value;
-  const text = document.getElementById('bauer-notiz-text')?.value.trim();
-  if(!bauerId) { alert('Fehler: kein Bauer'); return; }
-  if(!text) { alert('Bitte Text eingeben'); return; }
+  console.log('[Bauer-Notiz] saveBauerNotiz() aufgerufen');
+  const bauerIdEl = document.getElementById('bauer-notiz-bauer-id');
+  const notizIdEl = document.getElementById('bauer-notiz-id');
+  const textEl = document.getElementById('bauer-notiz-text');
+  if(!bauerIdEl || !textEl) {
+    alert('Fehler: Formular nicht sichtbar. Bitte Notiz neu öffnen.');
+    console.error('[Bauer-Notiz] Formular-Elemente fehlen', {bauerIdEl, textEl});
+    return;
+  }
+  const bauerId = bauerIdEl.value;
+  const notizId = notizIdEl ? notizIdEl.value : '';
+  const text = textEl.value.trim();
+  console.log('[Bauer-Notiz] Werte:', {bauerId, notizId, textLen: text.length});
+  if(!bauerId) { alert('Fehler: kein Bauer ausgewählt'); return; }
+  if(!text) { alert('Bitte Text eingeben'); textEl.focus(); return; }
+
   const cu = window._currentUser || {};
   const autor = cu.name || cu.displayName || (cu.email ? cu.email.split('@')[0] : '') || '';
+
+  // Button visuell blockieren während Save
+  const btn = document.querySelector('#bauer-notiz-overlay .btn-primary');
+  const origLabel = btn ? btn.textContent : '';
+  if(btn) { btn.disabled = true; btn.textContent = '⏳ Speichere…'; btn.style.opacity = '.7'; }
+  const restoreBtn = () => { if(btn) { btn.disabled = false; btn.textContent = origLabel; btn.style.opacity = ''; } };
+
   try {
+    if(!db || typeof firebase === 'undefined') throw new Error('Firebase nicht verfügbar');
+
+    // Mit Timeout — sonst hängt der Save offline endlos ohne Feedback
+    let writePromise;
     if(notizId) {
-      // Bearbeiten: text und updatedAt aktualisieren, datum + autor bleiben
-      await update(ref(db, 'bauern/'+bauerId+'/notizen/'+notizId), {
+      writePromise = firebase.database().ref('bauern/'+bauerId+'/notizen/'+notizId).update({
         text: text,
         updatedAt: Date.now()
       });
-      window.showSaveToast && showSaveToast('✓ Notiz aktualisiert');
     } else {
-      // Neue Notiz: unter Firebase-Auto-Key ablegen
-      await push(ref(db, 'bauern/'+bauerId+'/notizen'), {
+      writePromise = firebase.database().ref('bauern/'+bauerId+'/notizen').push({
         text: text,
         datum: Date.now(),
         autor: autor
       });
-      window.showSaveToast && showSaveToast('✓ Notiz gespeichert');
     }
+    const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout (10s) — Netzwerk-Problem?')), 10000));
+    await Promise.race([writePromise, timeoutPromise]);
+    console.log('[Bauer-Notiz] Server-Bestätigt');
+    window.showSaveToast && showSaveToast(notizId ? '✓ Notiz aktualisiert' : '✓ Notiz gespeichert');
+    restoreBtn();
     closeForm('bauer-notiz-overlay');
   } catch(e) {
     console.error('[Bauer-Notiz] save err:', e);
-    alert('Fehler beim Speichern: ' + (e.message || e));
+    restoreBtn();
+    alert('Fehler beim Speichern:\n\n' + (e.message || e) + '\n\nText bleibt im Formular, du kannst nochmal versuchen.');
   }
 };
 
