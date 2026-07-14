@@ -4050,66 +4050,93 @@ function initAuth() {
   if(!firebase.auth) { console.error('Auth not loaded'); return; }
   window._auth = firebase.auth();
 
-  // Persistente Anmeldung explizit setzen (Standard, aber sicherheitshalber)
+  // Persistente Anmeldung explizit setzen
   firebase.auth().setPersistence(firebase.auth.Auth.Persistence.LOCAL)
     .catch(e => console.warn('Auth-Persistence konnte nicht gesetzt werden:', e));
 
-  // ── Anti-Flash: NICHT die Login-Maske sofort zeigen ──
-  // Stattdessen kurzer Lade-Screen während Firebase die persistente Session prüft.
-  // Wenn jemand bereits angemeldet ist (Normalfall), springt's direkt zur App.
   document.getElementById('login-screen').style.display = 'none';
   document.getElementById('root').style.display = 'none';
-  zeigeAuthLadeBildschirm();
+
+  // ── FAST-PATH: wenn gecachte Anmeldedaten existieren, App SOFORT zeigen ──
+  // Kein Warten auf Firebase-Roundtrip. Firebase verifiziert im Hintergrund.
+  const lastUid = localStorage.getItem('lastAuthUid');
+  let cachedProfile = null;
+  if(lastUid) {
+    try { cachedProfile = JSON.parse(localStorage.getItem('cache_userProfile_' + lastUid) || 'null'); } catch(e) {}
+  }
+  const fastPath = !!(lastUid && cachedProfile && cachedProfile.aktiv !== false);
+
+  function zeigeApp() {
+    versteckeAuthLadeBildschirm();
+    document.getElementById('login-screen').style.display = 'none';
+    document.getElementById('root').style.display = '';
+    try { updateUserDisplay(); } catch(e) {}
+    if(typeof initApp === 'function' && !window._appInitialized) {
+      window._appInitialized = true;
+      try { initApp(); } catch(e) { console.error('initApp err:', e); }
+    }
+  }
+
+  if(fastPath) {
+    // App sofort mit Cache-Daten zeigen — kein Lade-Screen!
+    window._currentUser = { uid: lastUid, ...cachedProfile };
+    window._currentRole = cachedProfile.rolle || 'hirte';
+    zeigeApp();
+  } else {
+    // Kein Cache → Lade-Screen bis Firebase antwortet
+    zeigeAuthLadeBildschirm();
+  }
 
   firebase.auth().onAuthStateChanged(async function(user) {
     if(user) {
-      // ── Benutzer-Rolle laden: mit TIMEOUT + LOKALEM CACHE (für Offline) ──
+      // UID für Fast-Path beim nächsten Start merken
+      try { localStorage.setItem('lastAuthUid', user.uid); } catch(e) {}
+
+      // Profil im Hintergrund laden/aktualisieren (mit 4s Timeout)
       let userData = null;
       try {
-        // Mit 4s Timeout — offline würde sonst endlos hängen
         const getPromise = firebase.database().ref('benutzer/' + user.uid).get()
           .then(snap => snap.val() || {});
         const timeoutPromise = new Promise((_, rej) => setTimeout(() => rej(new Error('Timeout')), 4000));
         userData = await Promise.race([getPromise, timeoutPromise]);
-        // Erfolg → in localStorage cachen für spätere Offline-Nutzung
         try { localStorage.setItem('cache_userProfile_' + user.uid, JSON.stringify(userData)); } catch(e) {}
       } catch(e) {
-        // Offline oder Fehler → aus localStorage-Cache laden
-        console.warn('Rolle-Load-Fehler (nutze Cache):', e.message || e);
+        console.warn('Rolle-Load (nutze Cache):', e.message || e);
         try { userData = JSON.parse(localStorage.getItem('cache_userProfile_' + user.uid) || 'null'); } catch(x) {}
-        if(!userData) userData = { rolle: 'hirte' };  // Notfall-Default
+        if(!userData) userData = { rolle: 'hirte' };
       }
 
-      window._currentUser = {...user, ...userData};
-      window._currentRole = userData.rolle || 'hirte';
-
-      // Nur bei explizit gesetztem aktiv=false abweisen — Cache-Fallback lässt das durchgehen
+      // Deaktivierte Nutzer explizit abweisen
       if(userData.aktiv === false) {
         try { await firebase.auth().signOut(); } catch(e) {}
+        try { localStorage.removeItem('lastAuthUid'); } catch(e) {}
+        window._currentUser = null; window._currentRole = null; window._appInitialized = false;
+        document.getElementById('root').style.display = 'none';
         versteckeAuthLadeBildschirm();
         document.getElementById('login-screen').style.display = 'flex';
         showLoginError('Dein Konto wurde noch nicht freigegeben. Bitte Admin kontaktieren.');
         return;
       }
 
-      // Show app
-      versteckeAuthLadeBildschirm();
-      document.getElementById('login-screen').style.display = 'none';
-      document.getElementById('root').style.display = '';
+      // User-Info aktualisieren (frisches Firebase-User-Objekt hat auch Auth-Details)
+      window._currentUser = {...user, ...userData};
+      window._currentRole = userData.rolle || 'hirte';
 
-      // Update topbar with user info
-      updateUserDisplay();
-
-      // Init app
-      if(typeof initApp === 'function' && !window._appInitialized) {
-        window._appInitialized = true;
-        initApp();
+      if(!fastPath) {
+        // Fast-Path nicht gelaufen → jetzt App zeigen
+        zeigeApp();
+      } else {
+        // Fast-Path lief bereits → nur Anzeige refreshen
+        try { updateUserDisplay(); } catch(e) {}
       }
     } else {
-      // Niemand angemeldet → erst jetzt die Login-Maske zeigen
+      // Kein User: Cache löschen und Login zeigen
+      try { localStorage.removeItem('lastAuthUid'); } catch(e) {}
+      window._currentUser = null;
+      window._currentRole = null;
       versteckeAuthLadeBildschirm();
-      document.getElementById('login-screen').style.display = 'flex';
       document.getElementById('root').style.display = 'none';
+      document.getElementById('login-screen').style.display = 'flex';
       window._appInitialized = false;
     }
   });
@@ -4958,14 +4985,24 @@ window.setAlmStatus = async function(id, s) {
 };
 window.druckeBestandsbuch=function(){
   const alm=saisonInfo?.alm||'Alm';const jahr=saisonInfo?.jahr||new Date().getFullYear();
+  const zeitTxt = z => z==='abend'?'ab':'mo';
   const rows=Object.values(behandlungen).filter(b=>b.medikament).sort((a,b)=>a.datum-b.datum).map(b=>{
     const k=kuehe[b.kuhId];
+    const ersteStr = new Date(b.datum).toLocaleDateString('de-AT') +
+                    (b.behandlungZeit ? ' ('+zeitTxt(b.behandlungZeit)+')' : '');
+    const endeMs = b.datumEnde || b.datum;
+    const endeStr = new Date(endeMs).toLocaleDateString('de-AT') +
+                   ((b.behandlungZeitEnde||b.behandlungZeit) ? ' ('+zeitTxt(b.behandlungZeitEnde||b.behandlungZeit)+')' : '');
+    const medQuelle = b.medizinQuelle === 'bauer' ? 'Bauer' :
+                      b.medizinQuelle === 'alm' ? 'Alm' : '–';
     return '<tr>' +
-      '<td>' + new Date(b.datum).toLocaleDateString('de-AT') + '</td>' +
+      '<td>' + ersteStr + '</td>' +
+      '<td>' + endeStr + '</td>' +
       '<td>#' + (k?.nr||'?') + ' ' + (k?.name||'') + '</td>' +
       '<td>' + (k?.ohrmarke||'–') + '</td>' +
       '<td>' + (b.diagnose||'–') + '</td>' +
       '<td>' + (b.medikament||'–') + '</td>' +
+      '<td>' + medQuelle + '</td>' +
       '<td>' + (b.dosis||'–') + '</td>' +
       '<td>' + (b.abgabeDatum?new Date(b.abgabeDatum).toLocaleDateString('de-AT'):'–') + '</td>' +
       '<td>' + (b.wzMilchTage||'–') + '</td>' +
@@ -4975,7 +5012,13 @@ window.druckeBestandsbuch=function(){
       '<td>' + (b.tierarzt||'–') + '</td>' +
       '</tr>';
   }).join('');
-  const head = '<tr><th>Datum</th><th>Tier</th><th>Ohrmarke</th><th>Diagnose</th><th>Medikament</th><th>Dosis</th><th>Abgabe</th><th>WZ Milch (T)</th><th>WZ Ende Milch</th><th>WZ Fleisch (T)</th><th>WZ Ende Fleisch</th><th>Tierarzt</th></tr>';
+  const head = '<tr>' +
+    '<th>Erste Beh.</th><th>Letzte Beh.</th>' +
+    '<th>Tier</th><th>Ohrmarke</th><th>Diagnose</th>' +
+    '<th>Medikament</th><th>Med. von</th><th>Dosis</th><th>Abgabe</th>' +
+    '<th>WZ Milch (T)</th><th>WZ Ende Milch</th>' +
+    '<th>WZ Fleisch (T)</th><th>WZ Ende Fleisch</th><th>Tierarzt</th>' +
+    '</tr>';
   const css = [
     'body{font-family:Arial,sans-serif;font-size:9px;margin:0}',
     'h2{font-size:13px;margin:8mm 8mm 3px}',
@@ -5003,7 +5046,7 @@ window.druckeBestandsbuch=function(){
     '<table>' +
       '<thead>' + head + '</thead>' +
       '<tbody>' + rows + '</tbody>' +
-      '<tfoot><tr><td colspan="12" style="font-size:7px;color:#888;border-top:2px solid #333;padding-top:4px">Bestandsbuch ' + alm + ' · Saison ' + jahr + ' · § 12 TAKG</td></tr></tfoot>' +
+      '<tfoot><tr><td colspan="14" style="font-size:7px;color:#888;border-top:2px solid #333;padding-top:4px">Bestandsbuch ' + alm + ' · Saison ' + jahr + ' · § 12 TAKG</td></tr></tfoot>' +
     '</table>' +
     '</div>' +
     '<scr'+'ipt>window.onload=function(){window.print();}</' + 'script></body></html>';
@@ -5347,6 +5390,12 @@ window.doLogin = async function() {
 window.doLogout = async function() {
   if(!confirm('Abmelden?')) return;
   await firebase.auth().signOut();
+  // Fast-Path-Cache löschen — sonst würde beim nächsten Start automatisch angemeldet
+  try {
+    const uid = localStorage.getItem('lastAuthUid');
+    if(uid) localStorage.removeItem('cache_userProfile_' + uid);
+    localStorage.removeItem('lastAuthUid');
+  } catch(e) {}
   window._currentUser = null;
   window._currentRole = null;
   window._appInitialized = false;
