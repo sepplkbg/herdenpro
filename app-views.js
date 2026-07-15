@@ -2232,8 +2232,17 @@ window.saveBehandlung=async function(){
     fotoData:document.getElementById('b-foto-data')?.value||null,
     tazettelData:document.getElementById('b-tazettel-data')?.value||null,
   };
-  if(editId){await update(ref(db,'behandlungen/'+editId),{...data,updatedAt:Date.now()});}
-  else{const nr=await push(ref(db,'behandlungen'),{...data,createdAt:Date.now()});editId=nr.key;}
+  if(editId){
+    await update(ref(db,'behandlungen/'+editId),{...data,updatedAt:Date.now()});
+    // Lokal sofort updaten damit UI sofort refresht
+    try { if(window.behandlungen?.[editId]) window.behandlungen[editId] = {...window.behandlungen[editId], ...data, updatedAt:Date.now()}; } catch(x) {}
+  }
+  else{
+    const nr=await push(ref(db,'behandlungen'),{...data,createdAt:Date.now()});
+    editId=nr.key;
+    // Lokal sofort eintragen für sofortige UI-Aktualisierung
+    try { window.behandlungen = window.behandlungen || {}; window.behandlungen[editId] = {...data, createdAt:Date.now()}; if(typeof behandlungen !== 'undefined') behandlungen[editId] = {...data, createdAt:Date.now()}; } catch(x) {}
+  }
 
   // ── Auto-Trigger: Diagnose "Trockenstellen" → Kuh-Laktation auf 'trocken' ──
   const diagnoseLower = (data.diagnose||'').toLowerCase();
@@ -2268,6 +2277,8 @@ window.saveBehandlung=async function(){
   // Temperatur-Indikator zurücksetzen
   const fi=document.getElementById('b-fieber-indikator');
   if(fi) fi.style.display='none';
+  // Force-Render: neue Behandlung sofort in Listen sichtbar
+  setTimeout(() => { try { if(typeof render === 'function') render(); } catch(e){} }, 50);
 };
 
 // ── Fehlende Stub-Funktionen (waren in onclick referenziert, aber nicht definiert) ──
