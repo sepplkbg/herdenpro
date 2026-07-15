@@ -2926,9 +2926,15 @@ function renderSaison() {
 function renderWeide() {
   const heuteDatum=isoDate(new Date());
   const weidenListe=Object.entries(weiden).sort((a,b)=>a[1].name?.localeCompare(b[1].name));
-  const verlauf=Object.entries(weideTage).sort((a,b)=>b[1].datum?.localeCompare(a[1].datum)).slice(0,30);
+  const alleVerlauf=Object.entries(weideTage).sort((a,b)=>b[1].datum?.localeCompare(a[1].datum));
   const heuteEintrag=Object.entries(weideTage).find(([,w])=>w.datum===heuteDatum);
   const kueheOben=Object.entries(kuehe).sort((a,b)=>{const nA=parseInt(a[1].nr)||0,nB=parseInt(b[1].nr)||0;return nA-nB;});
+  // Verlaufs-Filter: window._weideVerlaufFilter ist die weideId oder '' für alle
+  const weideFilter = window._weideVerlaufFilter || '';
+  const verlauf = weideFilter
+    ? alleVerlauf.filter(([,w]) => w.weideId === weideFilter)
+    : alleVerlauf;
+  const verlaufLimited = verlauf.slice(0, 30);
   return `
     <div class="page-header"><h2>🌿 Weidegang</h2><button class="btn-primary" onclick="showWeideTagForm()">+ Heute</button></div>
     <div class="section-title">Weiden <button class="btn-xs" style="margin-left:.5rem" onclick="showWeideForm()">+ anlegen</button></div>
@@ -2941,10 +2947,31 @@ function renderWeide() {
       ${heuteEintrag[1].notiz?`<div class="info-row"><span>Notiz</span><span>${heuteEintrag[1].notiz}</span></div>`:''}
       <button class="btn-xs-danger" style="margin-top:.4rem" onclick="deleteWeideTag('${heuteEintrag[0]}')">Löschen</button>
     </div>`:''}
-    <div class="section-title">Verlauf</div>
+    <div class="section-title">Verlauf ${weideFilter?`<span style="color:var(--gold);font-size:.75rem;font-weight:400">· gefiltert</span>`:''}</div>
+    ${weidenListe.length > 0 ? `
+    <!-- Filter-Chips: nach Weide filtern -->
+    <div style="display:flex;flex-wrap:wrap;gap:.3rem;margin-bottom:.6rem;padding:.35rem 0">
+      <button class="filter-chip ${!weideFilter?'active':''}" onclick="window._weideVerlaufFilter='';render()">Alle (${alleVerlauf.length})</button>
+      ${weidenListe.map(([wid,w])=>{
+        const anzahl = alleVerlauf.filter(([,wt]) => wt.weideId === wid).length;
+        if(anzahl === 0) return '';
+        return `<button class="filter-chip ${weideFilter===wid?'active':''}" onclick="window._weideVerlaufFilter='${wid}';render()">${w.name} (${anzahl})</button>`;
+      }).filter(Boolean).join('')}
+    </div>` : ''}
     <div class="card-list">
-      ${verlauf.length?verlauf.map(([id,w])=>`<div class="list-card"><div class="list-card-left"><div><div class="list-card-title">${new Date(w.datum+'T12:00').toLocaleDateString('de-AT',{weekday:'short',day:'numeric',month:'short'})}</div><div class="list-card-sub">${weiden[w.weideId]?.name||w.weideText||'–'} · ${w.kuhIds?.length||0} Tiere${w.notiz?' · '+w.notiz:''}</div></div></div><button class="btn-xs-danger" onclick="deleteWeideTag('${id}')">✕</button></div>`).join(''):`<div class="empty-state">Noch keine Einträge</div>`}
+      ${verlaufLimited.length?verlaufLimited.map(([id,w])=>`
+        <div class="list-card" onclick="showWeideTagDetail('${id}')" style="cursor:pointer">
+          <div class="list-card-left">
+            <div>
+              <div class="list-card-title">${new Date(w.datum+'T12:00').toLocaleDateString('de-AT',{weekday:'short',day:'numeric',month:'short'})}</div>
+              <div class="list-card-sub">${weiden[w.weideId]?.name||w.weideText||'–'} · ${w.kuhIds?.length||0} Tiere${w.notiz?' · '+w.notiz:''}</div>
+            </div>
+          </div>
+          <span class="chevron" style="align-self:center;color:var(--text3);font-size:1.2rem">›</span>
+          <button class="btn-xs-danger" onclick="event.stopPropagation();deleteWeideTag('${id}')">✕</button>
+        </div>`).join(''):`<div class="empty-state">${weideFilter?'Keine Einträge für diese Weide':'Noch keine Einträge'}</div>`}
     </div>
+    ${verlauf.length > 30 ? `<div style="text-align:center;font-size:.72rem;color:var(--text3);margin-top:.4rem">Nur die letzten 30 von ${verlauf.length} Einträgen angezeigt</div>` : ''}
     <div id="weidetag-overlay" class="form-overlay" style="display:none">
       <div class="form-sheet">
         <div class="form-header"><h3>Weidegang erfassen</h3><button class="close-btn" onclick="closeForm('weidetag-overlay')">✕</button></div>
@@ -5105,7 +5132,28 @@ window.deleteBauer=async id=>{if(confirm('Bauer löschen?'))await remove(ref(db,
 
 window.showWeideForm=function(){document.getElementById('weide-overlay').style.display='flex';};
 
-window.saveWeide=async function(){const name=document.getElementById('w-name')?.value.trim();if(!name)return;await push(ref(db,'weiden'),{name,ha:parseFloat(document.getElementById('w-ha')?.value)||null,notiz:document.getElementById('w-notiz')?.value.trim()});closeForm('weide-overlay');};
+window.saveWeide=async function(){
+  const name=document.getElementById('w-name')?.value.trim();
+  if(!name){alert('Weide-Name eingeben');return;}
+  const data = {
+    name,
+    ha:parseFloat(document.getElementById('w-ha')?.value)||null,
+    notiz:document.getElementById('w-notiz')?.value.trim()
+  };
+  try {
+    const pushRef = firebase.database().ref('weiden').push(data);
+    const newId = pushRef.key;
+    await pushRef;
+    // Lokal sofort eintragen für sofortiges UI-Update
+    try { window.weiden = window.weiden || {}; window.weiden[newId] = data; if(typeof weiden !== 'undefined') weiden[newId] = data; } catch(x) {}
+    window.showSaveToast && showSaveToast('✓ Weide „'+name+'" angelegt');
+    closeForm('weide-overlay');
+    setTimeout(() => { try { render(); } catch(e){} }, 50);
+  } catch(e) {
+    console.error('saveWeide:', e);
+    alert('Fehler beim Speichern: '+(e.message||e));
+  }
+};
 
 window.deleteWeide=async id=>{if(confirm('Weide löschen?'))await remove(ref(db,'weiden/'+id));};
 
@@ -5169,21 +5217,99 @@ window.updateWeideCount = function() {
 
 window.saveWeideTag=async function(){
   const datum=document.getElementById('wt-datum')?.value;
+  if(!datum){alert('Datum eingeben');return;}
   const wv=document.getElementById('wt-weide')?.value;
-  // Alle gecheckten Tiere übernehmen, auch wenn ausgeblendet (User-Intention zählt)
   const kuhIds = [...document.querySelectorAll('#weidetag-overlay .kuh-cb:checked')].map(c=>c.value);
-  await push(ref(db,'weideTage'),{
+  const data = {
     datum,
-    weideId: wv!=='__text__' ? wv : '',
+    weideId: wv && wv!=='__text__' ? wv : '',
     weideText: wv==='__text__' ? (document.getElementById('wt-freitext')?.value.trim()||'') : '',
     kuhIds,
     notiz: document.getElementById('wt-notiz')?.value.trim(),
     createdAt: Date.now()
-  });
-  closeForm('weidetag-overlay');
+  };
+  try {
+    const pushRef = firebase.database().ref('weideTage').push(data);
+    const newId = pushRef.key;
+    await pushRef;
+    // Lokal sofort eintragen — UI zeigt Eintrag sofort ohne auf Listener zu warten
+    try { window.weideTage = window.weideTage || {}; window.weideTage[newId] = data; if(typeof weideTage !== 'undefined') weideTage[newId] = data; } catch(x) {}
+    window.showSaveToast && showSaveToast('✓ Weidegang gespeichert');
+    closeForm('weidetag-overlay');
+    setTimeout(() => { try { render(); } catch(e){} }, 50);
+  } catch(e) {
+    console.error('saveWeideTag:', e);
+    alert('Fehler beim Speichern: '+(e.message||e));
+  }
 };
 
-window.deleteWeideTag=async id=>{if(confirm('Eintrag löschen?'))await remove(ref(db,'weideTage/'+id));};
+window.deleteWeideTag=async id=>{
+  if(!confirm('Eintrag löschen?')) return;
+  try {
+    await remove(ref(db,'weideTage/'+id));
+    try { if(window.weideTage?.[id]) delete window.weideTage[id]; if(typeof weideTage !== 'undefined' && weideTage[id]) delete weideTage[id]; } catch(x) {}
+    setTimeout(() => { try { render(); } catch(e){} }, 50);
+  } catch(e) { alert('Fehler beim Löschen: '+(e.message||e)); }
+};
+
+// Detail-Popup für einen Weidegang-Eintrag: zeigt Datum, Weide, Notiz, alle Tiere
+window.showWeideTagDetail = function(id) {
+  const wt = weideTage[id];
+  if(!wt) return;
+  const weideName = weiden[wt.weideId]?.name || wt.weideText || '–';
+  const weideHa   = weiden[wt.weideId]?.ha ? ' ('+weiden[wt.weideId].ha+' ha)' : '';
+  const datumStr  = new Date(wt.datum+'T12:00').toLocaleDateString('de-AT',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
+  const kuhIds    = Array.isArray(wt.kuhIds) ? wt.kuhIds : [];
+
+  // Kühe mit Details holen und sortiert nach Nummer
+  const kuhListe = kuhIds
+    .map(kid => ({ id: kid, k: kuehe[kid] }))
+    .sort((a,b) => (parseInt(a.k?.nr)||0) - (parseInt(b.k?.nr)||0));
+
+  // Gruppieren nach Bauer für bessere Übersicht
+  const nachBauer = {};
+  kuhListe.forEach(({id: kid, k}) => {
+    if(!k) return;
+    const bauer = k.bauer || '(kein Bauer)';
+    if(!nachBauer[bauer]) nachBauer[bauer] = [];
+    nachBauer[bauer].push({ id: kid, k });
+  });
+
+  const fehlend = kuhListe.filter(x => !x.k).length;
+
+  const kuhHtml = Object.entries(nachBauer)
+    .sort((a,b) => a[0].localeCompare(b[0]))
+    .map(([bauer, list]) => `
+      <div style="margin-top:.5rem">
+        <div style="font-size:.68rem;color:var(--text3);font-weight:700;letter-spacing:.5px;text-transform:uppercase;margin-bottom:.3rem">${bauer} · ${list.length}</div>
+        <div style="display:flex;flex-wrap:wrap;gap:.3rem">
+          ${list.map(({id: kid, k}) => `
+            <div onclick="closePopup();showKuhDetail('${kid}')" style="background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:.3rem .55rem;font-size:.78rem;cursor:pointer;display:inline-flex;align-items:center;gap:.35rem;transition:background .15s">
+              <span class="nr-badge" style="min-width:auto;padding:1px 6px;font-size:.7rem">#${k.nr}</span>
+              <span>${k.name || '–'}</span>
+            </div>`).join('')}
+        </div>
+      </div>`).join('');
+
+  window.showPopupHTML(
+    '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:.6rem;gap:.6rem">' +
+      '<div>' +
+        '<div style="font-weight:bold;font-size:1rem">' + datumStr + '</div>' +
+        '<div style="font-size:.85rem;color:var(--green);font-weight:600;margin-top:.2rem">🌿 ' + weideName + weideHa + '</div>' +
+      '</div>' +
+      '<div style="font-size:1.3rem;color:var(--gold);font-weight:bold;text-align:right">' +
+        (kuhListe.length || 0) + '<div style="font-size:.65rem;color:var(--text3);font-weight:400">Tiere</div>' +
+      '</div>' +
+    '</div>' +
+    (wt.notiz ? '<div style="background:var(--bg2);border-radius:8px;padding:.5rem .7rem;font-size:.85rem;margin:.5rem 0;white-space:pre-wrap;color:var(--text)">📝 ' + wt.notiz.replace(/</g,'&lt;') + '</div>' : '') +
+    (kuhListe.length ? kuhHtml : '<div style="color:var(--text3);font-size:.85rem;padding:.5rem 0">Keine Tiere zugewiesen</div>') +
+    (fehlend ? '<div style="color:var(--text3);font-size:.72rem;margin-top:.4rem">Hinweis: ' + fehlend + ' Kuh-IDs konnten nicht mehr in der Herde gefunden werden (evtl. gelöscht)</div>' : '') +
+    '<div style="display:flex;gap:.5rem;margin-top:1rem">' +
+      '<button class="btn-secondary" style="flex:1" onclick="closePopup()">Schließen</button>' +
+      '<button class="btn-xs-danger" onclick="closePopup();deleteWeideTag(\'' + id + '\')">Löschen</button>' +
+    '</div>'
+  );
+};
 
 // ══════════════════════════════════════════════════════════════════════════════
 //  BESTANDSBUCH
