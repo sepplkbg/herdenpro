@@ -157,12 +157,17 @@ body{
   display:none;
   align-items:center;
   gap:.55rem;
-  padding:.5rem .85rem;
+  /* Ganz oben, immer sichtbar — auch über offenen Formularen */
+  position:fixed;
+  top:0;left:0;right:0;
+  z-index:600;
+  padding:calc(.5rem + var(--safe-t,0px)) calc(.85rem + var(--safe-r,0px)) .5rem calc(.85rem + var(--safe-l,0px));
   font-size:.78rem;
   font-weight:600;
-  flex-shrink:0;
   border-bottom:1px solid transparent;
   animation:milch-sync-slide .25s ease-out;
+  backdrop-filter:blur(6px);
+  -webkit-backdrop-filter:blur(6px);
 }
 .milch-sync-banner span:first-child{ font-size:1rem; flex-shrink:0; }
 .milch-sync-banner span:nth-child(2){ flex:1; line-height:1.3; }
@@ -572,6 +577,10 @@ textarea.inp{resize:vertical;min-height:64px}
   align-items:stretch !important; justify-content:center !important;
   padding:0 !important;
   /* display:none/flex bleibt steuerbar via inline */
+}
+/* Wenn Sync-Banner sichtbar: Formular startet unter dem Banner */
+body.milch-banner-visible .form-overlay {
+  top: calc(2.6rem + var(--safe-t,0px)) !important;
 }
 .form-overlay[style*="display:flex"], .form-overlay[style*="display: flex"] {
   display:flex !important;
