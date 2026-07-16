@@ -1,8 +1,8 @@
 // ══════════════════════════════════════════════════════════════
 //  HERDENPRO – MILCH v2  (LocalStorage-first Persistence)
-//  MODUL-VERSION: 3.6  ← wenn du das siehst, ist der Fix geladen
+//  MODUL-VERSION: 4.1  ← wenn du das siehst, ist der Fix geladen
 // ══════════════════════════════════════════════════════════════
-window.MILCH_V2_VERSION = '3.6';
+window.MILCH_V2_VERSION = '4.1';
 //  Löst die alten Probleme (Datenverlust, hängende Saves offline,
 //  Multi-Melker-Kollisionen, Aggregations-Verdopplung).
 //
@@ -629,63 +629,65 @@ window.onMilchEintraegeChanged = function() {
 // ══════════════════════════════════════════════════════════════
 window.updateSyncBanner = function() {
   let banner = document.getElementById('milch-sync-banner');
-  if(!banner) {
-    // Nicht rendered yet — kein Panic, kommt später
+  if(!banner) return;
+
+  const setBannerVisible = (v) => document.body.classList.toggle('milch-banner-visible', !!v);
+
+  // Auf Login-Screen: Banner ausblenden
+  const loginVisible = document.getElementById('login-screen')?.style.display !== 'none';
+  const rootVisible  = document.getElementById('root')?.style.display !== 'none';
+  if(loginVisible || !rootVisible) {
+    banner.style.display = 'none';
+    setBannerVisible(false);
     return;
   }
+
   const n = countPending();
   const konfl = getKonflikte().length;
   const online = navigator.onLine;
+  const v = ' <span style="opacity:.5;font-size:.65rem">[v' + (window.MILCH_V2_VERSION || '?') + ']</span>';
+  const qBtn = '<button class="milch-sync-action" onclick="showMilchPendingDetails()" title="Details / Diagnose">?</button>';
 
-  // ── PERSISTENT-ERROR hat Priorität: bleibt sichtbar bis explicitly cleared ──
+  let stateClass, iconEmoji, msg, actionBtn = '';
+
   if(window._milchSyncError && n > 0) {
-    const err = window._milchSyncError;
-    banner._wasVisible = true;
-    banner.style.display = 'flex';
-    banner.className = 'milch-sync-banner milch-sync-error';
-    banner.innerHTML = '<span>❌</span><span>Sync-Fehler: ' + err.msg.slice(0, 80) + '</span>' +
-      '<button class="milch-sync-action" onclick="showMilchPendingDetails()">Details</button>' +
-      '<button class="milch-sync-action" onclick="clearMilchSyncError();syncMilchPending()">Retry</button>';
-    return;
+    stateClass = 'milch-sync-error';
+    iconEmoji = '❌';
+    msg = 'Sync-Fehler: ' + window._milchSyncError.msg.slice(0, 60);
+    actionBtn = '<button class="milch-sync-action" onclick="clearMilchSyncError();syncMilchPending()">Retry</button>';
+  } else if(konfl > 0) {
+    stateClass = 'milch-sync-error';
+    iconEmoji = '⚠';
+    msg = konfl + ' Milch-Konflikt' + (konfl > 1 ? 'e' : '') + ' — bitte klären';
+    actionBtn = '<button class="milch-sync-action" onclick="showMilchKonflikte()">Anzeigen</button>';
+  } else if(!online && n > 0) {
+    stateClass = 'milch-sync-offline';
+    iconEmoji = '📵';
+    msg = 'Offline · ' + n + ' Wert' + (n > 1 ? 'e' : '') + ' lokal gesichert · Sync sobald online';
+  } else if(!online) {
+    stateClass = 'milch-sync-offline';
+    iconEmoji = '📵';
+    msg = 'Offline — Werte werden gesichert sobald wieder online';
+  } else if(n > 0) {
+    stateClass = 'milch-sync-pending';
+    iconEmoji = '📤';
+    msg = n + ' Wert' + (n > 1 ? 'e' : '') + ' werden übertragen…';
+    actionBtn = '<button class="milch-sync-action" onclick="syncMilchPending()">Jetzt versuchen</button>';
+  } else {
+    stateClass = 'milch-sync-ok';
+    iconEmoji = '✓';
+    msg = 'Alle Milchwerte in der Cloud gesichert';
   }
 
-  if(n === 0 && konfl === 0) {
-    // Auch wenn nichts pending ist: OFFLINE-Zustand IMMER sichtbar machen
-    if(!online) {
-      banner._wasVisible = true;
-      banner.style.display = 'flex';
-      banner.className = 'milch-sync-banner milch-sync-offline';
-      banner.innerHTML = '<span>📵</span><span>Offline — Änderungen werden gespeichert sobald wieder online <span style="opacity:.5;font-size:.65rem">[v' + (window.MILCH_V2_VERSION || '?') + ']</span></span>';
-      if(banner._hideTimer) { clearTimeout(banner._hideTimer); banner._hideTimer = null; }
-      return;
-    }
-    // Alles sauber & online — Banner bleibt 15s als Bestätigung
-    if(banner._wasVisible) {
-      banner.style.display = 'flex';
-      banner.className = 'milch-sync-banner milch-sync-ok';
-      banner.innerHTML = '<span>✓</span><span>Alle Milchwerte in der Cloud gesichert <span style="opacity:.5;font-size:.65rem">[v' + (window.MILCH_V2_VERSION || '?') + ']</span></span>';
-      if(banner._hideTimer) clearTimeout(banner._hideTimer);
-      banner._hideTimer = setTimeout(() => {
-        banner.style.display = 'none';
-        banner._wasVisible = false;
-      }, 15000);
-    } else {
-      banner.style.display = 'none';
-    }
-    return;
-  }
-
-  banner._wasVisible = true;
   banner.style.display = 'flex';
+  setBannerVisible(true);
+  banner.className = 'milch-sync-banner ' + stateClass;
+  banner.innerHTML = '<span>' + iconEmoji + '</span>' +
+    '<span>' + msg + v + '</span>' +
+    qBtn + actionBtn;
+  return;
 
-  if(konfl > 0) {
-    banner.className = 'milch-sync-banner milch-sync-error';
-    banner.innerHTML = '<span>⚠</span><span>' + konfl + ' Milch-Konflikt' + (konfl > 1 ? 'e' : '') +
-      ' – bitte klären</span>' +
-      '<button class="milch-sync-action" onclick="showMilchKonflikte()">Anzeigen</button>';
-    return;
-  }
-
+  // ── Alter Code (nicht mehr verwendet) ──
   if(!online) {
     banner.className = 'milch-sync-banner milch-sync-offline';
     banner.innerHTML = '<span>📵</span><span>Offline · ' + n + ' Wert' + (n > 1 ? 'e' : '') +
@@ -930,25 +932,34 @@ window.onMilchInput = function(inp) {
 // ══════════════════════════════════════════════════════════════
 //  OVERRIDE: saveMilch – nur noch „Fertig", schließt Form
 // ══════════════════════════════════════════════════════════════
-window.saveMilch = function() {
+// Bildschirmfüllender roter Warnung-Dialog wenn Save nicht verifiziert werden kann
+window._milchZeigeSaveFehler = function(titel, text, retryFn) {
+  let ov = document.getElementById('milch-save-fehler-ov');
+  if(!ov) {
+    ov = document.createElement('div');
+    ov.id = 'milch-save-fehler-ov';
+    ov.style.cssText = 'position:fixed;inset:0;z-index:99999;background:rgba(120,20,20,.97);display:flex;align-items:center;justify-content:center;padding:1rem;font-family:inherit';
+    document.body.appendChild(ov);
+  }
+  ov.innerHTML =
+    '<div style="max-width:520px;width:100%;background:var(--bg2);border:3px solid #e05a5a;border-radius:14px;padding:1.4rem;color:var(--text)">' +
+      '<div style="font-size:3rem;text-align:center;margin-bottom:.5rem">⚠️</div>' +
+      '<h2 style="color:#e05a5a;text-align:center;font-size:1.35rem;margin-bottom:.7rem">' + titel + '</h2>' +
+      '<div style="font-size:.95rem;line-height:1.5;color:var(--text);background:rgba(255,255,255,.06);padding:.8rem 1rem;border-radius:8px;margin-bottom:1rem;white-space:pre-wrap">' + text + '</div>' +
+      '<div style="display:flex;gap:.5rem;flex-wrap:wrap">' +
+        (retryFn ? '<button class="btn-primary" style="flex:1;background:#e05a5a;border:none;color:#fff" onclick="document.getElementById(\'milch-save-fehler-ov\').remove();(' + retryFn + ')()">🔄 Erneut versuchen</button>' : '') +
+        '<button class="btn-secondary" style="flex:1" onclick="document.getElementById(\'milch-save-fehler-ov\').remove()">OK, ich verstehe</button>' +
+      '</div>' +
+    '</div>';
+  ov.style.display = 'flex';
+};
+
+window.saveMilch = async function() {
   const datum = document.getElementById('m-datum')?.value;
   const zeit = document.getElementById('m-zeit')?.value || 'morgen';
   if(!datum) { alert('Datum fehlt'); return; }
 
-  // Alle noch offenen Debounce-Timer sofort ausführen
-  if(window._milchInputTimers) {
-    Object.keys(window._milchInputTimers).forEach(kuhId => {
-      clearTimeout(window._milchInputTimers[kuhId]);
-      const inp = document.querySelector('.kuh-liter[data-id="' + kuhId + '"]');
-      if(inp) {
-        const val = parseFloat((inp.value||'').replace(',','.')) || 0;
-        pushMilchWert(kuhId, val, datum, zeit);
-      }
-    });
-    window._milchInputTimers = {};
-  }
-
-  // Aggregation für Warnungen + Toast
+  // Alle Werte aus dem Formular einsammeln
   const prokuh = {};
   let gesamt = 0;
   document.querySelectorAll('.kuh-liter').forEach(i => {
@@ -961,19 +972,136 @@ window.saveMilch = function() {
     return;
   }
 
-  // Molkerei/Notiz auf Termin-Ebene speichern (nur wenn tatsächlich Werte da sind)
+  // Save-Button visuell blockieren
+  const saveBtn = document.querySelector('#milch-form-overlay .btn-primary[onclick*="saveMilch"]');
+  const origLabel = saveBtn ? saveBtn.textContent : '';
+  if(saveBtn) { saveBtn.disabled = true; saveBtn.textContent = '⏳ Verifiziere Sync…'; saveBtn.style.opacity = '.7'; }
+  const restoreBtn = () => { if(saveBtn) { saveBtn.disabled = false; saveBtn.textContent = origLabel || '✓ Fertig'; saveBtn.style.opacity = ''; } };
+
+  // ── OPTION A: OFFLINE / KEIN FIREBASE → BLOCKIEREN ──
+  if(!navigator.onLine) {
+    restoreBtn();
+    window._milchZeigeSaveFehler(
+      'Kein Internet',
+      'Deine Werte sind auf dem Gerät gespeichert und werden übertragen sobald du wieder online bist.\n\n' +
+      'Bitte gehe an einen Ort mit Netz und tippe dann auf „✓ Fertig".\n\n' +
+      'Bis dahin: LASSE DAS FORMULAR OFFEN!'
+    );
+    return;
+  }
+
+  // Firebase-Socket Live-Check
+  let socketConnected = false;
+  try {
+    if(typeof firebase !== 'undefined' && firebase.database) {
+      const check = firebase.database().ref('.info/connected').once('value');
+      const to = new Promise((_, rej) => setTimeout(() => rej(new Error('Socket-Check-Timeout')), 3000));
+      const snap = await Promise.race([check, to]);
+      socketConnected = !!snap.val();
+    }
+  } catch(e) {
+    console.warn('[Milch v2] Socket-Check:', e);
+    socketConnected = false;
+  }
+  if(!socketConnected) {
+    restoreBtn();
+    window._milchZeigeSaveFehler(
+      'Firebase-Verbindung tot',
+      'Das Handy sagt zwar „online", aber die Verbindung zum Server ist unterbrochen.\n\n' +
+      'BITTE:\n' +
+      '1. WLAN kurz aus und wieder ein\n' +
+      '2. ODER: Auf „🔌 Neu verbinden" tippen im ?-Dialog\n' +
+      '3. Dann nochmal auf „✓ Fertig"\n\n' +
+      'Werte sind lokal gesichert, gehen nicht verloren.',
+      'window.milchForceReconnect'
+    );
+    return;
+  }
+
+  // ── OPTION B: Werte pushen und verifizieren ──
+  // 1) Alle noch offenen Debounce-Timer sofort ausführen
+  if(window._milchInputTimers) {
+    Object.keys(window._milchInputTimers).forEach(kuhId => {
+      clearTimeout(window._milchInputTimers[kuhId]);
+      const inp = document.querySelector('.kuh-liter[data-id="' + kuhId + '"]');
+      if(inp) {
+        const val = parseFloat((inp.value||'').replace(',','.')) || 0;
+        pushMilchWert(kuhId, val, datum, zeit);
+      }
+    });
+    window._milchInputTimers = {};
+  }
+
+  // 2) Molkerei/Notiz schreiben
   const molkerei = document.getElementById('m-molkerei')?.checked || false;
   const notiz = document.getElementById('m-notiz')?.value.trim() || '';
   const entryKey = getMilchEntryKey(datum, zeit);
   try {
-    if(typeof firebase !== 'undefined' && firebase.database) {
-      firebase.database().ref('milch/' + entryKey).update({
-        molkerei: molkerei, notiz: notiz, lastUpdate: Date.now()
-      }).catch(e => console.warn('[Milch v2] Molkerei/Notiz:', e));
-    }
-  } catch(e) {}
+    await firebase.database().ref('milch/' + entryKey).update({
+      molkerei: molkerei, notiz: notiz, lastUpdate: Date.now()
+    });
+  } catch(e) { console.warn('[Milch v2] Molkerei/Notiz:', e); }
 
-  // Warnsystem
+  // 3) Kurz warten damit alle Pushes durchlaufen
+  await new Promise(r => setTimeout(r, 1500));
+
+  // 4) VERIFIKATION: aus Firebase lesen was tatsächlich am Server steht
+  let serverProkuh = {};
+  try {
+    const snap = await firebase.database().ref('milch/' + entryKey + '/prokuh').once('value');
+    serverProkuh = snap.val() || {};
+  } catch(e) {
+    console.warn('[Milch v2] Verify-Read fail:', e);
+  }
+
+  // 5) Vergleich: welche lokalen Werte sind NICHT am Server?
+  const mW = window.milchWert || function(v){ return typeof v === 'number' ? v : (v && v.wert != null ? parseFloat(v.wert) || 0 : parseFloat(v) || 0); };
+  const fehlend = [];
+  Object.entries(prokuh).forEach(([kuhId, wert]) => {
+    const serverWert = mW(serverProkuh[kuhId]);
+    if(Math.abs(serverWert - wert) > 0.05) {
+      const k = (window.kuehe || {})[kuhId];
+      fehlend.push({ nr: k?.nr || '?', name: k?.name || '', wertLokal: wert, wertServer: serverWert });
+    }
+  });
+
+  // 6) Wenn Werte fehlen → BILDSCHIRM-WARNUNG
+  if(fehlend.length > 0) {
+    restoreBtn();
+    // Silent-Confirm nochmal laufen lassen (letzter Versuch)
+    try { await window._milchConfirmAllPendingSilent(); } catch(e) {}
+    // Nochmal lesen
+    let serverProkuh2 = {};
+    try {
+      const snap2 = await firebase.database().ref('milch/' + entryKey + '/prokuh').once('value');
+      serverProkuh2 = snap2.val() || {};
+    } catch(e) {}
+    const fehlend2 = [];
+    Object.entries(prokuh).forEach(([kuhId, wert]) => {
+      const serverWert = mW(serverProkuh2[kuhId]);
+      if(Math.abs(serverWert - wert) > 0.05) {
+        const k = (window.kuehe || {})[kuhId];
+        fehlend2.push({ nr: k?.nr || '?', name: k?.name || '', wertLokal: wert, wertServer: serverWert });
+      }
+    });
+    if(fehlend2.length > 0) {
+      const detail = fehlend2.slice(0, 8).map(f => '#' + f.nr + ' ' + f.name + ': lokal ' + f.wertLokal + ' L, Server ' + (f.wertServer || '—')).join('\n');
+      window._milchZeigeSaveFehler(
+        fehlend2.length + ' Werte NICHT gesichert!',
+        'Die folgenden Werte konnten nicht am Server bestätigt werden:\n\n' +
+        detail +
+        (fehlend2.length > 8 ? '\n… und ' + (fehlend2.length - 8) + ' weitere' : '') +
+        '\n\nFormular bleibt OFFEN. Bitte:\n' +
+        '1. Netzwerk prüfen\n' +
+        '2. Auf „🔄 Erneut versuchen" tippen\n' +
+        '3. Falls immer noch Fehler: ?-Dialog öffnen und „🔌 Neu verbinden"',
+        'window.saveMilch'
+      );
+      return;
+    }
+  }
+
+  // 7) Warnsystem
   try {
     const prozent = parseInt(localStorage.getItem('milchWarnProzent')) || 50;
     const warnungen = [];
@@ -982,7 +1110,6 @@ window.saveMilch = function() {
       if(!k) return;
       if(k.laktation === 'trocken' || k.laktation === 'trockengestellt') return;
       if(typeof window.getMilchDurchschnitt !== 'function') return;
-      // Zeit-spezifisch: morgens vs. abends getrennt vergleichen
       const schnitt = window.getMilchDurchschnitt(kuhId, zeit);
       if(schnitt === null) return;
       const unter = schnitt * (1 - prozent/100);
@@ -998,13 +1125,14 @@ window.saveMilch = function() {
     }
   } catch(e) { console.warn('[Milch v2] Warn-System:', e); }
 
+  // 8) ERFOLG — Formular schließen, Toast, Bericht
   const gesRund = Math.round(gesamt * 10) / 10;
-  window.showSaveToast && window.showSaveToast('✓ Fertig: ' + gesRund + ' L / ' + Object.keys(prokuh).length + ' Kühe');
+  restoreBtn();
+  window.showSaveToast && window.showSaveToast('✓ ' + gesRund + ' L / ' + Object.keys(prokuh).length + ' Kühe — in Cloud bestätigt');
   if(navigator.vibrate) navigator.vibrate([30,10,30]);
 
   window.closeForm && window.closeForm('milch-form-overlay');
 
-  // Bericht anzeigen (kurz warten damit Firebase-Listener nachzieht)
   const berDatumTs = new Date(datum + 'T12:00').getTime();
   setTimeout(() => {
     if(window.showMilchBericht) {
@@ -1012,6 +1140,77 @@ window.saveMilch = function() {
     }
   }, 500);
 };
+
+// ══════════════════════════════════════════════════════════════
+//  SCREEN-WAKE-LOCK: Handy bleibt an während Milch-Formular offen
+// ══════════════════════════════════════════════════════════════
+window._milchWakeLock = null;
+
+async function requestMilchWakeLock() {
+  try {
+    if(!('wakeLock' in navigator)) {
+      console.log('[Milch v2] Wake Lock API nicht unterstützt (Browser zu alt oder iOS < 16.4)');
+      return;
+    }
+    if(window._milchWakeLock) return;  // schon aktiv
+    window._milchWakeLock = await navigator.wakeLock.request('screen');
+    console.log('[Milch v2] 🔒 Wake Lock aktiv — Handy bleibt an');
+    // Wenn das System das Lock freigibt (z.B. weil User Tab wechselt), Referenz löschen
+    window._milchWakeLock.addEventListener('release', () => {
+      console.log('[Milch v2] 🔓 Wake Lock freigegeben');
+      window._milchWakeLock = null;
+    });
+  } catch(e) {
+    console.warn('[Milch v2] Wake Lock fehlgeschlagen:', e.message || e);
+    window._milchWakeLock = null;
+  }
+}
+
+function releaseMilchWakeLock() {
+  if(window._milchWakeLock) {
+    try {
+      window._milchWakeLock.release().then(() => {
+        window._milchWakeLock = null;
+        console.log('[Milch v2] 🔓 Wake Lock explizit freigegeben');
+      }).catch(e => console.warn('[Milch v2] Wake Lock release:', e));
+    } catch(e) { window._milchWakeLock = null; }
+  }
+}
+
+// Wenn User Tab wechselt und wieder zurückkommt: Wake Lock neu anfordern falls Form noch offen
+document.addEventListener('visibilitychange', () => {
+  const formOffen = document.getElementById('milch-form-overlay')?.style.display === 'flex';
+  if(document.visibilityState === 'visible' && formOffen && !window._milchWakeLock) {
+    requestMilchWakeLock();
+  }
+});
+
+// Hook auf showMilchForm — Wake Lock anfordern
+(function hookMilchFormWake() {
+  const _origShow = window.showMilchForm;
+  if(!_origShow) { setTimeout(hookMilchFormWake, 200); return; }
+  if(_origShow._wakeLockHooked) return;
+  window.showMilchForm = function() {
+    const r = _origShow.apply(this, arguments);
+    // Wake Lock beim Öffnen anfordern (kurz warten damit Form-Overlay wirklich sichtbar ist)
+    setTimeout(requestMilchWakeLock, 100);
+    return r;
+  };
+  window.showMilchForm._wakeLockHooked = true;
+})();
+
+// Hook auf closeForm — Wake Lock freigeben wenn Milch-Formular geschlossen wird
+(function hookMilchFormClose() {
+  const _origClose = window.closeForm;
+  if(!_origClose) { setTimeout(hookMilchFormClose, 200); return; }
+  if(_origClose._wakeLockHooked) return;
+  window.closeForm = function(id) {
+    const r = _origClose.apply(this, arguments);
+    if(id === 'milch-form-overlay') releaseMilchWakeLock();
+    return r;
+  };
+  window.closeForm._wakeLockHooked = true;
+})();
 
 // ══════════════════════════════════════════════════════════════
 //  QUICK-ENTRY: Kuhnummer + Liter ohne Scrollen
