@@ -4225,8 +4225,30 @@ function initAuth() {
     zeigeAuthLadeBildschirm();
   }
 
+  // Zeitpunkt an dem der Fast-Path (falls) gestartet ist — für Grace-Period bei null-events
+  const _authStart = Date.now();
+  const GRACE_MS = 10000; // 10 Sekunden: Firebase darf so lang brauchen bis es einen User meldet
+
+  // Wenn Fast-Path aktiv war, sammeln wir null-events und ignorieren sie kurz
+  let _sawUser = false;
+  let _authInitialCheckTimer = null;
+
+  function handleAuthLogout() {
+    // Nur wirklich ausloggen — Cache löschen und Login zeigen
+    try { localStorage.removeItem('lastAuthUid'); } catch(e) {}
+    window._currentUser = null;
+    window._currentRole = null;
+    versteckeAuthLadeBildschirm();
+    document.getElementById('root').style.display = 'none';
+    document.getElementById('login-screen').style.display = 'flex';
+    window._appInitialized = false;
+  }
+
   firebase.auth().onAuthStateChanged(async function(user) {
     if(user) {
+      _sawUser = true;
+      if(_authInitialCheckTimer) { clearTimeout(_authInitialCheckTimer); _authInitialCheckTimer = null; }
+
       // UID für Fast-Path beim nächsten Start merken
       try { localStorage.setItem('lastAuthUid', user.uid); } catch(e) {}
 
@@ -4268,14 +4290,26 @@ function initAuth() {
         try { updateUserDisplay(); } catch(e) {}
       }
     } else {
-      // Kein User: Cache löschen und Login zeigen
-      try { localStorage.removeItem('lastAuthUid'); } catch(e) {}
-      window._currentUser = null;
-      window._currentRole = null;
-      versteckeAuthLadeBildschirm();
-      document.getElementById('root').style.display = 'none';
-      document.getElementById('login-screen').style.display = 'flex';
-      window._appInitialized = false;
+      // ── null-User: GRACE-PERIOD wenn Fast-Path aktiv war ──
+      // Firebase-Auth kann beim Cold-Start kurz null melden bevor die Session restauriert wird.
+      // Wenn wir Fast-Path haben (User war zuletzt eingeloggt), warten wir bis zu 10 Sekunden
+      // auf das echte auth-Event bevor wir den User ausloggen.
+      const elapsed = Date.now() - _authStart;
+      if(fastPath && !_sawUser && elapsed < GRACE_MS) {
+        console.log('[Auth] null-Event während Grace-Period (', elapsed, 'ms) — warte…');
+        // Timer nur einmal setzen: wenn nach GRACE_MS kein User kam, dann wirklich ausloggen
+        if(!_authInitialCheckTimer) {
+          _authInitialCheckTimer = setTimeout(() => {
+            if(!_sawUser) {
+              console.warn('[Auth] Nach', GRACE_MS, 'ms kein User → Login zeigen');
+              handleAuthLogout();
+            }
+          }, GRACE_MS - elapsed);
+        }
+        return;
+      }
+      // Nach Grace-Period ODER wenn Fast-Path nicht aktiv war → normaler Logout
+      handleAuthLogout();
     }
   });
 }
