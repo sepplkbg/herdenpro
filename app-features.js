@@ -3511,7 +3511,11 @@ window.showMilchForm = function() {
   if(!ov) { navigate('milch'); setTimeout(showMilchForm, 300); return; }
   // Reset
   document.getElementById('m-datum').value = isoDate(new Date());
-  document.getElementById('m-zeit').value = 'morgen';
+  // ── AUTO-ZEIT: nach Uhrzeit morgens oder abends vorwählen ──
+  // 00:00–11:59 → morgens · 12:00–23:59 → abends
+  const _nowHr = new Date().getHours();
+  const _autoZeit = _nowHr >= 12 ? 'abend' : 'morgen';
+  document.getElementById('m-zeit').value = _autoZeit;
   const molkereiEl = document.getElementById('m-molkerei');
   if(molkereiEl) molkereiEl.checked = false;
   const notizEl = document.getElementById('m-notiz');
@@ -3523,8 +3527,9 @@ window.showMilchForm = function() {
   });
   const sumEl=document.getElementById('m-summe'); if(sumEl) sumEl.textContent='0';
   const cntEl=document.getElementById('m-count'); if(cntEl) cntEl.textContent='0';
-  document.querySelector('#m-zeit-morgen')?.classList.add('active');
-  document.querySelector('#m-zeit-abend')?.classList.remove('active');
+  // Zeit-Chips passend zur Auto-Auswahl setzen
+  document.querySelector('#m-zeit-morgen')?.classList.toggle('active', _autoZeit === 'morgen');
+  document.querySelector('#m-zeit-abend')?.classList.toggle('active', _autoZeit === 'abend');
   if(window.setMilchModus) setMilchModus('prokuh');
   document.querySelectorAll('.milch-kuh-row').forEach(r=>r.style.display='');
   // Last entry hint

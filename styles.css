@@ -578,9 +578,13 @@ textarea.inp{resize:vertical;min-height:64px}
   padding:0 !important;
   /* display:none/flex bleibt steuerbar via inline */
 }
-/* Wenn Sync-Banner sichtbar: Formular startet unter dem Banner */
+/* Wenn Sync-Banner sichtbar: Formular startet unter dem Banner UND ist entsprechend kürzer */
 body.milch-banner-visible .form-overlay {
   top: calc(2.6rem + var(--safe-t,0px)) !important;
+}
+body.milch-banner-visible .form-sheet {
+  height: calc(100vh - 2.6rem - var(--safe-t,0px)) !important;
+  height: calc(100dvh - 2.6rem - var(--safe-t,0px)) !important;
 }
 .form-overlay[style*="display:flex"], .form-overlay[style*="display: flex"] {
   display:flex !important;
@@ -594,16 +598,21 @@ body.form-open #bottom-nav {
   display:none !important;
 }
 .form-sheet{
-  background:linear-gradient(180deg,var(--bg2),var(--bg)) !important;
+  background:var(--bg) !important;
   width:100% !important; max-width:none !important;
   height:100vh !important; height:100dvh !important;
   max-height:none !important;
   display:flex !important; flex-direction:column !important;
   border:none !important; border-radius:0 !important;
   margin:0 !important;
-  animation:formIn .25s cubic-bezier(.2,.8,.2,1);
+  animation:formIn .12s ease-out;
   box-shadow:none !important;
   overflow:hidden !important;
+}
+/* Milch-Formular: keine Animation, damit's wie eine echte Seite wirkt (kein Popup) */
+#milch-form-overlay .form-sheet {
+  animation:none !important;
+  background:var(--bg) !important;
 }
 @keyframes formIn { from{opacity:0;transform:translateY(20px)} to{opacity:1;transform:translateY(0)} }
 .form-header{
