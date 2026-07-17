@@ -1,8 +1,8 @@
 // ══════════════════════════════════════════════════════════════
 //  HERDENPRO – MILCH v2  (LocalStorage-first Persistence)
-//  MODUL-VERSION: 4.1  ← wenn du das siehst, ist der Fix geladen
+//  MODUL-VERSION: 4.2  ← wenn du das siehst, ist der Fix geladen
 // ══════════════════════════════════════════════════════════════
-window.MILCH_V2_VERSION = '4.1';
+window.MILCH_V2_VERSION = '4.2';
 //  Löst die alten Probleme (Datenverlust, hängende Saves offline,
 //  Multi-Melker-Kollisionen, Aggregations-Verdopplung).
 //
@@ -206,9 +206,16 @@ window.pushMilchWert = function(kuhId, wert, datum, zeit) {
       );
       Promise.race([writePromise, timeoutPromise])
         .then(() => {
-          console.log('[Milch v2] Server-Bestätigt:', kuhId, '=', wertVal);
-          // EXPLIZIT: nach erfolgreichem Write direkt aus Firebase lesen und pending clearen
-          confirmMilchPendingDirect(entryKey, kuhId, wertVal);
+          // ✅ Server hat write bestätigt (writePromise resolvt NUR nach echtem Server-Ack).
+          // Direkt aus pending entfernen — kein weiteres Lesen nötig.
+          console.log('[Milch v2] Server-Ack für:', kuhId, '=', wertVal);
+          const p2 = getPending();
+          if(p2[entryKey] && p2[entryKey][kuhId] && Math.abs((p2[entryKey][kuhId].wert || 0) - wertVal) < 0.05) {
+            delete p2[entryKey][kuhId];
+            if(Object.keys(p2[entryKey]).length === 0) delete p2[entryKey];
+            setPending(p2);
+          }
+          updateSyncBanner();
         })
         .catch(e => handleSyncError(e, 'write'));
     }
@@ -538,12 +545,28 @@ window.syncMilchPending = function() {
     });
 
     // Timeout auf Retry-Sync (15s pro Termin)
+    // Snapshot der Kuh-IDs+Werte für spätere direkte Bestätigung
+    const snapshotCows = Object.entries(cows).map(([kuhId, p]) => ({ kuhId, wert: p.wert }));
     const wp = firebase.database().ref('milch/' + entryKey).update(updatePayload);
     const tp = new Promise((_, reject) =>
       setTimeout(() => reject(new Error('Retry-Timeout (15s) — Verbindung neu aufbauen')), 15000)
     );
     Promise.race([wp, tp])
-      .then(() => console.log('[Milch v2] Retry-Sync OK für', entryKey))
+      .then(() => {
+        // ✅ Server-Ack → direkt aus pending entfernen (keine weitere Read-Runde)
+        console.log('[Milch v2] Retry-Sync Server-Ack für', entryKey);
+        const p2 = getPending();
+        if(p2[entryKey]) {
+          snapshotCows.forEach(({kuhId, wert}) => {
+            if(p2[entryKey][kuhId] && Math.abs((p2[entryKey][kuhId].wert || 0) - wert) < 0.05) {
+              delete p2[entryKey][kuhId];
+            }
+          });
+          if(Object.keys(p2[entryKey]).length === 0) delete p2[entryKey];
+          setPending(p2);
+        }
+        updateSyncBanner();
+      })
       .catch(e => handleSyncError(e, 'retry-sync'));
   });
 };
@@ -554,6 +577,12 @@ window.syncMilchPending = function() {
 //  - Wenn anderer Melker überschrieben hat → Konflikt merken
 // ══════════════════════════════════════════════════════════════
 window.onMilchEintraegeChanged = function() {
+  // ── WICHTIG: NICHT automatisch pending clearen, weil Firebase-Listener
+  // auch mit LOKAL-optimistischen Werten feuert (die noch nicht am Server sind).
+  // Das war der Kernbug: Banner ging grün obwohl Werte nur lokal im Cache waren.
+  // Pending wird JETZT NUR noch von pushMilchWert.then geklärt (nach echtem Server-Ack).
+  // Diese Funktion prüft NUR noch auf Konflikte (andere User haben überschrieben).
+
   const p = getPending();
   const eintraege = window.milchEintraege || {};
   const isOwn = window._milchIsOwnMeta;
@@ -567,16 +596,9 @@ window.onMilchEintraegeChanged = function() {
       const fbVal = fbEntry.prokuh[kuhId];
       const meta = fbMeta[kuhId];
       if(fbVal == null) return;
-      // Neue Struktur: Wert ist Zahl, Attribution in meta/
+      // ── NUR NOCH KONFLIKT-DETECTION, KEIN AUTO-CONFIRM ──
+      // Konflikt: ANDERER User mit späterem ts → hat unseren Wert überschrieben
       if(typeof fbVal === 'number' || typeof fbVal === 'string') {
-        // Wenn Meta zum eigenen User gehört und ts >= mein ts → bestätigt
-        if(meta && isOwn && isOwn(meta) && (meta.ts || 0) >= (payload.ts || 0)) {
-          delete p[entryKey][kuhId];
-          if(Object.keys(p[entryKey]).length === 0) delete p[entryKey];
-          changed = true;
-          return;
-        }
-        // Konflikt: ANDERER User mit späterem ts → hat überschrieben
         if(meta && (meta.userUid || meta.session) && isOwn && !isOwn(meta) && (meta.ts || 0) > (payload.ts || 0)) {
           addKonflikt({
             entryKey, kuhId,
@@ -587,32 +609,6 @@ window.onMilchEintraegeChanged = function() {
             fremdName: meta.userName || 'Anderer Melker',
             ts: Date.now()
           });
-          delete p[entryKey][kuhId];
-          if(Object.keys(p[entryKey]).length === 0) delete p[entryKey];
-          changed = true;
-          return;
-        }
-        // Auto-Confirm für Legacy-Pending: wenn Firebase-Wert existiert und
-        // ≈ dem lokalen pending-Wert entspricht, ist er bereits synced —
-        // unabhängig von Session-Mismatch (kann durch Session-ID-Wechsel entstehen)
-        const fbNum = parseFloat(fbVal) || 0;
-        if(Math.abs(fbNum - payload.wert) < 0.05) {
-          delete p[entryKey][kuhId];
-          if(Object.keys(p[entryKey]).length === 0) delete p[entryKey];
-          changed = true;
-        }
-        return;
-      }
-      // Legacy-Struktur (Objekt mit .wert): Backward-Compat für alte v2-Zwischenversion
-      if(typeof fbVal === 'object') {
-        // Session/ts-Match → bestätigt
-        if(fbVal.session === payload.session && (fbVal.ts || 0) >= (payload.ts || 0)) {
-          delete p[entryKey][kuhId];
-          if(Object.keys(p[entryKey]).length === 0) delete p[entryKey];
-          changed = true;
-        }
-        // Auto-Confirm: wenn .wert in Firebase ≈ unser pending-Wert → bereits synced
-        else if(fbVal.wert != null && Math.abs(parseFloat(fbVal.wert) - payload.wert) < 0.05) {
           delete p[entryKey][kuhId];
           if(Object.keys(p[entryKey]).length === 0) delete p[entryKey];
           changed = true;
@@ -975,51 +971,21 @@ window.saveMilch = async function() {
   // Save-Button visuell blockieren
   const saveBtn = document.querySelector('#milch-form-overlay .btn-primary[onclick*="saveMilch"]');
   const origLabel = saveBtn ? saveBtn.textContent : '';
-  if(saveBtn) { saveBtn.disabled = true; saveBtn.textContent = '⏳ Verifiziere Sync…'; saveBtn.style.opacity = '.7'; }
+  if(saveBtn) { saveBtn.disabled = true; saveBtn.textContent = '⏳ Warte auf Server-Ack…'; saveBtn.style.opacity = '.7'; }
   const restoreBtn = () => { if(saveBtn) { saveBtn.disabled = false; saveBtn.textContent = origLabel || '✓ Fertig'; saveBtn.style.opacity = ''; } };
 
-  // ── OPTION A: OFFLINE / KEIN FIREBASE → BLOCKIEREN ──
+  // ── Offline-Block ──
   if(!navigator.onLine) {
     restoreBtn();
     window._milchZeigeSaveFehler(
       'Kein Internet',
-      'Deine Werte sind auf dem Gerät gespeichert und werden übertragen sobald du wieder online bist.\n\n' +
-      'Bitte gehe an einen Ort mit Netz und tippe dann auf „✓ Fertig".\n\n' +
+      'Deine Werte sind auf dem Gerät gespeichert. Sobald wieder Netz da ist, tipp erneut auf „Fertig".\n\n' +
       'Bis dahin: LASSE DAS FORMULAR OFFEN!'
     );
     return;
   }
 
-  // Firebase-Socket Live-Check
-  let socketConnected = false;
-  try {
-    if(typeof firebase !== 'undefined' && firebase.database) {
-      const check = firebase.database().ref('.info/connected').once('value');
-      const to = new Promise((_, rej) => setTimeout(() => rej(new Error('Socket-Check-Timeout')), 3000));
-      const snap = await Promise.race([check, to]);
-      socketConnected = !!snap.val();
-    }
-  } catch(e) {
-    console.warn('[Milch v2] Socket-Check:', e);
-    socketConnected = false;
-  }
-  if(!socketConnected) {
-    restoreBtn();
-    window._milchZeigeSaveFehler(
-      'Firebase-Verbindung tot',
-      'Das Handy sagt zwar „online", aber die Verbindung zum Server ist unterbrochen.\n\n' +
-      'BITTE:\n' +
-      '1. WLAN kurz aus und wieder ein\n' +
-      '2. ODER: Auf „🔌 Neu verbinden" tippen im ?-Dialog\n' +
-      '3. Dann nochmal auf „✓ Fertig"\n\n' +
-      'Werte sind lokal gesichert, gehen nicht verloren.',
-      'window.milchForceReconnect'
-    );
-    return;
-  }
-
-  // ── OPTION B: Werte pushen und verifizieren ──
-  // 1) Alle noch offenen Debounce-Timer sofort ausführen
+  // ── Alle Debounce-Timer flushen (jeder Wert wird zu Firebase gepusht) ──
   if(window._milchInputTimers) {
     Object.keys(window._milchInputTimers).forEach(kuhId => {
       clearTimeout(window._milchInputTimers[kuhId]);
@@ -1032,7 +998,7 @@ window.saveMilch = async function() {
     window._milchInputTimers = {};
   }
 
-  // 2) Molkerei/Notiz schreiben
+  // ── Molkerei/Notiz zusätzlich schreiben ──
   const molkerei = document.getElementById('m-molkerei')?.checked || false;
   const notiz = document.getElementById('m-notiz')?.value.trim() || '';
   const entryKey = getMilchEntryKey(datum, zeit);
@@ -1042,63 +1008,48 @@ window.saveMilch = async function() {
     });
   } catch(e) { console.warn('[Milch v2] Molkerei/Notiz:', e); }
 
-  // 3) Kurz warten damit alle Pushes durchlaufen
-  await new Promise(r => setTimeout(r, 1500));
-
-  // 4) VERIFIKATION: aus Firebase lesen was tatsächlich am Server steht
-  let serverProkuh = {};
-  try {
-    const snap = await firebase.database().ref('milch/' + entryKey + '/prokuh').once('value');
-    serverProkuh = snap.val() || {};
-  } catch(e) {
-    console.warn('[Milch v2] Verify-Read fail:', e);
+  // ── VERIFIKATION: pending muss auf 0 gehen ──
+  // Jedes pushMilchWert schreibt asynchron. pending wird NUR nach echtem Server-Ack geklärt.
+  // Wir warten hier ob alle Ack's ankommen (max 15s). Bei jedem Retry-Zyklus (3s):
+  // syncMilchPending nochmal ausführen als Safety-Netz.
+  const startTime = Date.now();
+  const MAX_WAIT = 15000;
+  let lastRetry = 0;
+  while(countPending() > 0 && Date.now() - startTime < MAX_WAIT) {
+    if(Date.now() - lastRetry > 3000) {
+      lastRetry = Date.now();
+      try { syncMilchPending(); } catch(e) {}
+    }
+    await new Promise(r => setTimeout(r, 300));
+    // Fortschritts-Anzeige im Button
+    if(saveBtn) saveBtn.textContent = '⏳ Warte auf Server (' + countPending() + ' offen)…';
   }
 
-  // 5) Vergleich: welche lokalen Werte sind NICHT am Server?
-  const mW = window.milchWert || function(v){ return typeof v === 'number' ? v : (v && v.wert != null ? parseFloat(v.wert) || 0 : parseFloat(v) || 0); };
-  const fehlend = [];
-  Object.entries(prokuh).forEach(([kuhId, wert]) => {
-    const serverWert = mW(serverProkuh[kuhId]);
-    if(Math.abs(serverWert - wert) > 0.05) {
-      const k = (window.kuehe || {})[kuhId];
-      fehlend.push({ nr: k?.nr || '?', name: k?.name || '', wertLokal: wert, wertServer: serverWert });
-    }
-  });
-
-  // 6) Wenn Werte fehlen → BILDSCHIRM-WARNUNG
-  if(fehlend.length > 0) {
+  // ── Wenn NACH 15s noch pending → Fehler ──
+  if(countPending() > 0) {
     restoreBtn();
-    // Silent-Confirm nochmal laufen lassen (letzter Versuch)
-    try { await window._milchConfirmAllPendingSilent(); } catch(e) {}
-    // Nochmal lesen
-    let serverProkuh2 = {};
-    try {
-      const snap2 = await firebase.database().ref('milch/' + entryKey + '/prokuh').once('value');
-      serverProkuh2 = snap2.val() || {};
-    } catch(e) {}
-    const fehlend2 = [];
-    Object.entries(prokuh).forEach(([kuhId, wert]) => {
-      const serverWert = mW(serverProkuh2[kuhId]);
-      if(Math.abs(serverWert - wert) > 0.05) {
+    const stillPending = countPending();
+    // Details der pending Werte für die Meldung
+    const p = getPending();
+    let details = [];
+    Object.entries(p).forEach(([, cows]) => {
+      Object.entries(cows).forEach(([kuhId, payload]) => {
         const k = (window.kuehe || {})[kuhId];
-        fehlend2.push({ nr: k?.nr || '?', name: k?.name || '', wertLokal: wert, wertServer: serverWert });
-      }
+        if(details.length < 8) details.push('#' + (k?.nr || '?') + ' ' + (k?.name || '') + ': ' + payload.wert + ' L');
+      });
     });
-    if(fehlend2.length > 0) {
-      const detail = fehlend2.slice(0, 8).map(f => '#' + f.nr + ' ' + f.name + ': lokal ' + f.wertLokal + ' L, Server ' + (f.wertServer || '—')).join('\n');
-      window._milchZeigeSaveFehler(
-        fehlend2.length + ' Werte NICHT gesichert!',
-        'Die folgenden Werte konnten nicht am Server bestätigt werden:\n\n' +
-        detail +
-        (fehlend2.length > 8 ? '\n… und ' + (fehlend2.length - 8) + ' weitere' : '') +
-        '\n\nFormular bleibt OFFEN. Bitte:\n' +
-        '1. Netzwerk prüfen\n' +
-        '2. Auf „🔄 Erneut versuchen" tippen\n' +
-        '3. Falls immer noch Fehler: ?-Dialog öffnen und „🔌 Neu verbinden"',
-        'window.saveMilch'
-      );
-      return;
-    }
+    window._milchZeigeSaveFehler(
+      stillPending + ' Werte nicht am Server bestätigt',
+      'Nach 15 Sekunden Wartezeit hat der Server ' + stillPending + ' Werte noch nicht bestätigt:\n\n' +
+      details.join('\n') +
+      (stillPending > 8 ? '\n… und ' + (stillPending - 8) + ' weitere' : '') +
+      '\n\nFormular bleibt OFFEN. Werte sind lokal gesichert und werden weiter versucht.\n\n' +
+      'BITTE:\n' +
+      '1. Netzwerk-Empfang prüfen (WLAN?)\n' +
+      '2. Auf „🔄 Erneut versuchen" tippen',
+      'window.saveMilch'
+    );
+    return;
   }
 
   // 7) Warnsystem
