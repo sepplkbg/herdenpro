@@ -3506,9 +3506,117 @@ window.setAlpTab = function(tab, btn) {
   }
 };
 
+// Neue View: Milch erfassen als richtige Seite (kein Popup)
+window.renderMilchErfassen = function() {
+  // Nur Melkkühe (nicht trocken) im Formular anzeigen
+  const alleKueheSorted = Object.entries(kuehe).sort((a,b) => {
+    const nA = parseInt(a[1].nr)||0, nB = parseInt(b[1].nr)||0; return nA - nB;
+  });
+  const zeigeAlleKuehe = window._milchZeigeAlle === true;
+  const nurMelkkuehe = alleKueheSorted.filter(([id, k]) => {
+    const l = String(k?.laktation || '').toLowerCase();
+    if(l === 'trocken' || l === 'trockengestellt') return false;
+    return true;
+  });
+  const kueheOben = zeigeAlleKuehe ? alleKueheSorted : (nurMelkkuehe.length > 0 ? nurMelkkuehe : alleKueheSorted);
+
+  return `
+    <div class="page-header">
+      <button class="back-btn" onclick="navigate('milch')">‹ Zurück</button>
+      <h2 id="m-form-title" style="flex:1;text-align:center;margin:0 .3rem">🥛 Milch erfassen</h2>
+      <div style="width:44px"></div>
+    </div>
+
+    <div style="display:grid;grid-template-columns:1fr auto;gap:.5rem;margin-bottom:.6rem">
+      <input id="m-datum" class="inp" type="date" value="${isoDate(new Date())}" />
+      <div style="display:flex;gap:.4rem">
+        <button class="filter-chip" id="m-zeit-morgen" onclick="selectMilchZeit('morgen',this)">🌅 Mo.</button>
+        <button class="filter-chip" id="m-zeit-abend" onclick="selectMilchZeit('abend',this)">🌇 Ab.</button>
+      </div>
+    </div>
+    <input type="hidden" id="m-zeit" value="morgen" />
+    <input type="hidden" id="m-edit-id" />
+
+    <div style="display:flex;gap:.4rem;margin-bottom:.8rem">
+      <button id="m-tab-prokuh" onclick="setMilchModus('prokuh')" style="flex:1;padding:.45rem;border-radius:var(--radius-sm);border:2px solid var(--gold);background:var(--gold);color:#000;font-weight:bold;font-family:inherit;font-size:.82rem;cursor:pointer">Pro Kuh</button>
+      <button id="m-tab-gesamt" onclick="setMilchModus('gesamt')" style="flex:1;padding:.45rem;border-radius:var(--radius-sm);border:1px solid var(--border);background:transparent;color:var(--text3);font-family:inherit;font-size:.82rem;cursor:pointer">Gesamt</button>
+    </div>
+
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:.45rem .65rem;margin-bottom:.6rem;background:rgba(77,184,78,.08);border:1px solid rgba(77,184,78,.25);border-radius:var(--radius-sm)">
+      <span style="font-size:.74rem;color:var(--text2)">🛡 Werte werden bei jedem Tippen sofort gesichert</span>
+      <span id="milch-autosave-indicator" style="font-size:.72rem;color:var(--text3);font-weight:600"></span>
+    </div>
+
+    <div id="m-prokuh-block">
+      <div id="m-quick-entry" style="position:sticky;top:0;z-index:5;background:var(--bg);padding:.5rem 0 .55rem;margin-bottom:.5rem;border-bottom:1px solid var(--border);display:flex;gap:.35rem;align-items:center">
+        <span style="color:var(--gold);font-weight:700;font-size:.8rem;flex-shrink:0">⚡</span>
+        <input id="mq-nr" class="inp" type="text" inputmode="numeric" placeholder="Nr." autocomplete="off" style="width:4.2rem;flex-shrink:0;text-align:center;font-weight:700;font-size:1rem;padding:.4rem .3rem" onkeydown="milchQuickKey(event)" onfocus="this.select()" />
+        <input id="mq-liter" class="inp" type="text" inputmode="decimal" placeholder="Liter" autocomplete="off" style="flex:1;min-width:0;text-align:center;font-weight:700;font-size:1rem;padding:.4rem .3rem" onkeydown="milchQuickKey(event)" onfocus="this.select()" />
+        <button onclick="milchQuickAdd()" class="btn-primary" style="padding:.45rem .8rem;font-size:1.1rem;flex-shrink:0;min-width:2.5rem;line-height:1">→</button>
+      </div>
+      <div style="font-size:.72rem;color:var(--text3);margin-bottom:.5rem">Liter pro Kuh · 0 oder leer = nicht gemolken · <span style="color:var(--gold)">⚡ = Schnell-Eingabe</span></div>
+      <div id="m-bauer-filter" style="display:flex;gap:.3rem;flex-wrap:wrap;margin-bottom:.6rem">
+        <button class="filter-chip active" onclick="filterMilchBauer('',this)">Alle</button>
+        ${[...new Set(kueheOben.map(([,k])=>k.bauer).filter(Boolean))].map(b=>`<button class="filter-chip" onclick="filterMilchBauer('${b}',this)">${b.split(' ').pop()}</button>`).join('')}
+      </div>
+      <div id="m-kuh-liste">
+        ${kueheOben.map(([id,k])=>{
+          const heute = Date.now();
+          const aktiveWzBeh = Object.values(behandlungen||{}).find(b =>
+            b && b.aktiv !== false && b.kuhId === id &&
+            b.wzMilchEnde && b.wzMilchEnde > heute
+          );
+          let wzHinweis = '';
+          let rowStyle = 'display:flex;flex-direction:column;padding:.35rem 0;border-bottom:1px solid var(--border)';
+          if(aktiveWzBeh) {
+            const tageRest = Math.ceil((aktiveWzBeh.wzMilchEnde - heute) / 86400000);
+            const restText = tageRest === 1 ? '1 Tag' : tageRest+' Tage';
+            rowStyle += ';border-left:4px solid #e67e22;padding-left:.4rem';
+            wzHinweis = `<div class="wz-hinweis" style="display:flex;align-items:center;gap:.5rem;background:rgba(230,126,34,.12);border:1px solid rgba(230,126,34,.35);border-radius:6px;padding:.35rem .55rem;margin:.3rem 0 .1rem;font-size:.75rem"><span style="font-size:.95rem">⚠</span><span style="color:#e67e22;font-weight:700;flex:1">${restText} keine Milch (Wartezeit)</span><label style="display:inline-flex;align-items:center;gap:.3rem;font-size:.72rem;color:var(--text2);cursor:pointer;white-space:nowrap"><input type="checkbox" class="wz-beachtet-cb" data-kuh="${id}" onchange="onWzBeachtet(this)" style="width:18px;height:18px;accent-color:var(--green);cursor:pointer" /><span>Beachtet</span></label></div>`;
+          }
+          return `<div class="milch-kuh-row" data-bauer="${k.bauer||''}" data-wz="${aktiveWzBeh?'1':'0'}" style="${rowStyle}">
+            <div style="display:flex;align-items:center;gap:.5rem">
+              <span class="nr-badge" style="min-width:38px;text-align:center">#${k.nr}</span>
+              <div style="flex:1;min-width:0">
+                <div style="font-size:.85rem;font-weight:bold;color:var(--text)">${k.name||'–'}</div>
+                <div style="font-size:.7rem;color:var(--text3)">${k.bauer||''}</div>
+              </div>
+              <input class="inp kuh-liter" data-id="${id}" data-nr="${k.nr}" data-name="${k.name||''}" placeholder="L" inputmode="decimal" style="width:6rem;min-width:6rem;text-align:center;font-size:1.05rem;font-weight:bold;padding:.5rem .4rem" oninput="onMilchInput(this);checkMilchWert(this,'${id}')" onfocus="this.select()" />
+            </div>
+            ${wzHinweis}
+            <div id="milch-warn-${id}" style="display:none;font-size:.68rem;font-weight:600;padding:.1rem .5rem .1rem 42px;animation:kd-in .2s ease both"></div>
+          </div>`;
+        }).join('')}
+      </div>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-top:.6rem;padding-top:.5rem;border-top:1px solid var(--border2)">
+        <span style="font-size:.82rem;color:var(--text3)">Eingetragen: <span id="m-count">0</span> Kühe</span>
+        <span style="font-size:1rem;color:var(--gold);font-weight:bold">∑ <span id="m-summe">0</span> L</span>
+      </div>
+    </div>
+    <div id="m-gesamt-block" style="display:none">
+      <label class="inp-label">Gesamtmenge Alm (Liter)</label>
+      <input id="m-gesamt" class="inp" placeholder="z.B. 850" inputmode="decimal" style="font-size:1.2rem;text-align:center;font-weight:bold" />
+    </div>
+    <label class="checkbox-row" style="margin-top:.8rem"><input type="checkbox" id="m-molkerei" /> An Molkerei abgegeben</label>
+    <textarea id="m-notiz" class="inp" rows="2" placeholder="Notizen" style="margin-top:.4rem"></textarea>
+
+    <div style="display:flex;gap:.6rem;margin-top:1rem;padding-top:1rem;border-top:1px solid var(--border);position:sticky;bottom:0;background:linear-gradient(180deg,transparent,var(--bg) 30%);padding-bottom:.4rem">
+      <button class="btn-secondary" style="flex:1" onclick="navigate('milch')">Abbrechen</button>
+      <button class="btn-primary" style="flex:2;font-size:1.15rem;font-weight:700;min-height:54px" onclick="saveMilch()">✓ Fertig</button>
+    </div>
+  `;
+};
+
+// showMilchForm navigiert jetzt zur eigenen Seite statt Overlay zu öffnen
 window.showMilchForm = function() {
-  const ov = document.getElementById('milch-form-overlay');
-  if(!ov) { navigate('milch'); setTimeout(showMilchForm, 300); return; }
+  navigate('milch_erfassen');
+  // Nach Render: alle Felder initialisieren
+  setTimeout(() => window._milchFormInit && window._milchFormInit(), 150);
+};
+
+window._milchFormInit = function() {
+  const ov = document.getElementById('m-datum');
+  if(!ov) return;
   // Reset
   document.getElementById('m-datum').value = isoDate(new Date());
   // ── AUTO-ZEIT: nach Uhrzeit morgens oder abends vorwählen ──
@@ -3540,8 +3648,9 @@ window.showMilchForm = function() {
     hintEl = document.createElement('div');
     hintEl.id = 'm-letzte-hint';
     hintEl.style.cssText = 'font-size:.72rem;color:var(--text3);margin:.2rem 0 .4rem;text-align:center';
-    const body = ov.querySelector('.form-body');
-    if(body) body.insertBefore(hintEl, body.firstChild);
+    const body = document.getElementById('main-content');
+    const firstChild = body?.querySelector('.page-header')?.nextSibling;
+    if(body && firstChild) body.insertBefore(hintEl, firstChild);
   }
   if(letzte) {
     const diff = Math.floor((Date.now()-letzte.datum)/86400000);
@@ -3590,9 +3699,7 @@ window.showMilchForm = function() {
       treffer.sort((a,b) => (b[1].updatedAt||b[1].createdAt||0) - (a[1].updatedAt||a[1].createdAt||0));
       const [bestehendId] = treffer[0];
       console.log('[showMilchForm] Eigener Session-Eintrag gefunden – wird fortgesetzt:', bestehendId);
-      ov.style.display = 'none';
-      setTimeout(()=>{ if(window.editMilchEintrag) editMilchEintrag(bestehendId); }, 50);
-      return;
+      // Kein overlay mehr — auf der Seite bleiben, Werte werden vom hookShowForm restauriert
     }
     // Optional: Info-Banner falls ein ANDERER Melker bereits an dieser Schicht arbeitet
     const fremdEintraege = Object.values(milchEintraege).filter(e => {
@@ -3613,8 +3720,9 @@ window.showMilchForm = function() {
           hint = document.createElement('div');
           hint.id = 'm-andere-melker-hint';
           hint.style.cssText = 'background:rgba(122,203,255,.10);border:1px solid rgba(122,203,255,.4);border-radius:8px;padding:.45rem .7rem;margin-bottom:.5rem;font-size:.78rem;color:#7acbff;display:flex;align-items:center;gap:.5rem';
-          const body = ov.querySelector('.form-body');
-          if(body) body.insertBefore(hint, body.firstChild);
+          const body = document.getElementById('main-content');
+          const firstChild = body?.querySelector('.page-header')?.nextSibling;
+          if(body && firstChild) body.insertBefore(hint, firstChild);
         }
         hint.innerHTML = '👥 <span><b>Anderer Melker</b> hat in dieser Schicht bereits '+kuhCount+' Kühe erfasst – wird beim Speichern zusammengeführt.</span>';
       }, 80);
@@ -3654,8 +3762,8 @@ window.showMilchForm = function() {
     }
   } catch(e) { console.warn('Entwurf-Wiederherstellung fehlgeschlagen:', e); }
 
-  ov.style.display='flex';
-  setTimeout(()=>{ document.querySelector('.kuh-liter')?.focus(); }, 150);
+  // Kein overlay mehr — wir sind bereits auf der milch_erfassen-Seite
+  setTimeout(()=>{ document.querySelector('#mq-nr')?.focus(); }, 150);
 };
 
 function renderWetter() {
@@ -4338,7 +4446,7 @@ window.updateAndereMelkerHinweise = function() {
   });
 
   // DOM aktualisieren – pro Kuh-Zeile Hinweis ergänzen oder entfernen
-  document.querySelectorAll('#milch-form-overlay .milch-kuh-row').forEach(row => {
+  document.querySelectorAll('.milch-kuh-row').forEach(row => {
     const input = row.querySelector('.kuh-liter');
     if(!input) return;
     const kuhId = input.dataset.id;
