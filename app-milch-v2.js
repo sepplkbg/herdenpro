@@ -1,8 +1,8 @@
 // ══════════════════════════════════════════════════════════════
 //  HERDENPRO – MILCH v2  (LocalStorage-first Persistence)
-//  MODUL-VERSION: 4.2  ← wenn du das siehst, ist der Fix geladen
+//  MODUL-VERSION: 4.3  ← wenn du das siehst, ist der Fix geladen
 // ══════════════════════════════════════════════════════════════
-window.MILCH_V2_VERSION = '4.2';
+window.MILCH_V2_VERSION = '4.3';
 //  Löst die alten Probleme (Datenverlust, hängende Saves offline,
 //  Multi-Melker-Kollisionen, Aggregations-Verdopplung).
 //
@@ -701,12 +701,9 @@ window.updateSyncBanner = function() {
 window.showMilchPendingDetails = function() {
   const p = getPending();
   const entries = Object.entries(p);
-  if(entries.length === 0) {
-    alert('✓ Keine ausstehenden Werte. Alles synchron.');
-    return;
-  }
 
-  // Statt alert(): richtiges Overlay mit Aktions-Buttons
+  // Debug-Menü IMMER anzeigen (auch wenn alles synced ist)
+  // Zeigt Info + Connection-Test + Retry-Optionen
   let ov = document.getElementById('milch-debug-overlay');
   if(!ov) {
     ov = document.createElement('div');
@@ -754,11 +751,19 @@ window.showMilchPendingDetails = function() {
           '<b>Ausstehend:</b> ' + total + ' Wert' + (total > 1 ? 'e' : '') +
           (window._milchSyncError ? '<br><b style="color:#e05a5a">Letzter Fehler:</b> <span style="color:#e05a5a">' + window._milchSyncError.msg + '</span>' : '') +
         '</div>' +
-        '<div style="font-size:.75rem;color:var(--text3);margin-bottom:.4rem">' +
-          '<b>„✓ in Cloud"</b> = Wert ist bereits am Server, wird gleich als synced markiert.<br>' +
-          '<b>„✗ nicht in Cloud"</b> = Wert kam nie beim Server an. „Verwerfen" nur wenn du sicher bist dass er weg darf.' +
-        '</div>' +
-        rowsHtml +
+        (total > 0 ?
+          '<div style="font-size:.75rem;color:var(--text3);margin-bottom:.4rem">' +
+            '<b>„✓ in Cloud"</b> = Wert ist bereits am Server.<br>' +
+            '<b>„✗ nicht in Cloud"</b> = Wert kam nie beim Server an.' +
+          '</div>' +
+          rowsHtml
+        :
+          '<div style="text-align:center;padding:1rem .5rem;color:var(--green);font-size:.9rem;background:rgba(77,184,78,.08);border:1px solid rgba(77,184,78,.25);border-radius:8px;margin-bottom:.7rem">' +
+            '<div style="font-size:2rem;margin-bottom:.3rem">✅</div>' +
+            '<b>Alles in der Cloud gesichert</b><br>' +
+            '<span style="font-size:.72rem;color:var(--text3)">Keine ausstehenden Werte</span>' +
+          '</div>'
+        ) +
         '<div style="display:flex;gap:.5rem;margin-top:1rem;padding-top:.8rem;border-top:1px solid var(--border);flex-wrap:wrap">' +
           '<button class="btn-secondary" style="flex:1;min-width:7rem;background:rgba(77,184,78,.15);border-color:var(--green);color:var(--green)" onclick="milchConfirmAllPending();setTimeout(showMilchPendingDetails,1500)">🔍 Bestätigen</button>' +
           '<button class="btn-secondary" style="flex:1;min-width:7rem" onclick="milchTestWrite()">🧪 Test-Write</button>' +
@@ -1367,6 +1372,14 @@ window.resetMilchAutoSaveState = function() {
         const entryKey = getMilchEntryKey(datum, zeit);
         const mySession = getMilchSessionId();
         const fbEntry = (window.milchEintraege || {})[entryKey];
+
+        // Molkerei-Checkbox und Notiz aus Firebase restaurieren
+        if(fbEntry) {
+          const molkereiEl = document.getElementById('m-molkerei');
+          if(molkereiEl) molkereiEl.checked = !!fbEntry.molkerei;
+          const notizEl = document.getElementById('m-notiz');
+          if(notizEl && !notizEl.value) notizEl.value = fbEntry.notiz || '';
+        }
 
         // Aus Firebase-Eintrag: EIGENE Werte übernehmen (per userUid-Attribution)
         const eigene = {};
