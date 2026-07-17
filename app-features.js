@@ -2463,10 +2463,10 @@ function renderMilch() {
       }).join('') : `<div class="empty-state">Noch keine Einträge</div>`}
     </div>
     <div id="milch-form-overlay" class="form-overlay" style="display:none">
-      <div class="form-sheet" style="max-height:calc(100vh - var(--topbar-h,56px) - var(--nav-h,60px));overflow-y:auto">
-        <div class="form-header">
-          <h3 id="m-form-title">🥛 Milch erfassen</h3>
-          <button class="close-btn" onclick="closeForm('milch-form-overlay')">✕</button>
+      <div class="form-sheet">
+        <div class="form-header" style="border-bottom:1px solid var(--gold2)">
+          <button class="close-btn" onclick="closeForm('milch-form-overlay')" style="min-width:44px;min-height:44px;padding:6px 10px;font-size:1.6rem;background:transparent;border:none;color:var(--gold)" title="Zurück">‹</button>
+          <h3 id="m-form-title" style="flex:1;text-align:left;margin-left:.3rem">🥛 Milch erfassen</h3>
         </div>
         <div class="form-body">
           <div style="display:grid;grid-template-columns:1fr auto;gap:.5rem;margin-bottom:.6rem">
@@ -2534,10 +2534,8 @@ function renderMilch() {
                       <div style="font-size:.85rem;font-weight:bold;color:var(--text)">${k.name||'–'}</div>
                       <div style="font-size:.7rem;color:var(--text3)">${k.bauer||''}</div>
                     </div>
-                    <div style="display:flex;align-items:center;gap:.3rem">
-                      <button onclick="milchStep('${id}',-1)" style="width:28px;height:28px;border-radius:50%;border:1px solid var(--border);background:var(--bg3);color:var(--text);font-size:1rem;cursor:pointer;display:flex;align-items:center;justify-content:center;font-family:inherit">−</button>
-                      <input class="inp kuh-liter" data-id="${id}" data-nr="${k.nr}" data-name="${k.name||''}" placeholder="L" inputmode="decimal" style="width:5rem;min-width:5rem;text-align:center;font-size:1rem;font-weight:bold;padding:.4rem .3rem" oninput="onMilchInput(this);checkMilchWert(this,'${id}')" onfocus="this.select()" />
-                      <button onclick="milchStep('${id}',1)" style="width:28px;height:28px;border-radius:50%;border:1px solid var(--border);background:var(--bg3);color:var(--text);font-size:1rem;cursor:pointer;display:flex;align-items:center;justify-content:center;font-family:inherit">+</button>
+                    <div style="display:flex;align-items:center">
+                      <input class="inp kuh-liter" data-id="${id}" data-nr="${k.nr}" data-name="${k.name||''}" placeholder="L" inputmode="decimal" style="width:6rem;min-width:6rem;text-align:center;font-size:1.05rem;font-weight:bold;padding:.5rem .4rem" oninput="onMilchInput(this);checkMilchWert(this,'${id}')" onfocus="this.select()" />
                     </div>
                   </div>
                   ${wzHinweis}
