@@ -1,8 +1,8 @@
 // ══════════════════════════════════════════════════════════════
 //  HERDENPRO – MILCH v2  (LocalStorage-first Persistence)
-//  MODUL-VERSION: 4.3  ← wenn du das siehst, ist der Fix geladen
+//  MODUL-VERSION: 5.0  ← wenn du das siehst, ist der Fix geladen
 // ══════════════════════════════════════════════════════════════
-window.MILCH_V2_VERSION = '4.3';
+window.MILCH_V2_VERSION = '5.0';
 //  Löst die alten Probleme (Datenverlust, hängende Saves offline,
 //  Multi-Melker-Kollisionen, Aggregations-Verdopplung).
 //
@@ -974,7 +974,7 @@ window.saveMilch = async function() {
   }
 
   // Save-Button visuell blockieren
-  const saveBtn = document.querySelector('#milch-form-overlay .btn-primary[onclick*="saveMilch"]');
+  const saveBtn = document.querySelector('.btn-primary[onclick*="saveMilch"]');
   const origLabel = saveBtn ? saveBtn.textContent : '';
   if(saveBtn) { saveBtn.disabled = true; saveBtn.textContent = '⏳ Warte auf Server-Ack…'; saveBtn.style.opacity = '.7'; }
   const restoreBtn = () => { if(saveBtn) { saveBtn.disabled = false; saveBtn.textContent = origLabel || '✓ Fertig'; saveBtn.style.opacity = ''; } };
@@ -1087,7 +1087,8 @@ window.saveMilch = async function() {
   window.showSaveToast && window.showSaveToast('✓ ' + gesRund + ' L / ' + Object.keys(prokuh).length + ' Kühe — in Cloud bestätigt');
   if(navigator.vibrate) navigator.vibrate([30,10,30]);
 
-  window.closeForm && window.closeForm('milch-form-overlay');
+  // Zur Milch-Übersicht navigieren (statt Form-Overlay schließen)
+  if(typeof navigate === 'function') navigate('milch');
 
   const berDatumTs = new Date(datum + 'T12:00').getTime();
   setTimeout(() => {
@@ -1135,37 +1136,38 @@ function releaseMilchWakeLock() {
 
 // Wenn User Tab wechselt und wieder zurückkommt: Wake Lock neu anfordern falls Form noch offen
 document.addEventListener('visibilitychange', () => {
-  const formOffen = document.getElementById('milch-form-overlay')?.style.display === 'flex';
+  const formOffen = window.currentView === 'milch_erfassen';
   if(document.visibilityState === 'visible' && formOffen && !window._milchWakeLock) {
     requestMilchWakeLock();
   }
 });
 
-// Hook auf showMilchForm — Wake Lock anfordern
+// Hook auf showMilchForm — Wake Lock anfordern beim Öffnen der Seite
 (function hookMilchFormWake() {
   const _origShow = window.showMilchForm;
   if(!_origShow) { setTimeout(hookMilchFormWake, 200); return; }
   if(_origShow._wakeLockHooked) return;
   window.showMilchForm = function() {
     const r = _origShow.apply(this, arguments);
-    // Wake Lock beim Öffnen anfordern (kurz warten damit Form-Overlay wirklich sichtbar ist)
-    setTimeout(requestMilchWakeLock, 100);
+    setTimeout(requestMilchWakeLock, 200);
     return r;
   };
   window.showMilchForm._wakeLockHooked = true;
 })();
 
-// Hook auf closeForm — Wake Lock freigeben wenn Milch-Formular geschlossen wird
-(function hookMilchFormClose() {
-  const _origClose = window.closeForm;
-  if(!_origClose) { setTimeout(hookMilchFormClose, 200); return; }
-  if(_origClose._wakeLockHooked) return;
-  window.closeForm = function(id) {
-    const r = _origClose.apply(this, arguments);
-    if(id === 'milch-form-overlay') releaseMilchWakeLock();
-    return r;
+// Hook auf navigate — Wake Lock freigeben wenn User milch_erfassen verlässt
+(function hookNavigateWake() {
+  const _origNav = window.navigate;
+  if(!_origNav) { setTimeout(hookNavigateWake, 200); return; }
+  if(_origNav._wakeLockHooked) return;
+  window.navigate = function(view) {
+    // Wenn wir milch_erfassen VERLASSEN → Wake Lock freigeben
+    if(window.currentView === 'milch_erfassen' && view !== 'milch_erfassen') {
+      releaseMilchWakeLock();
+    }
+    return _origNav.apply(this, arguments);
   };
-  window.closeForm._wakeLockHooked = true;
+  window.navigate._wakeLockHooked = true;
 })();
 
 // ══════════════════════════════════════════════════════════════
@@ -1270,8 +1272,8 @@ window.milchQuickAdd = function() {
 //  OVERRIDE: updateAndereMelkerHinweise (nutzt neue Struktur)
 // ══════════════════════════════════════════════════════════════
 window.updateAndereMelkerHinweise = function() {
-  const formOv = document.getElementById('milch-form-overlay');
-  if(!formOv || formOv.style.display !== 'flex') return;
+  // Nur auf der Milch-Erfassen-Seite aktualisieren
+  if(window.currentView !== 'milch_erfassen') return;
 
   const mySession = getMilchSessionId();
   const datum = document.getElementById('m-datum')?.value;
@@ -1307,7 +1309,7 @@ window.updateAndereMelkerHinweise = function() {
   }
 
   // DOM updaten
-  document.querySelectorAll('#milch-form-overlay .milch-kuh-row').forEach(row => {
+  document.querySelectorAll('.milch-kuh-row').forEach(row => {
     const input = row.querySelector('.kuh-liter');
     if(!input) return;
     const kuhId = input.dataset.id;
@@ -1355,10 +1357,11 @@ window.resetMilchAutoSaveState = function() {
   window.showMilchForm = function() {
     const r = _origShow.apply(this, arguments);
     // Nach Öffnen: eigene Werte für heute+aktuelle Schicht wieder eintragen
+    // MUSS nach _milchFormInit (150ms) laufen, sonst überschreibt Init unsere Restore
     setTimeout(() => {
       try {
-        const ov = document.getElementById('milch-form-overlay');
-        if(!ov || ov.style.display !== 'flex') return;
+        // Formular ist jetzt eine eigene Seite — prüfe currentView
+        if(window.currentView !== 'milch_erfassen') return;
         const datumInp = document.getElementById('m-datum');
         const zeitInp = document.getElementById('m-zeit');
         if(!datumInp || !zeitInp) return;
@@ -1439,7 +1442,7 @@ window.resetMilchAutoSaveState = function() {
         }
         if(window.updateAndereMelkerHinweise) window.updateAndereMelkerHinweise();
       } catch(e) { console.warn('[Milch v2] showForm restore err:', e); }
-    }, 120);
+    }, 350);
     return r;
   };
   window.showMilchForm._milchV2Hooked = true;

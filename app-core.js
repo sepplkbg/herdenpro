@@ -382,6 +382,14 @@ function render() {
     }
     return;
   }
+  // Milch-Erfassen-Seite: NIE re-rendern (sonst gehen getippte Werte verloren)
+  // Kollisions-Hinweise werden weiter live aktualisiert (nur einzelne Elemente).
+  if(currentView === 'milch_erfassen') {
+    if(typeof window.updateAndereMelkerHinweise === 'function') {
+      try { window.updateAndereMelkerHinweise(); } catch(e) {}
+    }
+    return;
+  }
   // Alle anderen: schon eines offen → re-render blockieren.
   const anyOpenOverlay = document.querySelector('.form-overlay');
   if(anyOpenOverlay) {
@@ -430,6 +438,7 @@ function render() {
     reproduktion: function(){return renderBesamungModule();},
     besamung:     function(){return renderBesamungModule();},
     milch:        function(){return renderMilch();},
+    milch_erfassen: function(){return renderMilchErfassen();},
     weide:        function(){return renderWeide();},
     saison:       function(){return renderSaison();},
     bestandsbuch: function(){return renderBestandsbuch();},
