@@ -382,9 +382,10 @@ function render() {
     }
     return;
   }
-  // Milch-Erfassen-Seite: NIE re-rendern (sonst gehen getippte Werte verloren)
-  // Kollisions-Hinweise werden weiter live aktualisiert (nur einzelne Elemente).
-  if(currentView === 'milch_erfassen') {
+  // Milch-Erfassen-Seite: NIE RE-rendern nachdem sie einmal gerendert wurde.
+  // Aber: erste Render (Wechsel von einer anderen View DORT hin) MUSS durchgehen.
+  if(currentView === 'milch_erfassen' && window._lastView === 'milch_erfassen') {
+    // Wir waren schon auf dieser Seite → das ist ein Re-Render von Firebase-Listener
     if(typeof window.updateAndereMelkerHinweise === 'function') {
       try { window.updateAndereMelkerHinweise(); } catch(e) {}
     }
