@@ -285,6 +285,7 @@ let klauenpflege={};       // Klauenpflege-Protokoll pro Kuh
 let _editStore = {};
 let _chatName=localStorage.getItem('chatName')||'';
 let currentView='dashboard', editId=null;
+window.currentView = currentView;  // Initial auch auf window damit IIFE-Module Zugriff haben
 let _kalbungIds={};
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -351,6 +352,7 @@ function initApp() {
 window.navigate = function(view) {
   if(view==='chat') markChatRead();
   currentView=view; editId=null; _kalbungIds={};
+  window.currentView = view;  // Auch auf window setzen — IIFE-Module (app-milch-v2.js) brauchen das
   document.getElementById('mehr-menu').style.display='none';
   render();
   try{renderNav();}catch(e){}
