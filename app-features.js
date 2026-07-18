@@ -1755,8 +1755,7 @@ window.parseFloat = function(v) {
 };
 
 window.editMilchEintrag = function(id) {
-  // Gruppen-ID? Dann gemergte Daten aus _milchGruppen holen, speichern später
-  // löscht alle underlying Einträge und schreibt einen neuen aggregierten.
+  // Gruppen-ID? Dann gemergte Daten aus _milchGruppen holen
   let e, isGroup = false;
   if(typeof id === 'string' && id.startsWith('group:')) {
     const key = id.slice(6);
@@ -1773,79 +1772,87 @@ window.editMilchEintrag = function(id) {
     if(!e) return;
   }
 
-  // Open milch form pre-filled
-  const ov = document.getElementById('milch-form-overlay');
-  if(!ov) return;
+  // Daten für den Post-Render-Fill zwischenspeichern
+  window._milchEditData = { id, isGroup, entry: e };
 
-  // Set edit ID (für Gruppen wird der "group:xxx"-Marker gespeichert)
-  let eid = document.getElementById('m-edit-id');
-  if(!eid) {
-    eid = document.createElement('input');
-    eid.type = 'hidden'; eid.id = 'm-edit-id';
-    ov.querySelector('.form-body').appendChild(eid);
-  }
-  eid.value = id;
-  
-  // Fill form
-  document.getElementById('m-datum').value = isoDate(new Date(e.datum));
-  
+  // Zur Milch-Erfassen-Seite navigieren — kein Overlay mehr
+  navigate('milch_erfassen');
+
+  // Nach Render: Formular mit den Daten füllen (nach _milchFormInit @ 150ms und Restore @ 350ms)
+  setTimeout(() => { window._milchEditFill && window._milchEditFill(); }, 400);
+};
+
+// Füllt das Formular mit den Daten aus window._milchEditData
+window._milchEditFill = function() {
+  const data = window._milchEditData;
+  if(!data) return;
+  const { id, isGroup, entry: e } = data;
+
+  // Nur wenn wir auch auf der milch_erfassen-Seite sind
+  if(window.currentView !== 'milch_erfassen') return;
+
+  // Edit-ID setzen
+  const eid = document.getElementById('m-edit-id');
+  if(eid) eid.value = id;
+
+  // Datum
+  const datEl = document.getElementById('m-datum');
+  if(datEl) datEl.value = isoDate(new Date(e.datum));
+
   // Zeit
   const zeitVal = e.zeit || 'morgen';
-  document.getElementById('m-zeit').value = zeitVal;
+  const zeitInp = document.getElementById('m-zeit');
+  if(zeitInp) zeitInp.value = zeitVal;
   document.querySelector('#m-zeit-morgen')?.classList.toggle('active', zeitVal === 'morgen');
   document.querySelector('#m-zeit-abend')?.classList.toggle('active', zeitVal === 'abend');
-  
+
   // Modus
   const modus = e.art === 'gesamt' ? 'gesamt' : 'prokuh';
-  setMilchModus(modus);
-  
+  if(typeof setMilchModus === 'function') setMilchModus(modus);
+
   // Molkerei + Notiz
   const molkereiEl = document.getElementById('m-molkerei');
   if(molkereiEl) molkereiEl.checked = e.molkerei || false;
   const notizEl = document.getElementById('m-notiz');
   if(notizEl) notizEl.value = e.notiz || '';
-  
+
   if(modus === 'gesamt') {
     const gestEl = document.getElementById('m-gesamt');
     if(gestEl) gestEl.value = e.gesamt || '';
   } else if(e.prokuh) {
-    // Fill per-cow values
+    // Alle Kuh-Werte zuerst leeren
     document.querySelectorAll('.kuh-liter').forEach(inp => {
       inp.value = '';
       const row = inp.closest('.milch-kuh-row');
-      if(row) { row.style.background=''; inp.closest('.milch-kuh-row')?.querySelector('.nr-badge')?.style && (inp.closest('.milch-kuh-row').querySelector('.nr-badge').style.background=''); }
+      if(row) { row.style.background=''; const b = row.querySelector('.nr-badge'); if(b) b.style.background=''; }
     });
+    // Dann Werte pro Kuh setzen
     const _mW = window.milchWert || function(v){ return typeof v === 'number' ? v : (v && v.wert != null ? parseFloat(v.wert) || 0 : parseFloat(v) || 0); };
     Object.entries(e.prokuh).forEach(([kuhId, liter]) => {
-      const inp = document.querySelector(`.kuh-liter[data-id="${kuhId}"]`);
+      const inp = document.querySelector('.kuh-liter[data-id="' + kuhId + '"]');
       if(inp) {
-        // Auf 1 Nachkommastelle runden (Float-Addition aus Aggregation). milchWert für Objekt-Struktur.
         inp.value = Math.round(_mW(liter) * 10) / 10;
-        onMilchInput(inp);
+        if(typeof onMilchInput === 'function') onMilchInput(inp);
       }
     });
   }
 
-  // Update title (mit Gruppen-Hinweis falls aggregiert)
+  // Titel aktualisieren
   const titleEl = document.getElementById('m-form-title');
-  if(titleEl) {
-    titleEl.textContent = isGroup
-      ? '✎ Milcheintrag bearbeiten (zusammengeführt)'
-      : '✎ Milcheintrag bearbeiten';
-  }
+  if(titleEl) titleEl.textContent = isGroup ? '✎ Milcheintrag bearbeiten (zusammengeführt)' : '✎ Milcheintrag bearbeiten';
 
-  // Auto-Save State: bei Single-Edit nutzen wir die bestehende ID
+  // Auto-Save State
   if(window.resetMilchAutoSaveState) window.resetMilchAutoSaveState();
   if(!isGroup) {
     window._milchAutoSaveDraftId = id;
     window._milchOriginalGroupKey = null;
   } else {
-    // Gruppen-Edit: separat tracken damit Auto-Save den Marker nicht überschreibt
-    window._milchOriginalGroupKey = id.slice(6); // "group:KEY" → "KEY"
+    window._milchOriginalGroupKey = id.slice(6);
     window._milchAutoSaveDraftId = null;
   }
 
-  ov.style.display = 'flex';
+  // Data leeren damit nächster Aufruf frisch startet
+  window._milchEditData = null;
 };
 
 // saveMilch – bulletproof: try/catch, anti-race mit Auto-Save, klare Erfolgs/Fehler-Anzeige
@@ -4233,16 +4240,18 @@ function initAuth() {
   let _sawUser = false;
   let _authInitialCheckTimer = null;
 
-  function handleAuthLogout() {
+  window._handleAuthLogout = function() {
     // Nur wirklich ausloggen — Cache löschen und Login zeigen
     try { localStorage.removeItem('lastAuthUid'); } catch(e) {}
     window._currentUser = null;
     window._currentRole = null;
     versteckeAuthLadeBildschirm();
-    document.getElementById('root').style.display = 'none';
-    document.getElementById('login-screen').style.display = 'flex';
+    const rootEl = document.getElementById('root');
+    const loginEl = document.getElementById('login-screen');
+    if(rootEl) rootEl.style.display = 'none';
+    if(loginEl) loginEl.style.display = 'flex';
     window._appInitialized = false;
-  }
+  };
 
   firebase.auth().onAuthStateChanged(async function(user) {
     if(user) {
@@ -4290,26 +4299,41 @@ function initAuth() {
         try { updateUserDisplay(); } catch(e) {}
       }
     } else {
-      // ── null-User: GRACE-PERIOD wenn Fast-Path aktiv war ──
-      // Firebase-Auth kann beim Cold-Start kurz null melden bevor die Session restauriert wird.
-      // Wenn wir Fast-Path haben (User war zuletzt eingeloggt), warten wir bis zu 10 Sekunden
-      // auf das echte auth-Event bevor wir den User ausloggen.
+      // ── null-User: Verhalten hängt vom Kontext ab ──
+      // KRITISCH: Firebase feuert null-Events auch bei internen Token-Refreshes,
+      // nicht nur bei echten Logouts. NIE automatisch ausloggen wenn wir schon
+      // einen User gesehen haben — Firebase feuert dann i.d.R. gleich wieder mit User.
+
+      // 1) User hat sich EXPLIZIT abgemeldet → Login sofort zeigen
+      if(window._userExplicitlyLoggedOut) {
+        window._userExplicitlyLoggedOut = false;
+        window._handleAuthLogout();
+        return;
+      }
+
+      // 2) User war früher schon eingeloggt → Firebase-Refresh, IGNORIEREN
+      if(_sawUser) {
+        console.log('[Auth] null-Event nach vorherigem User-Event → Firebase-Refresh, ignoriere (User bleibt eingeloggt)');
+        return;
+      }
+
+      // 3) Grace-Period beim allerersten Start (Fast-Path aktiv, User noch nie gesehen)
       const elapsed = Date.now() - _authStart;
-      if(fastPath && !_sawUser && elapsed < GRACE_MS) {
+      if(fastPath && elapsed < GRACE_MS) {
         console.log('[Auth] null-Event während Grace-Period (', elapsed, 'ms) — warte…');
-        // Timer nur einmal setzen: wenn nach GRACE_MS kein User kam, dann wirklich ausloggen
         if(!_authInitialCheckTimer) {
           _authInitialCheckTimer = setTimeout(() => {
             if(!_sawUser) {
-              console.warn('[Auth] Nach', GRACE_MS, 'ms kein User → Login zeigen');
-              handleAuthLogout();
+              console.warn('[Auth] Nach', GRACE_MS, 'ms kein User-Event → Login zeigen');
+              window._handleAuthLogout();
             }
           }, GRACE_MS - elapsed);
         }
         return;
       }
-      // Nach Grace-Period ODER wenn Fast-Path nicht aktiv war → normaler Logout
-      handleAuthLogout();
+
+      // 4) Kein Fast-Path (frische Installation) und User noch nie gesehen → Login zeigen
+      window._handleAuthLogout();
     }
   });
 }
@@ -5660,7 +5684,11 @@ window.doLogin = async function() {
 
 window.doLogout = async function() {
   if(!confirm('Abmelden?')) return;
-  await firebase.auth().signOut();
+  // Explizites-Logout-Flag setzen — onAuthStateChanged wird sonst null-Events als Firebase-Refresh ignorieren
+  window._userExplicitlyLoggedOut = true;
+  try {
+    await firebase.auth().signOut();
+  } catch(e) { console.warn('signOut err:', e); }
   // Fast-Path-Cache löschen — sonst würde beim nächsten Start automatisch angemeldet
   try {
     const uid = localStorage.getItem('lastAuthUid');
@@ -5670,6 +5698,8 @@ window.doLogout = async function() {
   window._currentUser = null;
   window._currentRole = null;
   window._appInitialized = false;
+  // Login-Screen sofort zeigen (falls onAuthStateChanged nicht schnell genug feuert)
+  if(typeof window._handleAuthLogout === 'function') window._handleAuthLogout();
 };
 
 // Register for early fallback
