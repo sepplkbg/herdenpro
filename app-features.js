@@ -2350,6 +2350,11 @@ function renderMilch() {
   const letzten14 = grupiert.slice(0, 14);
   const gesamtL14 = letzten14.reduce((s, g) => s + (g.gesamt || 0), 0);
   const gesamtAll = grupiert.reduce((s, g) => s + (g.gesamt || 0), 0);
+  // An Molkerei vs. Sennerei (Molkerei nicht angehakt = Sennerei)
+  const gesamtMolkerei = grupiert.filter(g => g.molkerei).reduce((s, g) => s + (g.gesamt || 0), 0);
+  const gesamtSennerei = grupiert.filter(g => !g.molkerei).reduce((s, g) => s + (g.gesamt || 0), 0);
+  const anzMolkerei = grupiert.filter(g => g.molkerei).length;
+  const anzSennerei = grupiert.filter(g => !g.molkerei).length;
   const proMonat = {};
   const proMonatDetail = {};
   grupiert.forEach(g => {
@@ -2543,6 +2548,25 @@ function renderMilch() {
           </div>
         </div>`;
       }).join('')}
+    </div>` : ''}
+
+    ${grupiert.length ? `
+    <div class="section-title">Verwendung</div>
+    <div class="card-section" style="padding:.5rem .8rem">
+      <div style="padding:.4rem 0;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center">
+        <div>
+          <div style="font-weight:600">🏭 An Molkerei</div>
+          <div style="font-size:.65rem;color:var(--text3);margin-top:.15rem">${anzMolkerei} Eintr${anzMolkerei===1?'ag':'äge'} · Molkerei angehakt</div>
+        </div>
+        <b style="color:var(--gold);font-size:1.05rem">${Math.round(gesamtMolkerei)} L</b>
+      </div>
+      <div style="padding:.4rem 0;display:flex;justify-content:space-between;align-items:center">
+        <div>
+          <div style="font-weight:600">🧀 An Sennerei</div>
+          <div style="font-size:.65rem;color:var(--text3);margin-top:.15rem">${anzSennerei} Eintr${anzSennerei===1?'ag':'äge'} · Molkerei nicht angehakt</div>
+        </div>
+        <b style="color:var(--gold);font-size:1.05rem">${Math.round(gesamtSennerei)} L</b>
+      </div>
     </div>` : ''}
 
     <div class="section-title">Einträge <span style="color:var(--text3);font-size:.72rem;font-weight:400">· antippen für Details</span></div>
