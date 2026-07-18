@@ -543,25 +543,47 @@ window.milchEintragGesamt = function(e) {
 
 // ── Tagesmilch-Pairing: Abend + nächst folgender Morgen ──
 // optKuhId: wenn gesetzt, nur Werte dieser einen Kuh berücksichtigen
-window.computeMilchTagesPairs = function(optKuhId) {
+// Helfer: Aggregiere alle Milch-Einträge pro (Tag+Zeit) mit Deduplizierung per Kuh (letzter ts gewinnt)
+// Damit werden Doppelzählungen vermieden wenn Legacy random-key + v2 deterministic key für denselben Termin existieren.
+window._milchAggPerTagZeit = function(optKuhId) {
   var mW = window.milchWert || function(v){ return typeof v === 'number' ? v : (v && v.wert != null ? parseFloat(v.wert) || 0 : parseFloat(v) || 0); };
-  // Aggregiere alle Einträge nach (Kalendertag+zeit)
-  var perTagZeit = {};
+  var map = {};  // key: iso_zeit → { tag, zeit, datum, prokuh: {kuhId: {wert, ts}} }
   Object.values(milchEintraege || {}).forEach(function(e) {
     if(!e || !e.datum) return;
     var iso = new Date(e.datum).toISOString().slice(0,10);
     var zeit = e.zeit || 'morgen';
     var key = iso + '_' + zeit;
-    if(!perTagZeit[key]) perTagZeit[key] = { tag: iso, zeit: zeit, datum: e.datum, gesamt: 0 };
-    if(optKuhId) {
-      // Nur diese Kuh
-      if(e.prokuh && e.prokuh[optKuhId] != null) {
-        perTagZeit[key].gesamt += mW(e.prokuh[optKuhId]);
-      }
-    } else {
-      perTagZeit[key].gesamt += window.milchEintragGesamt(e);
+    if(!map[key]) map[key] = { tag: iso, zeit: zeit, datum: e.datum, prokuh: {} };
+    var meta = e.meta || {};
+    if(e.prokuh) {
+      Object.entries(e.prokuh).forEach(function(kv) {
+        var kuhId = kv[0], val = kv[1];
+        if(optKuhId && kuhId !== optKuhId) return;
+        var w = mW(val);
+        if(w <= 0) return;
+        var ts = 0;
+        if(meta[kuhId] && meta[kuhId].ts) ts = meta[kuhId].ts;
+        else if(typeof val === 'object' && val && val.ts) ts = val.ts;
+        else ts = e.lastUpdate || e.createdAt || e.datum || 0;
+        var existing = map[key].prokuh[kuhId];
+        // Letzter ts gewinnt (dedup zwischen Legacy und v2 Einträgen desselben Termins)
+        if(!existing || ts > existing.ts) {
+          map[key].prokuh[kuhId] = { wert: w, ts: ts };
+        }
+      });
     }
   });
+  // Gesamt pro Termin aus deduped prokuh berechnen
+  Object.keys(map).forEach(function(key){
+    var sum = 0;
+    Object.values(map[key].prokuh).forEach(function(v){ sum += v.wert; });
+    map[key].gesamt = Math.round(sum * 10) / 10;
+  });
+  return map;
+};
+
+window.computeMilchTagesPairs = function(optKuhId) {
+  var perTagZeit = window._milchAggPerTagZeit(optKuhId);
   // Chronologisch sortieren (bei gleichem Datum: Morgen VOR Abend)
   var entries = Object.values(perTagZeit)
     .filter(function(x){ return x.gesamt > 0; })
@@ -569,12 +591,13 @@ window.computeMilchTagesPairs = function(optKuhId) {
       if(a.datum !== b.datum) return a.datum - b.datum;
       return a.zeit === 'morgen' ? -1 : 1;
     });
-  // Walk chronologisch: paare jeden Morgen mit dem NÄCHSTEN vorherigen (noch nicht gepairten) Abend
+  // ── Pass 1: Chronologisch — paare jeden Morgen mit dem VORIGEN unpaired Abend
   var pairs = [];
   var pendingAbend = null;
+  var used = {};  // Set von entry-keys die schon gepaart sind
   entries.forEach(function(e) {
+    var key = e.tag + '_' + e.zeit;
     if(e.zeit === 'abend') {
-      // Wenn schon ein Abend ohne Paar existiert, wird der alte verworfen (kein Morgen dazwischen)
       pendingAbend = e;
     } else if(e.zeit === 'morgen' && pendingAbend) {
       var diffTage = Math.round((e.datum - pendingAbend.datum) / 86400000);
@@ -586,14 +609,40 @@ window.computeMilchTagesPairs = function(optKuhId) {
         abendL: Math.round(pendingAbend.gesamt * 10) / 10,
         morgenL: Math.round(e.gesamt * 10) / 10,
         gesamt: Math.round((pendingAbend.gesamt + e.gesamt) * 10) / 10,
-        // Für Chart: mittlerer Zeitpunkt der Nacht (12h nach dem Abend)
         datum: pendingAbend.datum + (e.datum - pendingAbend.datum) / 2,
         diffTage: diffTage
       });
+      used[pendingAbend.tag + '_abend'] = true;
+      used[key] = true;
       pendingAbend = null;
     }
-    // Morgen ohne vorherigen Abend: keine Paar-Bildung (überspringen)
   });
+  // ── Pass 2: Für unpaired Termine — wenn Morgen UND Abend am gleichen Tag beide unpaired,
+  // paare sie als „gleicher Tag" (nützlich für den letzten Tag der Saison bevor der nächste Morgen kommt)
+  var byTag = {};
+  entries.forEach(function(e){ if(!byTag[e.tag]) byTag[e.tag] = {}; byTag[e.tag][e.zeit] = e; });
+  Object.keys(byTag).forEach(function(tag){
+    var t = byTag[tag];
+    var mKey = tag + '_morgen', aKey = tag + '_abend';
+    if(t.morgen && t.abend && !used[mKey] && !used[aKey]) {
+      pairs.push({
+        abendTag: tag,
+        morgenTag: tag,
+        abendDatum: t.abend.datum,
+        morgenDatum: t.morgen.datum,
+        abendL: Math.round(t.abend.gesamt * 10) / 10,
+        morgenL: Math.round(t.morgen.gesamt * 10) / 10,
+        gesamt: Math.round((t.abend.gesamt + t.morgen.gesamt) * 10) / 10,
+        datum: t.morgen.datum,  // Kalendertag-Datum
+        diffTage: 0,
+        sameDay: true
+      });
+      used[mKey] = true;
+      used[aKey] = true;
+    }
+  });
+  // Sortiere final nach Datum
+  pairs.sort(function(a,b){ return a.datum - b.datum; });
   return pairs;
 };
 
@@ -607,7 +656,12 @@ window.getLetzteTagesmilch = function(kuhId) {
 window.drawMilchSaisonChart = function(canvas, zeitFilter) {
   if(!canvas) return;
   var tage={};
-  // zeitFilter kann sein: 'morgen', 'abend', 'tag' (Abend+nächster Morgen), oder null
+  // zeitFilter: 'morgen' | 'abend' | 'tag' (Tagesmilch) | null
+  // Nutzt deduplizierte Aggregation um Doppelzählungen zwischen Legacy und v2-Einträgen zu vermeiden
+  var _milchDedupAgg = null;
+  if(zeitFilter === 'morgen' || zeitFilter === 'abend' || !zeitFilter) {
+    _milchDedupAgg = window._milchAggPerTagZeit();
+  }
   if(zeitFilter === 'tag') {
     // Tagesmilch = jeder Abend + der nächst folgende Morgen (auch wenn mehrere Tage dazwischen)
     var pairs = window.computeMilchTagesPairs();
@@ -616,12 +670,11 @@ window.drawMilchSaisonChart = function(canvas, zeitFilter) {
       tage[p.abendTag] = p.gesamt;
     });
   } else {
-    Object.values(milchEintraege).forEach(function(e){
-      if(!e.datum) return;
-      var zeit = e.zeit || 'morgen';
-      if(zeitFilter && zeit !== zeitFilter) return;
-      var tag=new Date(e.datum).toISOString().slice(0,10);
-      tage[tag]=(tage[tag]||0)+window.milchEintragGesamt(e);
+    // Deduplizierte Aggregation nutzen — verhindert Doppelzählung bei Legacy + v2-Einträgen desselben Termins
+    Object.values(_milchDedupAgg || {}).forEach(function(agg){
+      if(!agg) return;
+      if(zeitFilter && agg.zeit !== zeitFilter) return;
+      if(agg.gesamt > 0) tage[agg.tag] = agg.gesamt;
     });
   }
   var data=Object.entries(tage).sort(function(a,b){return a[0].localeCompare(b[0]);})
@@ -772,17 +825,17 @@ window.drawMilchSaisonChart = function(canvas, zeitFilter) {
       // Chart neu zeichnen (clear via re-call)
       window.drawMilchSaisonChart(canvas, zeitFilter);
       var label=(closest.istPrognose?'~':'')+closest.l+'L · '+new Date(closest.d).toLocaleDateString('de-AT',{day:'numeric',month:'short'});
-      var tw=Math.max(80,label.length*6),th=24;
+      var tw=Math.max(100,label.length*8),th=30;
       var tx2=Math.min(W-tw-4,Math.max(4,closest.x-tw/2));
       var ty=closest.y-th-10;
       if(ty<4) ty=closest.y+12;
       var tipFarbe = zeitFilter === 'abend' ? 'rgba(230,126,34,.95)' : 'rgba(122,203,255,.95)';
       ctx.fillStyle=closest.istPrognose?'rgba(212,168,75,.95)':tipFarbe;
       ctx.beginPath();
-      if(ctx.roundRect)ctx.roundRect(tx2,ty,tw,th,5);else ctx.rect(tx2,ty,tw,th);
+      if(ctx.roundRect)ctx.roundRect(tx2,ty,tw,th,6);else ctx.rect(tx2,ty,tw,th);
       ctx.fill();
-      ctx.fillStyle=closest.istPrognose?'#0a0800':'#fff'; ctx.font='bold 11px sans-serif'; ctx.textAlign='center';
-      ctx.fillText(label, tx2+tw/2, ty+th/2+4);
+      ctx.fillStyle=closest.istPrognose?'#0a0800':'#fff'; ctx.font='bold 14px sans-serif'; ctx.textAlign='center';
+      ctx.fillText(label, tx2+tw/2, ty+th/2+5);
       // Marker am Punkt
       ctx.beginPath(); ctx.arc(closest.x, closest.y, 9, 0, Math.PI*2);
       ctx.strokeStyle = closest.istPrognose ? 'rgba(212,168,75,.8)' : farbeHaupt;
