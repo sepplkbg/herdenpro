@@ -1774,6 +1774,11 @@ window.editMilchEintrag = function(id) {
 
   // Daten für den Post-Render-Fill zwischenspeichern
   window._milchEditData = { id, isGroup, entry: e };
+  // Original-Datum+Zeit merken damit saveMilch das alte Ziel aufräumen kann, falls sich das Datum ändert
+  window._milchEditOriginal = {
+    datum: isoDate(new Date(e.datum)),
+    zeit: e.zeit || 'morgen'
+  };
 
   // Zur Milch-Erfassen-Seite navigieren — kein Overlay mehr
   navigate('milch_erfassen');
@@ -3262,7 +3267,7 @@ function renderBestandsbuch() {
     <div style="overflow-x:auto">
     <table class="bb-table">
       <thead><tr>
-        <th>Erste Beh.</th><th>Letzte Beh.</th><th>Tier</th><th>Ohrmarke</th><th>Diagnose</th>
+        <th>Erste Beh.</th><th>Letzte Beh.</th><th>Tier</th><th>Besitzer</th><th>Ohrmarke</th><th>Diagnose</th>
         <th>Medikament</th><th>Med. von</th><th>Dosis</th><th>Abgabe</th>
         <th>WZ Milch (T)</th><th>WZ Ende Milch</th>
         <th>WZ Fleisch (T)</th><th>WZ Ende Fleisch</th><th>Tierarzt</th>
@@ -3281,6 +3286,7 @@ function renderBestandsbuch() {
           <td>${ersteStr}</td>
           <td>${endeStr}</td>
           <td>#${k?.nr||'?'} ${k?.name||''}</td>
+          <td>${k?.bauer||'–'}</td>
           <td>${k?.ohrmarke||'–'}</td>
           <td>${b.diagnose||'–'}</td>
           <td>${b.medikament}</td>
@@ -5195,6 +5201,7 @@ window.druckeBestandsbuch=function(){
       '<td>' + ersteStr + '</td>' +
       '<td>' + endeStr + '</td>' +
       '<td>#' + (k?.nr||'?') + ' ' + (k?.name||'') + '</td>' +
+      '<td>' + (k?.bauer||'–') + '</td>' +
       '<td>' + (k?.ohrmarke||'–') + '</td>' +
       '<td>' + (b.diagnose||'–') + '</td>' +
       '<td>' + (b.medikament||'–') + '</td>' +
@@ -5210,7 +5217,7 @@ window.druckeBestandsbuch=function(){
   }).join('');
   const head = '<tr>' +
     '<th>Erste Beh.</th><th>Letzte Beh.</th>' +
-    '<th>Tier</th><th>Ohrmarke</th><th>Diagnose</th>' +
+    '<th>Tier</th><th>Besitzer</th><th>Ohrmarke</th><th>Diagnose</th>' +
     '<th>Medikament</th><th>Med. von</th><th>Dosis</th><th>Abgabe</th>' +
     '<th>WZ Milch (T)</th><th>WZ Ende Milch</th>' +
     '<th>WZ Fleisch (T)</th><th>WZ Ende Fleisch</th><th>Tierarzt</th>' +
@@ -5242,7 +5249,7 @@ window.druckeBestandsbuch=function(){
     '<table>' +
       '<thead>' + head + '</thead>' +
       '<tbody>' + rows + '</tbody>' +
-      '<tfoot><tr><td colspan="14" style="font-size:7px;color:#888;border-top:2px solid #333;padding-top:4px">Bestandsbuch ' + alm + ' · Saison ' + jahr + ' · § 12 TAKG</td></tr></tfoot>' +
+      '<tfoot><tr><td colspan="15" style="font-size:7px;color:#888;border-top:2px solid #333;padding-top:4px">Bestandsbuch ' + alm + ' · Saison ' + jahr + ' · § 12 TAKG</td></tr></tfoot>' +
     '</table>' +
     '</div>' +
     '<scr'+'ipt>window.onload=function(){window.print();}</' + 'script></body></html>';
