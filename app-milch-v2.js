@@ -638,6 +638,19 @@ window.updateSyncBanner = function() {
     return;
   }
 
+  // ── NEU: Banner NUR auf Milch-Views anzeigen ──
+  // Auf allen anderen Ansichten (Kühe, Bauern, Behandlungen, Startseite, …) verbergen.
+  // Ausnahme: Wenn ein akuter Fehler vorliegt (Sync-Error oder Konflikt) trotzdem zeigen,
+  // damit der User es sieht und nicht Werte verliert.
+  const view = window.currentView;
+  const istMilchView = view === 'milch' || view === 'milch_erfassen';
+  const hatFehler = !!window._milchSyncError || (getKonflikte().length > 0);
+  if(!istMilchView && !hatFehler) {
+    banner.style.display = 'none';
+    setBannerVisible(false);
+    return;
+  }
+
   const n = countPending();
   const konfl = getKonflikte().length;
   const online = navigator.onLine;
@@ -1081,7 +1094,53 @@ window.saveMilch = async function() {
     }
   } catch(e) { console.warn('[Milch v2] Warn-System:', e); }
 
-  // 8) ERFOLG — Formular schließen, Toast, Bericht
+  // 8) EDIT: wenn Datum/Zeit geändert wurde, EIGENE Werte am ALTEN Termin löschen
+  //    (Werte anderer Melker am alten Termin bleiben unangetastet)
+  try {
+    const origMeta = window._milchEditOriginal;
+    if(origMeta && (origMeta.datum !== datum || origMeta.zeit !== zeit)) {
+      const origEntryKey = getMilchEntryKey(origMeta.datum, origMeta.zeit);
+      const newEntryKey = entryKey;
+      if(origEntryKey !== newEntryKey) {
+        console.log('[Milch v2] Datum geändert — räume alten Termin auf:', origEntryKey);
+        const myUid = window.getMilchUserUid();
+        const origSnap = await firebase.database().ref('milch/' + origEntryKey).once('value');
+        const origData = origSnap.val();
+        if(origData) {
+          const updates = {};
+          const _isOwn = window._milchIsOwnMeta || function(m){
+            if(!m) return false;
+            if(m.userUid && m.userUid === myUid) return true;
+            if(m.session && m.session.startsWith('user_') && m.session.slice(5) === myUid) return true;
+            return false;
+          };
+          // Nur EIGENE prokuh-Einträge entfernen
+          if(origData.meta) {
+            Object.entries(origData.meta).forEach(([kuhId, m]) => {
+              if(_isOwn(m)) {
+                updates['prokuh/' + kuhId] = null;
+                updates['meta/' + kuhId] = null;
+              }
+            });
+          }
+          if(Object.keys(updates).length > 0) {
+            await firebase.database().ref('milch/' + origEntryKey).update(updates);
+            console.log('[Milch v2] Alte Werte am Termin', origEntryKey, 'entfernt:', Object.keys(updates).length / 2);
+          }
+          // Wenn danach der alte Eintrag komplett leer ist, ganz löschen
+          const nachSnap = await firebase.database().ref('milch/' + origEntryKey + '/prokuh').once('value');
+          const nachProkuh = nachSnap.val();
+          if(!nachProkuh || Object.keys(nachProkuh).length === 0) {
+            await firebase.database().ref('milch/' + origEntryKey).remove();
+            console.log('[Milch v2] Alter Eintrag komplett gelöscht:', origEntryKey);
+          }
+        }
+      }
+    }
+  } catch(e) { console.warn('[Milch v2] Cleanup alter Termin:', e); }
+  window._milchEditOriginal = null;
+
+  // 9) ERFOLG — Formular schließen, Toast, Bericht
   const gesRund = Math.round(gesamt * 10) / 10;
   restoreBtn();
   window.showSaveToast && window.showSaveToast('✓ ' + gesRund + ' L / ' + Object.keys(prokuh).length + ' Kühe — in Cloud bestätigt');
@@ -1090,12 +1149,13 @@ window.saveMilch = async function() {
   // Zur Milch-Übersicht navigieren (statt Form-Overlay schließen)
   if(typeof navigate === 'function') navigate('milch');
 
+  // Bericht anzeigen — 1.5s warten damit Firebase-Listener die neuen Daten in milchEintraege hat
   const berDatumTs = new Date(datum + 'T12:00').getTime();
   setTimeout(() => {
     if(window.showMilchBericht) {
-      try { window.showMilchBericht(berDatumTs, zeit); } catch(e) {}
+      try { window.showMilchBericht(berDatumTs, zeit); } catch(e) { console.warn('showMilchBericht:', e); }
     }
-  }, 500);
+  }, 1500);
 };
 
 // ══════════════════════════════════════════════════════════════
