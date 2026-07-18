@@ -661,8 +661,8 @@ function renderKuhDetail() {
       <div style="font-size:.6rem;color:var(--text3);margin-top:2px">Weidetage</div>
     </div>
     <div class="kd-stat-card" onclick="document.querySelector('.kd-tab-btn:nth-child(1)')?.click()">
-      <div class="kd-stat-num d2" style="font-size:1.35rem;font-weight:800;color:${aktBeh.length?'var(--red)':'var(--text3)'}">${aktBeh.length}</div>
-      <div style="font-size:.6rem;color:var(--text3);margin-top:2px">Aktiv Beh.</div>
+      <div class="kd-stat-num d2" style="font-size:1.35rem;font-weight:800;color:${aktBeh.length?'var(--red)':(bList.length?'var(--gold)':'var(--text3)')}">${bList.length}</div>
+      <div style="font-size:.6rem;color:var(--text3);margin-top:2px">Behandlungen${aktBeh.length?' <span style="color:var(--red);font-weight:700">·'+aktBeh.length+' aktiv</span>':''}</div>
       ${aktBeh.length?`<div style="width:6px;height:6px;background:var(--red);border-radius:50%;margin:.2rem auto 0;box-shadow:0 0 6px var(--red);animation:kd-dot 1.5s ease-in-out infinite"></div>`:``}
     </div>
     <div class="kd-stat-card" onclick="document.querySelector('.kd-tab-btn:nth-child(2)')?.click()">
@@ -7688,7 +7688,7 @@ function renderBauerDetail() {
     <div class="stats-grid" style="grid-template-columns:1fr 1fr 1fr 1fr;margin-bottom:1rem">
       <div class="stat-card"><div class="stat-icon">🐄</div><div class="stat-num">${kueheList.length}</div><div class="stat-label">Kühe</div></div>
       <div class="stat-card"><div class="stat-icon">🥛</div><div class="stat-num" style="font-size:1.2rem">${bauerMilchGesamt}L</div><div class="stat-label">Saison</div></div>
-      <div class="stat-card ${aktivBehandlungen?'stat-warn':''}"><div class="stat-icon">⚕</div><div class="stat-num">${aktivBehandlungen}</div><div class="stat-label">Behandlung</div></div>
+      <div class="stat-card ${aktivBehandlungen?'stat-warn':''}"><div class="stat-icon">⚕</div><div class="stat-num">${alleBList.length}</div><div class="stat-label">Behandlung${aktivBehandlungen?' <span style="color:var(--red);font-weight:700">·'+aktivBehandlungen+' aktiv</span>':''}</div></div>
       <div class="stat-card"><div class="stat-icon">🐮</div><div class="stat-num">${bsListe.length}</div><div class="stat-label">Trächtig</div></div>
     </div>
 
