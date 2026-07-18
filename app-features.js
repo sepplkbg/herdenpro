@@ -4305,41 +4305,28 @@ function initAuth() {
         try { updateUserDisplay(); } catch(e) {}
       }
     } else {
-      // ── null-User: Verhalten hängt vom Kontext ab ──
-      // KRITISCH: Firebase feuert null-Events auch bei internen Token-Refreshes,
-      // nicht nur bei echten Logouts. NIE automatisch ausloggen wenn wir schon
-      // einen User gesehen haben — Firebase feuert dann i.d.R. gleich wieder mit User.
+      // ── null-User: RADIKAL vereinfachte Logik ──
+      // Firebase feuert null-Events auch bei internen Token-Refreshes und in Cold-Start-Race-Conditions.
+      // Wir loggen NUR aus wenn:
+      //   1) Der User hat EXPLIZIT auf "Abmelden" getippt (doLogout)
+      //   2) Es gibt KEINEN Fast-Path-Cache (frische Installation)
+      // In allen anderen Fällen: null-Event IGNORIEREN. User bleibt in der App.
+      // Falls Firebase wirklich down ist, werden DB-Operationen fehlschlagen und der User merkt es.
 
-      // 1) User hat sich EXPLIZIT abgemeldet → Login sofort zeigen
       if(window._userExplicitlyLoggedOut) {
         window._userExplicitlyLoggedOut = false;
         window._handleAuthLogout();
         return;
       }
 
-      // 2) User war früher schon eingeloggt → Firebase-Refresh, IGNORIEREN
-      if(_sawUser) {
-        console.log('[Auth] null-Event nach vorherigem User-Event → Firebase-Refresh, ignoriere (User bleibt eingeloggt)');
+      if(!fastPath) {
+        // Frische Installation, kein Cache → Login zeigen
+        window._handleAuthLogout();
         return;
       }
 
-      // 3) Grace-Period beim allerersten Start (Fast-Path aktiv, User noch nie gesehen)
-      const elapsed = Date.now() - _authStart;
-      if(fastPath && elapsed < GRACE_MS) {
-        console.log('[Auth] null-Event während Grace-Period (', elapsed, 'ms) — warte…');
-        if(!_authInitialCheckTimer) {
-          _authInitialCheckTimer = setTimeout(() => {
-            if(!_sawUser) {
-              console.warn('[Auth] Nach', GRACE_MS, 'ms kein User-Event → Login zeigen');
-              window._handleAuthLogout();
-            }
-          }, GRACE_MS - elapsed);
-        }
-        return;
-      }
-
-      // 4) Kein Fast-Path (frische Installation) und User noch nie gesehen → Login zeigen
-      window._handleAuthLogout();
+      // Fast-Path aktiv → NIE automatisch ausloggen, egal was Firebase sagt
+      console.log('[Auth] null-Event mit aktivem Fast-Path — ignoriere (User bleibt eingeloggt bis expliziter Logout)');
     }
   });
 }
