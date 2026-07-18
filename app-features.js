@@ -2350,11 +2350,11 @@ function renderMilch() {
   const letzten14 = grupiert.slice(0, 14);
   const gesamtL14 = letzten14.reduce((s, g) => s + (g.gesamt || 0), 0);
   const gesamtAll = grupiert.reduce((s, g) => s + (g.gesamt || 0), 0);
-  // An Molkerei vs. Sennerei (Molkerei nicht angehakt = Sennerei)
-  const gesamtMolkerei = grupiert.filter(g => g.molkerei).reduce((s, g) => s + (g.gesamt || 0), 0);
-  const gesamtSennerei = grupiert.filter(g => !g.molkerei).reduce((s, g) => s + (g.gesamt || 0), 0);
-  const anzMolkerei = grupiert.filter(g => g.molkerei).length;
-  const anzSennerei = grupiert.filter(g => !g.molkerei).length;
+  // An Molkerei vs. Sennerei — werden weiter unten mit Carry-Forward berechnet
+  let gesamtMolkerei = 0;
+  let gesamtSennerei = 0;
+  let tageMolkerei = 0;
+  let tageSennerei = 0;
   const proMonat = {};
   const proMonatDetail = {};
   grupiert.forEach(g => {
@@ -2379,24 +2379,26 @@ function renderMilch() {
   const heute = new Date();
   const alleMorgens = grupiert
     .filter(g => (g.zeit || 'morgen') === 'morgen' && (g.gesamt || 0) > 0)
-    .map(g => ({ ts: g.datum, wert: g.gesamt }))
+    .map(g => ({ ts: g.datum, wert: g.gesamt, molkerei: !!g.molkerei }))
     .sort((a,b) => a.ts - b.ts);
   const alleAbends = grupiert
     .filter(g => (g.zeit || 'morgen') === 'abend' && (g.gesamt || 0) > 0)
-    .map(g => ({ ts: g.datum, wert: g.gesamt }))
+    .map(g => ({ ts: g.datum, wert: g.gesamt, molkerei: !!g.molkerei }))
     .sort((a,b) => a.ts - b.ts);
   const firstMeasurementTs = Math.min(
     alleMorgens.length ? alleMorgens[0].ts : Infinity,
     alleAbends.length ? alleAbends[0].ts : Infinity
   );
 
-  function _carryWert(sortedList, dayEndTs) {
-    let last = 0;
+  // Liefert Wert + Molkerei-Flag des letzten Messwerts <= dayEndTs
+  function _carryPair(sortedList, dayEndTs) {
+    let lastWert = 0, lastMolk = false;
     for(const it of sortedList) {
       if(it.ts > dayEndTs) break;
-      last = it.wert;
+      lastWert = it.wert;
+      lastMolk = it.molkerei;
     }
-    return last;
+    return { wert: lastWert, molk: lastMolk };
   }
 
   Object.keys(proMonatDetail).forEach(m => {
@@ -2416,18 +2418,33 @@ function renderMilch() {
       const dayTs = dayEnd.getTime();
       // Vor allererstem Messwert: skip (können nichts hochrechnen)
       if(dayTs < firstMeasurementTs) { iter.setDate(iter.getDate() + 1); continue; }
-      const morg = _carryWert(alleMorgens, dayTs);
-      const abend = _carryWert(alleAbends, dayTs);
-      const tagsWert = morg + abend;
+      const morgP = _carryPair(alleMorgens, dayTs);
+      const abendP = _carryPair(alleAbends, dayTs);
+      const tagsWert = morgP.wert + abendP.wert;
       if(tagsWert > 0) {
         gerechnet += tagsWert;
         tageMitWert++;
+      }
+      // Molkerei/Sennerei mit Carry-Forward: Status wandert mit dem letzten Eintrag mit
+      if(morgP.wert > 0) {
+        if(morgP.molk) { gesamtMolkerei += morgP.wert; } else { gesamtSennerei += morgP.wert; }
+      }
+      if(abendP.wert > 0) {
+        if(abendP.molk) { gesamtMolkerei += abendP.wert; } else { gesamtSennerei += abendP.wert; }
+      }
+      // Tages-Zählung: Tag zählt als Molkerei-Tag wenn IRGENDEIN Wert (morgens/abends) Molkerei ist,
+      // sonst als Sennerei-Tag. Reine Skalen-Info fürs UI.
+      if(tagsWert > 0) {
+        if(morgP.molk || abendP.molk) tageMolkerei++;
+        else tageSennerei++;
       }
       iter.setDate(iter.getDate() + 1);
     }
     d.gerechnet = Math.round(gerechnet);
     d.tageBerechnet = tageMitWert;
   });
+  gesamtMolkerei = Math.round(gesamtMolkerei);
+  gesamtSennerei = Math.round(gesamtSennerei);
   // Melkkühe-Filter: standardmäßig NICHT-trockene Kühe. User kann per Toggle alle zeigen.
   const alleKueheSorted = Object.entries(kuehe).sort((a,b) => {
     const nA = parseInt(a[1].nr)||0, nB = parseInt(b[1].nr)||0; return nA - nB;
@@ -2551,21 +2568,24 @@ function renderMilch() {
     </div>` : ''}
 
     ${grupiert.length ? `
-    <div class="section-title">Verwendung</div>
+    <div class="section-title" style="display:flex;align-items:center;justify-content:space-between">
+      <span>Verwendung</span>
+      <span style="font-size:.68rem;color:var(--text3);font-weight:400">mit Carry-Forward</span>
+    </div>
     <div class="card-section" style="padding:.5rem .8rem">
       <div style="padding:.4rem 0;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center">
         <div>
           <div style="font-weight:600">🏭 An Molkerei</div>
-          <div style="font-size:.65rem;color:var(--text3);margin-top:.15rem">${anzMolkerei} Eintr${anzMolkerei===1?'ag':'äge'} · Molkerei angehakt</div>
+          <div style="font-size:.65rem;color:var(--text3);margin-top:.15rem">${tageMolkerei} Tag${tageMolkerei===1?'':'e'} · Status zuletzt Molkerei</div>
         </div>
-        <b style="color:var(--gold);font-size:1.05rem">${Math.round(gesamtMolkerei)} L</b>
+        <b style="color:var(--gold);font-size:1.05rem">${gesamtMolkerei} L</b>
       </div>
       <div style="padding:.4rem 0;display:flex;justify-content:space-between;align-items:center">
         <div>
           <div style="font-weight:600">🧀 An Sennerei</div>
-          <div style="font-size:.65rem;color:var(--text3);margin-top:.15rem">${anzSennerei} Eintr${anzSennerei===1?'ag':'äge'} · Molkerei nicht angehakt</div>
+          <div style="font-size:.65rem;color:var(--text3);margin-top:.15rem">${tageSennerei} Tag${tageSennerei===1?'':'e'} · Status zuletzt Sennerei</div>
         </div>
-        <b style="color:var(--gold);font-size:1.05rem">${Math.round(gesamtSennerei)} L</b>
+        <b style="color:var(--gold);font-size:1.05rem">${gesamtSennerei} L</b>
       </div>
     </div>` : ''}
 
