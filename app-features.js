@@ -2351,9 +2351,77 @@ function renderMilch() {
   const gesamtL14 = letzten14.reduce((s, g) => s + (g.gesamt || 0), 0);
   const gesamtAll = grupiert.reduce((s, g) => s + (g.gesamt || 0), 0);
   const proMonat = {};
+  const proMonatDetail = {};
   grupiert.forEach(g => {
-    const m = new Date(g.datum).toLocaleDateString('de-AT', {month:'short', year:'numeric'});
+    if(!g.datum) return;
+    const d = new Date(g.datum);
+    const m = d.toLocaleDateString('de-AT', {month:'short', year:'numeric'});
+    const isoTag = d.toISOString().slice(0,10);
     proMonat[m] = (proMonat[m] || 0) + (g.gesamt || 0);
+    if(!proMonatDetail[m]) proMonatDetail[m] = {
+      gemessen: 0,
+      messtage: new Set(),
+      jahr: d.getFullYear(),
+      monat: d.getMonth()
+    };
+    proMonatDetail[m].gemessen += (g.gesamt || 0);
+    proMonatDetail[m].messtage.add(isoTag);
+  });
+
+  // ── CARRY-FORWARD-BERECHNUNG ──
+  // Jeder Messwert wird für die folgenden Tage weiterverwendet bis der nächste Messwert kommt.
+  // Getrennt für Morgens und Abends. Summe pro Tag = morgens_carry + abends_carry.
+  const heute = new Date();
+  const alleMorgens = grupiert
+    .filter(g => (g.zeit || 'morgen') === 'morgen' && (g.gesamt || 0) > 0)
+    .map(g => ({ ts: g.datum, wert: g.gesamt }))
+    .sort((a,b) => a.ts - b.ts);
+  const alleAbends = grupiert
+    .filter(g => (g.zeit || 'morgen') === 'abend' && (g.gesamt || 0) > 0)
+    .map(g => ({ ts: g.datum, wert: g.gesamt }))
+    .sort((a,b) => a.ts - b.ts);
+  const firstMeasurementTs = Math.min(
+    alleMorgens.length ? alleMorgens[0].ts : Infinity,
+    alleAbends.length ? alleAbends[0].ts : Infinity
+  );
+
+  function _carryWert(sortedList, dayEndTs) {
+    let last = 0;
+    for(const it of sortedList) {
+      if(it.ts > dayEndTs) break;
+      last = it.wert;
+    }
+    return last;
+  }
+
+  Object.keys(proMonatDetail).forEach(m => {
+    const d = proMonatDetail[m];
+    d.tageMitMessung = d.messtage.size;
+    // Start / Ende des Zeitraums für diesen Monat
+    const monatStart = new Date(d.jahr, d.monat, 1);
+    const monatEnde  = new Date(d.jahr, d.monat + 1, 0);
+    const istAktuellerMonat = d.jahr === heute.getFullYear() && d.monat === heute.getMonth();
+    const endDate = istAktuellerMonat ? heute : monatEnde;
+
+    let gerechnet = 0;
+    let tageMitWert = 0;
+    const iter = new Date(monatStart);
+    while(iter.getTime() <= endDate.getTime()) {
+      const dayEnd = new Date(iter); dayEnd.setHours(23,59,59,999);
+      const dayTs = dayEnd.getTime();
+      // Vor allererstem Messwert: skip (können nichts hochrechnen)
+      if(dayTs < firstMeasurementTs) { iter.setDate(iter.getDate() + 1); continue; }
+      const morg = _carryWert(alleMorgens, dayTs);
+      const abend = _carryWert(alleAbends, dayTs);
+      const tagsWert = morg + abend;
+      if(tagsWert > 0) {
+        gerechnet += tagsWert;
+        tageMitWert++;
+      }
+      iter.setDate(iter.getDate() + 1);
+    }
+    d.gerechnet = Math.round(gerechnet);
+    d.tageBerechnet = tageMitWert;
   });
   // Melkkühe-Filter: standardmäßig NICHT-trockene Kühe. User kann per Toggle alle zeigen.
   const alleKueheSorted = Object.entries(kuehe).sort((a,b) => {
@@ -2450,7 +2518,32 @@ function renderMilch() {
     </div>` : ''}
     ` : ''}
 
-    ${Object.keys(proMonat).length?`<div class="section-title">Monatsübersicht</div><div class="card-section" style="padding:.5rem .8rem">${Object.entries(proMonat).slice(0,6).map(([m,l])=>`<div class="info-row"><span>${m}</span><b>${Math.round(l)} L</b></div>`).join('')}</div>`:''}
+    ${Object.keys(proMonat).length?`
+    <div class="section-title" style="display:flex;align-items:center;justify-content:space-between">
+      <span>Monatsübersicht</span>
+      <span style="font-size:.68rem;color:var(--text3);font-weight:400">gemessen · gerechnet</span>
+    </div>
+    <div class="card-section" style="padding:.5rem .8rem">
+      ${Object.entries(proMonat).slice(0,6).map(([m,l])=>{
+        const d = proMonatDetail[m];
+        const gerechnet = d?.gerechnet || 0;
+        const messtage = d?.tageMitMessung || 0;
+        const tageBer = d?.tageBerechnet || 0;
+        return `
+        <div style="padding:.4rem 0;border-bottom:1px solid var(--border)">
+          <div style="display:flex;justify-content:space-between;align-items:center">
+            <span style="font-weight:600">${m}</span>
+            <span style="display:flex;gap:.6rem;align-items:baseline">
+              <span style="color:var(--text3);font-size:.85rem">${Math.round(l)} L</span>
+              <b style="color:var(--gold);font-size:1.05rem">${gerechnet} L</b>
+            </span>
+          </div>
+          <div style="font-size:.65rem;color:var(--text3);margin-top:.15rem">
+            ${messtage} Messtage · ${tageBer} Tage gerechnet (Carry-Forward)
+          </div>
+        </div>`;
+      }).join('')}
+    </div>` : ''}
 
     <div class="section-title">Einträge <span style="color:var(--text3);font-size:.72rem;font-weight:400">· antippen für Details</span></div>
     <div class="card-list">
