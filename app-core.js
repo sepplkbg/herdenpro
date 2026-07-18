@@ -356,6 +356,8 @@ window.navigate = function(view) {
   document.getElementById('mehr-menu').style.display='none';
   render();
   try{renderNav();}catch(e){}
+  // Sync-Banner nur auf Milch-Views zeigen — bei Wechsel neu evaluieren
+  try{ if(typeof updateSyncBanner === 'function') updateSyncBanner(); }catch(e){}
 };
 
 // ══════════════════════════════════════════════════════════════════════════════
