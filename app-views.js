@@ -1370,9 +1370,9 @@ function _drawKdChartSingle(canvasId, data, hauptFarbe, areaHi, areaLo, opts) {
           lines.push('vs. Ø: ' + (diff >= 0 ? '+' : '') + diff + 'L');
         }
       }
-      var lineH = 14, padX = 8, padY = 6;
+      var lineH = 18, padX = 10, padY = 8;
       var tw = 0;
-      ctx.font = 'bold 11px sans-serif';
+      ctx.font = 'bold 14px sans-serif';
       lines.forEach(function(l){ tw = Math.max(tw, ctx.measureText(l).width); });
       tw += padX * 2;
       var th = lines.length * lineH + padY;
@@ -1384,10 +1384,10 @@ function _drawKdChartSingle(canvasId, data, hauptFarbe, areaHi, areaLo, opts) {
       if(ctx.roundRect) { ctx.beginPath(); ctx.roundRect(tx2,ty,tw,th,6); ctx.fill(); }
       else { ctx.fillRect(tx2,ty,tw,th); }
       ctx.fillStyle = closest.istPrognose ? '#0a0800' : '#fff';
-      ctx.font = 'bold 11px sans-serif';
+      ctx.font = 'bold 14px sans-serif';
       ctx.textAlign = 'center';
       lines.forEach(function(l, i){
-        ctx.fillText(l, tx2 + tw/2, ty + padY + i*lineH + 8);
+        ctx.fillText(l, tx2 + tw/2, ty + padY + i*lineH + 12);
       });
       // Marker am Punkt
       ctx.beginPath(); ctx.arc(closest.x, closest.y, 9, 0, Math.PI*2);
