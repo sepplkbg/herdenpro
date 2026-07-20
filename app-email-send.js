@@ -149,7 +149,7 @@
     if(_debounceTimer) clearTimeout(_debounceTimer);
     _debounceTimer = setTimeout(() => {
       queueEmail(datumTs);
-      trySendQueue();
+      window.trySendMilchEmailQueue();
     }, DEBOUNCE_MS);
   };
 

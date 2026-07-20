@@ -3289,7 +3289,10 @@ function renderEinstellungen() {
         <button class="btn-secondary" style="flex:1" onclick="saveMilchEmailConfig()">💾 Speichern</button>
         <button class="btn-secondary" id="email-test-btn" style="flex:1" onclick="sendTestMilchEmail()">📧 Test-Email jetzt schicken</button>
       </div>
-      <button class="btn-ghost" style="width:100%;font-size:.75rem" onclick="showMilchEmailStatus()">🔍 Queue-Status ansehen</button>
+      <div style="display:flex;gap:.4rem;margin-bottom:.3rem">
+        <button class="btn-ghost" style="flex:1;font-size:.75rem" onclick="trySendMilchEmailQueue().then(()=>showMilchEmailStatus())">🚀 Queue jetzt senden</button>
+        <button class="btn-ghost" style="flex:1;font-size:.75rem" onclick="showMilchEmailStatus()">🔍 Queue-Status</button>
+      </div>
 
       <details style="margin-top:.6rem">
         <summary style="cursor:pointer;font-size:.75rem;color:var(--gold)">ℹ EmailJS einrichten (Anleitung)</summary>
