@@ -19,11 +19,11 @@
 ═══════════════════════════════════════════════════════════════════════════ -->
 <script>
 // Force clear cache if version changed
-if(localStorage.getItem('hp_version') !== 'v43.5') {
+if(localStorage.getItem('hp_version') !== 'v44.0') {
   localStorage.removeItem('mainNav');
   localStorage.removeItem('mehrOrder');
   localStorage.removeItem('mehrOrder');
-  localStorage.setItem('hp_version','v43.5');
+  localStorage.setItem('hp_version','v44.0');
   // Force SW update
   if('serviceWorker' in navigator) {
     navigator.serviceWorker.getRegistrations().then(function(regs) {
@@ -39,8 +39,8 @@ if(localStorage.getItem('hp_version') !== 'v43.5') {
       });
     }
     // Reload once after clearing
-    if(!sessionStorage.getItem('reloaded_v43_5')) {
-      sessionStorage.setItem('reloaded_v43_5','1');
+    if(!sessionStorage.getItem('reloaded_v44_0')) {
+      sessionStorage.setItem('reloaded_v44_0','1');
       window.location.reload(true);
     }
   }
@@ -341,10 +341,12 @@ window.FIREBASE_CONFIG = {
   </div>
 </div>
 
+<script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
 <script src="app-core.js"></script>
 <script src="app-views.js"></script>
 <script src="app-features.js"></script>
 <script src="app-milch-v2.js"></script>
+<script src="app-email-send.js"></script>
 <script>
 document.addEventListener('DOMContentLoaded', function() {
   var mb = document.getElementById('nav-mehr');
