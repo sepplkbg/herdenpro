@@ -2193,6 +2193,8 @@ window.showBehandlungForm=function(kuhId, editBId, editData) {
   }, 50);
 };
 window.saveBehandlung=async function(){
+  try {
+  console.log('[saveBehandlung] Start');
   const kuhId=document.getElementById('b-kuh')?.value;
   if(!kuhId){alert('Kuh wählen');return;}
   const abgabe=document.getElementById('b-abgabe')?.value;
@@ -2279,6 +2281,11 @@ window.saveBehandlung=async function(){
   if(fi) fi.style.display='none';
   // Force-Render: neue Behandlung sofort in Listen sichtbar
   setTimeout(() => { try { if(typeof render === 'function') render(); } catch(e){} }, 50);
+  console.log('[saveBehandlung] Fertig');
+  } catch(err) {
+    console.error('[saveBehandlung] FEHLER:', err);
+    alert('Fehler beim Speichern der Behandlung:\n\n' + (err && err.message || err) + '\n\nBitte Screenshot machen und melden.');
+  }
 };
 
 // ── Fehlende Stub-Funktionen (waren in onclick referenziert, aber nicht definiert) ──
