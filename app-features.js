@@ -3257,6 +3257,63 @@ function renderEinstellungen() {
       </div>
       <button class="btn-secondary" onclick="saveBerichtSchwelle()">💾 Speichern</button>
     </div>
+
+    ${(() => {
+      const es = (window.getMilchEmailSettings && window.getMilchEmailSettings()) || {enabled:false,recipients:['','',''],serviceId:'',templateId:'',publicKey:''};
+      const r = es.recipients || ['','',''];
+      return `
+    <div class="card-section" style="margin-bottom:.8rem;border-color:${es.enabled?'var(--gold)':'var(--border)'}">
+      <div class="section-label" style="margin-bottom:.5rem;display:flex;align-items:center;justify-content:space-between">
+        <span>📧 AUTOMATISCHE EMAIL</span>
+        <label style="display:flex;align-items:center;gap:.4rem;font-weight:normal;font-size:.75rem">
+          <input type="checkbox" id="email-enabled" ${es.enabled?'checked':''} onchange="toggleMilchEmail(this.checked)" />
+          <span style="color:${es.enabled?'var(--gold)':'var(--text3)'}">${es.enabled?'AN':'AUS'}</span>
+        </label>
+      </div>
+      <p style="font-size:.75rem;color:var(--text2);margin-bottom:.7rem">
+        Nach jedem Milchmessen wird die Tages-CSV automatisch an bis zu 3 Empfänger geschickt.
+        Debounce 30 s (kein Spam bei mehreren Speichervorgängen). Offline werden Emails gequeued.
+      </p>
+
+      <div style="font-size:.7rem;color:var(--text3);letter-spacing:.05em;margin:.4rem 0 .3rem">EMPFÄNGER</div>
+      <input id="email-r1" type="email" class="inp" placeholder="empfaenger1@beispiel.at" value="${r[0]||''}" style="margin-bottom:.3rem" inputmode="email" />
+      <input id="email-r2" type="email" class="inp" placeholder="empfaenger2@beispiel.at (optional)" value="${r[1]||''}" style="margin-bottom:.3rem" inputmode="email" />
+      <input id="email-r3" type="email" class="inp" placeholder="empfaenger3@beispiel.at (optional)" value="${r[2]||''}" style="margin-bottom:.5rem" inputmode="email" />
+
+      <div style="font-size:.7rem;color:var(--text3);letter-spacing:.05em;margin:.4rem 0 .3rem">EMAILJS-KONFIG</div>
+      <input id="email-serviceid" class="inp" placeholder="Service ID (z. B. service_xxx)" value="${es.serviceId||''}" style="margin-bottom:.3rem" />
+      <input id="email-templateid" class="inp" placeholder="Template ID (z. B. template_xxx)" value="${es.templateId||''}" style="margin-bottom:.3rem" />
+      <input id="email-publickey" class="inp" placeholder="Public Key" value="${es.publicKey||''}" style="margin-bottom:.5rem" />
+
+      <div style="display:flex;gap:.4rem;margin-bottom:.4rem">
+        <button class="btn-secondary" style="flex:1" onclick="saveMilchEmailConfig()">💾 Speichern</button>
+        <button class="btn-secondary" id="email-test-btn" style="flex:1" onclick="sendTestMilchEmail()">📧 Test-Email jetzt schicken</button>
+      </div>
+      <button class="btn-ghost" style="width:100%;font-size:.75rem" onclick="showMilchEmailStatus()">🔍 Queue-Status ansehen</button>
+
+      <details style="margin-top:.6rem">
+        <summary style="cursor:pointer;font-size:.75rem;color:var(--gold)">ℹ EmailJS einrichten (Anleitung)</summary>
+        <div style="font-size:.72rem;color:var(--text2);margin-top:.4rem;line-height:1.4">
+          <b>1.</b> Auf <a href="https://www.emailjs.com/" target="_blank" style="color:var(--gold)">emailjs.com</a> gratis anmelden.<br>
+          <b>2.</b> „Email Services" → dein Gmail/Outlook verbinden → <b>Service ID</b> kopieren.<br>
+          <b>3.</b> „Email Templates" → Neues Template mit diesen Variablen: <code>{{to_email}}</code>, <code>{{subject}}</code>, <code>{{alm_name}}</code>, <code>{{datum}}</code>, <code>{{gesamt_liter}}</code>, <code>{{csv_content}}</code>, <code>{{message}}</code>.<br>
+          Body-Vorschlag (in EmailJS Template):<br>
+          <code style="display:block;background:var(--bg2);padding:.4rem;margin:.3rem 0;border-radius:6px;white-space:pre-wrap;font-size:.68rem">Milchmessung vom {{datum}} – {{alm_name}}
+
+Gesamt: {{gesamt_liter}}
+
+CSV-Daten:
+{{csv_content}}</code>
+          Als „To Email" im Template: <code>{{to_email}}</code>.<br>
+          <b>4.</b> Template ID kopieren.<br>
+          <b>5.</b> „Account" → „General" → <b>Public Key</b> kopieren.<br>
+          <b>6.</b> Alle 3 Werte hier oben eintragen, speichern, Test-Email schicken.<br>
+          <b>Gratis-Limit:</b> 200 Emails/Monat (locker genug für 2 Milchmessungen/Tag).
+        </div>
+      </details>
+    </div>`;
+    })()}
+
     <div class="card-section" style="margin-bottom:.8rem">
       <p style="font-size:.82rem;color:var(--text2);margin-bottom:.7rem">
         Milchdaten als Excel exportieren – fertig formatiert für das Molkerei-System (Stall-Sheet Format, W1–W14).
@@ -8429,4 +8486,33 @@ window.saveBerichtSchwelle = function() {
   }
   localStorage.setItem('milchBerichtProzent', String(v));
   window.showSaveToast && showSaveToast('Bericht-Schwellenwert: ±'+v+'%');
+};
+
+// ── Automatische Email: Config speichern + Toggle ──
+window.toggleMilchEmail = function(on) {
+  if(!window.saveMilchEmailSettings) return;
+  window.saveMilchEmailSettings({ enabled: !!on });
+  window.showSaveToast && showSaveToast(on ? 'Auto-Email AN' : 'Auto-Email AUS');
+};
+window.saveMilchEmailConfig = function() {
+  if(!window.saveMilchEmailSettings) return;
+  const r1 = (document.getElementById('email-r1')?.value || '').trim();
+  const r2 = (document.getElementById('email-r2')?.value || '').trim();
+  const r3 = (document.getElementById('email-r3')?.value || '').trim();
+  const serviceId = (document.getElementById('email-serviceid')?.value || '').trim();
+  const templateId = (document.getElementById('email-templateid')?.value || '').trim();
+  const publicKey = (document.getElementById('email-publickey')?.value || '').trim();
+  // Sehr grobe Email-Validierung
+  const bad = [r1,r2,r3].filter(x => x && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(x));
+  if(bad.length) {
+    alert('Ungültige Email-Adresse(n):\n' + bad.join('\n'));
+    return;
+  }
+  window.saveMilchEmailSettings({
+    recipients: [r1, r2, r3],
+    serviceId: serviceId,
+    templateId: templateId,
+    publicKey: publicKey
+  });
+  window.showSaveToast && showSaveToast('Email-Config gespeichert');
 };

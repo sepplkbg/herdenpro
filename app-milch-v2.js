@@ -1156,6 +1156,13 @@ window.saveMilch = async function() {
       try { window.showMilchBericht(berDatumTs, zeit); } catch(e) { console.warn('showMilchBericht:', e); }
     }
   }, 1500);
+
+  // Automatischer Email-Versand (debounced, wartet 30s auf weitere Speichervorgänge)
+  try {
+    if(typeof window.scheduleMilchEmail === 'function') {
+      window.scheduleMilchEmail(berDatumTs);
+    }
+  } catch(e) { console.warn('[Milch-Email] schedule:', e); }
 };
 
 // ══════════════════════════════════════════════════════════════
