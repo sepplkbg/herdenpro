@@ -19,11 +19,11 @@
 ═══════════════════════════════════════════════════════════════════════════ -->
 <script>
 // Force clear cache if version changed
-if(localStorage.getItem('hp_version') !== 'v44.2') {
+if(localStorage.getItem('hp_version') !== 'v44.4') {
   localStorage.removeItem('mainNav');
   localStorage.removeItem('mehrOrder');
   localStorage.removeItem('mehrOrder');
-  localStorage.setItem('hp_version','v44.2');
+  localStorage.setItem('hp_version','v44.4');
   // Force SW update
   if('serviceWorker' in navigator) {
     navigator.serviceWorker.getRegistrations().then(function(regs) {
@@ -39,8 +39,8 @@ if(localStorage.getItem('hp_version') !== 'v44.2') {
       });
     }
     // Reload once after clearing
-    if(!sessionStorage.getItem('reloaded_v44_2')) {
-      sessionStorage.setItem('reloaded_v44_2','1');
+    if(!sessionStorage.getItem('reloaded_v44_4')) {
+      sessionStorage.setItem('reloaded_v44_4','1');
       window.location.reload(true);
     }
   }
@@ -347,6 +347,7 @@ window.FIREBASE_CONFIG = {
 <script src="app-features.js"></script>
 <script src="app-milch-v2.js"></script>
 <script src="app-email-send.js"></script>
+<script src="app-auth-refresh.js"></script>
 <script>
 document.addEventListener('DOMContentLoaded', function() {
   var mb = document.getElementById('nav-mehr');

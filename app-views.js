@@ -2234,15 +2234,15 @@ window.saveBehandlung=async function(){
     fotoData:document.getElementById('b-foto-data')?.value||null,
     tazettelData:document.getElementById('b-tazettel-data')?.value||null,
   };
+  // Fix B: mit Auth-Retry — bei PERMISSION_DENIED wird Token erneuert und nochmal versucht
+  const _retry = window.withAuthRetry || (async fn => await fn());
   if(editId){
-    await update(ref(db,'behandlungen/'+editId),{...data,updatedAt:Date.now()});
-    // Lokal sofort updaten damit UI sofort refresht
+    await _retry(() => update(ref(db,'behandlungen/'+editId),{...data,updatedAt:Date.now()}));
     try { if(window.behandlungen?.[editId]) window.behandlungen[editId] = {...window.behandlungen[editId], ...data, updatedAt:Date.now()}; } catch(x) {}
   }
   else{
-    const nr=await push(ref(db,'behandlungen'),{...data,createdAt:Date.now()});
+    const nr = await _retry(() => push(ref(db,'behandlungen'),{...data,createdAt:Date.now()}));
     editId=nr.key;
-    // Lokal sofort eintragen für sofortige UI-Aktualisierung
     try { window.behandlungen = window.behandlungen || {}; window.behandlungen[editId] = {...data, createdAt:Date.now()}; if(typeof behandlungen !== 'undefined') behandlungen[editId] = {...data, createdAt:Date.now()}; } catch(x) {}
   }
 
