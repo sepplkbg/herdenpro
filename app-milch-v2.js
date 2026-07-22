@@ -347,6 +347,23 @@ function handleSyncError(err, op) {
     console.log('[Milch v2] Timeout offline — ignoriert, wird bei online neu versucht');
     return;
   }
+  // Fix B: Bei PERMISSION_DENIED zuerst Token-Refresh + syncMilchPending Retry versuchen
+  // Sonst würden alle folgenden Writes auch fehlschlagen bis der Nutzer sich neu anmeldet.
+  if(/permission[_-]?denied/i.test(msg) && !window._milchPermissionRetryPending) {
+    window._milchPermissionRetryPending = true;
+    console.warn('[Milch v2] PERMISSION_DENIED — versuche Token-Refresh + Retry');
+    (async () => {
+      try {
+        const user = firebase.auth && firebase.auth().currentUser;
+        if(user) await user.getIdToken(true);
+        await new Promise(r => setTimeout(r, 400));
+        try { syncMilchPending(); } catch(e) {}
+      } catch(e) { console.warn('[Milch v2] Refresh in handleSyncError:', e); }
+      finally { setTimeout(() => { window._milchPermissionRetryPending = false; }, 5000); }
+    })();
+    // Kein Fehler-Banner setzen — der Retry hat 5s Zeit, dann erst als Fehler zeigen
+    return;
+  }
   // Persistent speichern damit updateSyncBanner nicht überschreibt
   window._milchSyncError = { msg: msg, op: op, ts: Date.now() };
   // Auch in localStorage loggen für spätere Diagnose
