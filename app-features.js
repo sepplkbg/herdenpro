@@ -4494,6 +4494,9 @@ function initAuth() {
       window._currentUser = {...user, ...userData};
       window._currentRole = userData.rolle || 'hirte';
 
+      // Fix A: Auto-Token-Refresh starten (alle 25 min proaktiv erneuern)
+      try { if(typeof window.startAuthRefreshLoop === 'function') window.startAuthRefreshLoop(); } catch(e) {}
+
       if(!fastPath) {
         // Fast-Path nicht gelaufen → jetzt App zeigen
         zeigeApp();
