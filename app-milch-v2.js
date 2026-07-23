@@ -198,26 +198,45 @@ window.pushMilchWert = function(kuhId, wert, datum, zeit) {
       updatePayload['art'] = 'prokuh';
       updatePayload['lastUpdate'] = now;
 
-      // Firebase-Write mit TIMEOUT: wenn kein Ack in 15 Sekunden → Fehler zeigen
-      // Sonst hängt der Client stumm wenn interne WebSocket-Verbindung tot ist
+      // Firebase-Write mit TIMEOUT: erst nach 30s als Fehler behandeln (schwache Alm-Verbindung).
+      // WICHTIG: Nach Timeout NICHT gleich Fehler — erst READ machen ob der Wert doch am Server ist.
+      // Denn oft geht der Write durch, nur die Ack-Bestätigung braucht > 10s wegen schlechter Verbindung.
       const writePromise = firebase.database().ref(entryPath).update(updatePayload);
       const timeoutPromise = new Promise((_, reject) =>
-        setTimeout(() => reject(new Error('Timeout (15s) — Firebase-Verbindung möglicherweise blockiert')), 15000)
+        setTimeout(() => reject(new Error('Timeout (30s) — Firebase-Verbindung möglicherweise blockiert')), 30000)
       );
+      const clearPending = () => {
+        const p2 = getPending();
+        if(p2[entryKey] && p2[entryKey][kuhId] && Math.abs((p2[entryKey][kuhId].wert || 0) - wertVal) < 0.05) {
+          delete p2[entryKey][kuhId];
+          if(Object.keys(p2[entryKey]).length === 0) delete p2[entryKey];
+          setPending(p2);
+        }
+        // Bei erfolgreichem Write: alten Sync-Error auto-clearen (schwache Verbindung war nur temporär)
+        if(window._milchSyncError) { window._milchSyncError = null; window._milchErrorToastShown = false; }
+        updateSyncBanner();
+      };
       Promise.race([writePromise, timeoutPromise])
         .then(() => {
-          // ✅ Server hat write bestätigt (writePromise resolvt NUR nach echtem Server-Ack).
-          // Direkt aus pending entfernen — kein weiteres Lesen nötig.
           console.log('[Milch v2] Server-Ack für:', kuhId, '=', wertVal);
-          const p2 = getPending();
-          if(p2[entryKey] && p2[entryKey][kuhId] && Math.abs((p2[entryKey][kuhId].wert || 0) - wertVal) < 0.05) {
-            delete p2[entryKey][kuhId];
-            if(Object.keys(p2[entryKey]).length === 0) delete p2[entryKey];
-            setPending(p2);
-          }
-          updateSyncBanner();
+          clearPending();
         })
-        .catch(e => handleSyncError(e, 'write'));
+        .catch(async (e) => {
+          // Fix: VOR Fehler-Anzeige prüfen ob Wert doch am Server angekommen ist (WebSocket-Ack-Delay).
+          try {
+            const snap = await firebase.database().ref(entryPath + '/prokuh/' + kuhId).get();
+            const serverVal = snap.val();
+            if(serverVal != null && Math.abs(parseFloat(serverVal) - wertVal) < 0.05) {
+              console.log('[Milch v2] Timeout — aber Wert IST am Server:', serverVal, '→ clear pending');
+              clearPending();
+              return; // Kein Fehler — Write ist eigentlich durch
+            }
+            console.warn('[Milch v2] Timeout & Wert NICHT am Server → echter Fehler');
+          } catch(readErr) {
+            console.warn('[Milch v2] Verify-Read fehlgeschlagen:', readErr);
+          }
+          handleSyncError(e, 'write');
+        });
     }
   } catch(e) {
     handleSyncError(e, 'exception');
@@ -561,30 +580,53 @@ window.syncMilchPending = function() {
       };
     });
 
-    // Timeout auf Retry-Sync (15s pro Termin)
-    // Snapshot der Kuh-IDs+Werte für spätere direkte Bestätigung
+    // Timeout auf Retry-Sync: 30s (schwache Alm-Verbindung — Websocket-Ack kann sehr lange dauern)
     const snapshotCows = Object.entries(cows).map(([kuhId, p]) => ({ kuhId, wert: p.wert }));
     const wp = firebase.database().ref('milch/' + entryKey).update(updatePayload);
     const tp = new Promise((_, reject) =>
-      setTimeout(() => reject(new Error('Retry-Timeout (15s) — Verbindung neu aufbauen')), 15000)
+      setTimeout(() => reject(new Error('Retry-Timeout (30s) — Verbindung neu aufbauen')), 30000)
     );
+    const clearRetryPending = () => {
+      const p2 = getPending();
+      if(p2[entryKey]) {
+        snapshotCows.forEach(({kuhId, wert}) => {
+          if(p2[entryKey][kuhId] && Math.abs((p2[entryKey][kuhId].wert || 0) - wert) < 0.05) {
+            delete p2[entryKey][kuhId];
+          }
+        });
+        if(Object.keys(p2[entryKey]).length === 0) delete p2[entryKey];
+        setPending(p2);
+      }
+      // Bei erfolgreichem Retry-Write: alten Sync-Error auto-clearen
+      if(window._milchSyncError) { window._milchSyncError = null; window._milchErrorToastShown = false; }
+      updateSyncBanner();
+    };
     Promise.race([wp, tp])
       .then(() => {
-        // ✅ Server-Ack → direkt aus pending entfernen (keine weitere Read-Runde)
         console.log('[Milch v2] Retry-Sync Server-Ack für', entryKey);
-        const p2 = getPending();
-        if(p2[entryKey]) {
-          snapshotCows.forEach(({kuhId, wert}) => {
-            if(p2[entryKey][kuhId] && Math.abs((p2[entryKey][kuhId].wert || 0) - wert) < 0.05) {
-              delete p2[entryKey][kuhId];
-            }
-          });
-          if(Object.keys(p2[entryKey]).length === 0) delete p2[entryKey];
-          setPending(p2);
-        }
-        updateSyncBanner();
+        clearRetryPending();
       })
-      .catch(e => handleSyncError(e, 'retry-sync'));
+      .catch(async (e) => {
+        // Fix: bei Timeout READ machen — wenn Werte am Server sind → pending clearen (kein Fehler)
+        try {
+          const snap = await firebase.database().ref('milch/' + entryKey + '/prokuh').get();
+          const serverProkuh = snap.val() || {};
+          let alleDrin = true;
+          snapshotCows.forEach(({kuhId, wert}) => {
+            const sv = parseFloat(serverProkuh[kuhId]);
+            if(isNaN(sv) || Math.abs(sv - wert) >= 0.05) alleDrin = false;
+          });
+          if(alleDrin) {
+            console.log('[Milch v2] Retry-Timeout — aber ALLE Werte am Server → clear pending');
+            clearRetryPending();
+            return;
+          }
+          console.warn('[Milch v2] Retry-Timeout & Werte nicht komplett am Server → Fehler');
+        } catch(readErr) {
+          console.warn('[Milch v2] Verify-Read fehlgeschlagen:', readErr);
+        }
+        handleSyncError(e, 'retry-sync');
+      });
   });
 };
 
@@ -1045,11 +1087,10 @@ window.saveMilch = async function() {
   } catch(e) { console.warn('[Milch v2] Molkerei/Notiz:', e); }
 
   // ── VERIFIKATION: pending muss auf 0 gehen ──
-  // Jedes pushMilchWert schreibt asynchron. pending wird NUR nach echtem Server-Ack geklärt.
-  // Wir warten hier ob alle Ack's ankommen (max 15s). Bei jedem Retry-Zyklus (3s):
-  // syncMilchPending nochmal ausführen als Safety-Netz.
+  // Jedes pushMilchWert schreibt asynchron. pending wird nach Server-Ack ODER Read-Fallback geklärt.
+  // MAX_WAIT: 40s — passt zum 30s-Write-Timeout + READ-Fallback (schwache Alm-Verbindung).
   const startTime = Date.now();
-  const MAX_WAIT = 15000;
+  const MAX_WAIT = 40000;
   let lastRetry = 0;
   while(countPending() > 0 && Date.now() - startTime < MAX_WAIT) {
     if(Date.now() - lastRetry > 3000) {
@@ -1061,11 +1102,40 @@ window.saveMilch = async function() {
     if(saveBtn) saveBtn.textContent = '⏳ Warte auf Server (' + countPending() + ' offen)…';
   }
 
-  // ── Wenn NACH 15s noch pending → Fehler ──
+  // ── Wenn NACH 40s noch pending → Server-READ-Verifikation als letzter Rettungsversuch ──
+  if(countPending() > 0) {
+    // LETZTER VERIFIKATIONS-VERSUCH: für jeden pending-Wert prüfen ob er nicht doch am Server ist.
+    // Websocket-Ack kann bei schlechter Alm-Verbindung > 40s dauern, aber der Write ist längst durch.
+    try {
+      const p = getPending();
+      const eintragKeys = Object.keys(p);
+      for(const entryKey of eintragKeys) {
+        const cows = p[entryKey];
+        if(!cows) continue;
+        try {
+          const snap = await firebase.database().ref('milch/' + entryKey + '/prokuh').get();
+          const sv = snap.val() || {};
+          Object.entries(cows).forEach(([kuhId, payload]) => {
+            const server = parseFloat(sv[kuhId]);
+            if(!isNaN(server) && Math.abs(server - (payload.wert || 0)) < 0.05) {
+              const p2 = getPending();
+              if(p2[entryKey] && p2[entryKey][kuhId]) {
+                delete p2[entryKey][kuhId];
+                if(Object.keys(p2[entryKey]).length === 0) delete p2[entryKey];
+                setPending(p2);
+              }
+            }
+          });
+        } catch(e) { console.warn('[saveMilch] Verify-READ-Fallback:', e); }
+      }
+      updateSyncBanner();
+    } catch(e) { console.warn('[saveMilch] Final-Verify:', e); }
+  }
+
+  // Nach Final-Verify: wenn IMMER NOCH pending → echter Fehler
   if(countPending() > 0) {
     restoreBtn();
     const stillPending = countPending();
-    // Details der pending Werte für die Meldung
     const p = getPending();
     let details = [];
     Object.entries(p).forEach(([, cows]) => {
@@ -1076,7 +1146,7 @@ window.saveMilch = async function() {
     });
     window._milchZeigeSaveFehler(
       stillPending + ' Werte nicht am Server bestätigt',
-      'Nach 15 Sekunden Wartezeit hat der Server ' + stillPending + ' Werte noch nicht bestätigt:\n\n' +
+      'Nach 40 Sekunden Wartezeit hat der Server ' + stillPending + ' Werte noch nicht bestätigt:\n\n' +
       details.join('\n') +
       (stillPending > 8 ? '\n… und ' + (stillPending - 8) + ' weitere' : '') +
       '\n\nFormular bleibt OFFEN. Werte sind lokal gesichert und werden weiter versucht.\n\n' +
