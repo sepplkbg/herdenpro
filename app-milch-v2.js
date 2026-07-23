@@ -352,6 +352,39 @@ window.milchConfirmAllPending = async function() {
         (countPending() > 0 ? '\n' + countPending() + ' Werte übrig — sind wirklich noch nicht in Cloud' : '\n\n✓ Alles bestätigt!'));
 };
 
+// ── SMART RETRY: Token refresh → Confirm (READ) → nur echt fehlende neu schreiben ──
+// Der neue Standard-Retry der auf den Retry-Buttons hängt. Fixt den häufigsten Case
+// (Werte SIND am Server, pending hängt aber trotzdem).
+window.milchSmartRetry = async function() {
+  console.log('[Milch v2] SMART RETRY: gestartet');
+  // 1. Sync-Error clearen damit Banner sich normal updated
+  window._milchSyncError = null;
+  window._milchErrorToastShown = false;
+  updateSyncBanner();
+  // 2. Firebase-Token erneuern (falls PERMISSION_DENIED der Auslöser war)
+  try {
+    if(typeof firebase !== 'undefined' && firebase.auth) {
+      const user = firebase.auth().currentUser;
+      if(user) await user.getIdToken(true);
+      console.log('[Milch v2] SMART RETRY: Token erneuert');
+    }
+  } catch(e) { console.warn('[Milch v2] Token refresh:', e); }
+  // 3. Server-READ + auto-clear für alle pending die schon in Cloud sind
+  try {
+    const {checked, confirmed} = await _milchConfirmAllInternal(true);
+    console.log('[Milch v2] SMART RETRY: Confirm ' + confirmed + '/' + checked);
+  } catch(e) { console.warn('[Milch v2] Confirm:', e); }
+  // 4. Nur echt fehlende (die nach Confirm noch pending sind) neu schreiben
+  const stillPending = countPending();
+  if(stillPending > 0) {
+    console.log('[Milch v2] SMART RETRY: ' + stillPending + ' echt fehlende → syncMilchPending');
+    try { syncMilchPending(); } catch(e) {}
+  } else {
+    console.log('[Milch v2] SMART RETRY: alles am Server, nichts zu tun');
+    if(window.showSaveToast) window.showSaveToast('✓ Alle Werte in der Cloud gesichert');
+  }
+};
+
 // Interne Version für Auto-Aufrufe (kein Alert)
 window._milchConfirmAllPendingSilent = () => _milchConfirmAllInternal(true);
 
@@ -366,21 +399,16 @@ function handleSyncError(err, op) {
     console.log('[Milch v2] Timeout offline — ignoriert, wird bei online neu versucht');
     return;
   }
-  // Fix B: Bei PERMISSION_DENIED zuerst Token-Refresh + syncMilchPending Retry versuchen
-  // Sonst würden alle folgenden Writes auch fehlschlagen bis der Nutzer sich neu anmeldet.
+  // Fix: Bei PERMISSION_DENIED → milchSmartRetry (refresh + READ-Confirm + gezieltes syncMilchPending)
+  // Damit: Werte die AM SERVER SIND werden aus pending gecleart, auch wenn PERMISSION_DENIED noch wirkt.
   if(/permission[_-]?denied/i.test(msg) && !window._milchPermissionRetryPending) {
     window._milchPermissionRetryPending = true;
-    console.warn('[Milch v2] PERMISSION_DENIED — versuche Token-Refresh + Retry');
+    console.warn('[Milch v2] PERMISSION_DENIED — starte Smart-Retry (refresh + confirm + resync)');
     (async () => {
-      try {
-        const user = firebase.auth && firebase.auth().currentUser;
-        if(user) await user.getIdToken(true);
-        await new Promise(r => setTimeout(r, 400));
-        try { syncMilchPending(); } catch(e) {}
-      } catch(e) { console.warn('[Milch v2] Refresh in handleSyncError:', e); }
-      finally { setTimeout(() => { window._milchPermissionRetryPending = false; }, 5000); }
+      try { if(window.milchSmartRetry) await window.milchSmartRetry(); }
+      catch(e) { console.warn('[Milch v2] SmartRetry in handleSyncError:', e); }
+      finally { setTimeout(() => { window._milchPermissionRetryPending = false; }, 8000); }
     })();
-    // Kein Fehler-Banner setzen — der Retry hat 5s Zeit, dann erst als Fehler zeigen
     return;
   }
   // Persistent speichern damit updateSyncBanner nicht überschreibt
@@ -722,7 +750,7 @@ window.updateSyncBanner = function() {
     stateClass = 'milch-sync-error';
     iconEmoji = '❌';
     msg = 'Sync-Fehler: ' + window._milchSyncError.msg.slice(0, 60);
-    actionBtn = '<button class="milch-sync-action" onclick="clearMilchSyncError();syncMilchPending()">Retry</button>';
+    actionBtn = '<button class="milch-sync-action" onclick="milchSmartRetry()">Retry</button>';
   } else if(konfl > 0) {
     stateClass = 'milch-sync-error';
     iconEmoji = '⚠';
@@ -740,7 +768,7 @@ window.updateSyncBanner = function() {
     stateClass = 'milch-sync-pending';
     iconEmoji = '📤';
     msg = n + ' Wert' + (n > 1 ? 'e' : '') + ' werden übertragen…';
-    actionBtn = '<button class="milch-sync-action" onclick="syncMilchPending()">Jetzt versuchen</button>';
+    actionBtn = '<button class="milch-sync-action" onclick="milchSmartRetry()">Jetzt versuchen</button>';
   } else {
     stateClass = 'milch-sync-ok';
     iconEmoji = '✓';
@@ -771,6 +799,19 @@ window.updateSyncBanner = function() {
 
 // ── Debug: zeigt was in pending steckt (mit Aktions-Buttons) ──
 window.showMilchPendingDetails = function() {
+  // Beim Öffnen: sofort still confirmen — cleart alle pending die schon am Server sind.
+  // Damit du direkt den echten Zustand siehst und nicht 40 Zombie-Einträge.
+  const _pBefore = countPending();
+  if(_pBefore > 0 && window._milchConfirmAllPendingSilent) {
+    window._milchConfirmAllPendingSilent().then(() => {
+      const after = countPending();
+      if(after !== _pBefore) {
+        // Popup neu rendern mit aktuellem Stand
+        setTimeout(() => window.showMilchPendingDetails(), 50);
+      }
+    }).catch(() => {});
+  }
+
   const p = getPending();
   const entries = Object.entries(p);
 
@@ -839,7 +880,7 @@ window.showMilchPendingDetails = function() {
         '<div style="display:flex;gap:.5rem;margin-top:1rem;padding-top:.8rem;border-top:1px solid var(--border);flex-wrap:wrap">' +
           '<button class="btn-secondary" style="flex:1;min-width:7rem;background:rgba(77,184,78,.15);border-color:var(--green);color:var(--green)" onclick="milchConfirmAllPending();setTimeout(showMilchPendingDetails,1500)">🔍 Bestätigen</button>' +
           '<button class="btn-secondary" style="flex:1;min-width:7rem" onclick="milchTestWrite()">🧪 Test-Write</button>' +
-          '<button class="btn-secondary" style="flex:1;min-width:7rem" onclick="syncMilchPending();setTimeout(showMilchPendingDetails,1500)">🔄 Retry alle</button>' +
+          '<button class="btn-secondary" style="flex:1;min-width:7rem" onclick="milchSmartRetry();setTimeout(showMilchPendingDetails,1500)">🔄 Retry alle</button>' +
           '<button class="btn-secondary" style="flex:1;min-width:7rem;background:rgba(74,184,232,.15);border-color:#4ab8e8;color:#4ab8e8" onclick="milchForceReconnect();setTimeout(showMilchPendingDetails,3000)">🔌 Neu verbinden</button>' +
           '<button style="flex:1;min-width:7rem;background:rgba(200,60,60,.15);border:1px solid rgba(200,60,60,.5);color:#e05a5a;padding:.5rem;border-radius:8px;font-family:inherit;cursor:pointer;font-weight:600" onclick="clearMilchPending();document.getElementById(\'milch-debug-overlay\').remove()">🗑 ALLE verwerfen</button>' +
         '</div>' +
@@ -1735,10 +1776,18 @@ window.addEventListener('load', () => {
   setTimeout(toggleSystemOfflineBanner, 500);
 });
 
-// Retry-Loop alle 30s
+// Retry-Loop alle 30s: Smart Retry (READ-Confirm bevor neu geschrieben wird)
 setInterval(() => {
   if(navigator.onLine && countPending() > 0) {
-    syncMilchPending();
+    // Erst still confirmen (Werte die schon am Server sind → aus pending raus)
+    if(window._milchConfirmAllPendingSilent) {
+      window._milchConfirmAllPendingSilent().then(() => {
+        // Dann nur den Rest neu schreiben
+        if(countPending() > 0) syncMilchPending();
+      }).catch(() => { syncMilchPending(); });
+    } else {
+      syncMilchPending();
+    }
   }
 }, 30000);
 
