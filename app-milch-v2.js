@@ -2,7 +2,7 @@
 //  HERDENPRO – MILCH v2  (LocalStorage-first Persistence)
 //  MODUL-VERSION: 5.0  ← wenn du das siehst, ist der Fix geladen
 // ══════════════════════════════════════════════════════════════
-window.MILCH_V2_VERSION = '5.3';
+window.MILCH_V2_VERSION = '5.4';
 //  Löst die alten Probleme (Datenverlust, hängende Saves offline,
 //  Multi-Melker-Kollisionen, Aggregations-Verdopplung).
 //
@@ -305,30 +305,39 @@ function confirmMilchPendingDirect(entryKey, kuhId, expectedWert) {
     .catch(e => console.warn('[Milch v2] Direkt-Bestätigung read err:', e));
 }
 
+// ── REST-basierter Server-Read (bypasst Firebase-SDK-Cache komplett) ──
+// KRITISCH: .get()/.once() im SDK können Werte aus lokalem Cache zurückgeben, auch wenn
+// der Write auf dem Server mit PERMISSION_DENIED abgelehnt wurde. Deshalb REST.
+async function _milchRestGet(path) {
+  if(typeof firebase === 'undefined' || !firebase.auth) throw new Error('Firebase nicht geladen');
+  const user = firebase.auth().currentUser;
+  if(!user) throw new Error('Kein Auth-User (currentUser == null)');
+  const token = await user.getIdToken(false);
+  const dbUrl = (window.FIREBASE_CONFIG && window.FIREBASE_CONFIG.databaseURL) || '';
+  if(!dbUrl) throw new Error('Keine databaseURL');
+  const url = dbUrl.replace(/\/$/, '') + '/' + path.replace(/^\//, '') + '.json?auth=' + encodeURIComponent(token);
+  const res = await fetch(url, { method: 'GET', cache: 'no-store' });
+  if(!res.ok) throw new Error('REST ' + res.status + ' ' + res.statusText);
+  return await res.json();
+}
+
 // ── Alle Pending gegen Firebase abgleichen (Bestätigung erzwingen) ──
-// silent=true → kein Alert, für Auto-Aufrufe.
-// Nutzt .get() (echter SERVER-Fetch) statt .once() (lokaler Cache).
+// Nutzt REST statt SDK — garantiert echter Server-Zustand.
 async function _milchConfirmAllInternal(silent) {
   if(typeof firebase === 'undefined' || !firebase.database) return {checked:0, confirmed:0, errors:0};
   const p = getPending();
   const entries = Object.entries(p);
   if(entries.length === 0) return {checked:0, confirmed:0, errors:0};
   let confirmed = 0, checked = 0, errors = 0;
-  console.log('[Milch v2] confirmAll START: ' + entries.length + ' Termine');
+  console.log('[Milch v2] confirmAll START (REST): ' + entries.length + ' Termine');
   for(const [entryKey, cows] of entries) {
     try {
-      // .get() ist echter Server-Read (bypasst lokalen Firebase-Cache).
-      // Fallback: wenn .get() nicht existiert (alter SDK) → .once('value').
-      const ref = firebase.database().ref('milch/' + entryKey);
-      let snap;
-      if(typeof ref.get === 'function') {
-        snap = await ref.get();
-      } else {
-        snap = await ref.once('value');
-      }
-      const val = snap.val();
+      // REST-GET: echte Server-Daten, KEIN lokaler Cache
+      const val = await _milchRestGet('milch/' + entryKey);
       if(!val || !val.prokuh) {
         console.log('[Milch v2] confirmAll ' + entryKey + ': KEIN val.prokuh am Server');
+        // KEINE cows dieses Termins bestätigen (Werte sind nicht am Server!)
+        for(const [kuhId] of Object.entries(cows)) { checked++; }
         continue;
       }
       for(const [kuhId, payload] of Object.entries(cows)) {
@@ -356,7 +365,7 @@ async function _milchConfirmAllInternal(silent) {
       console.warn('[Milch v2] confirmAll err für ' + entryKey + ':', e);
     }
   }
-  console.log('[Milch v2] confirmAll ENDE: ' + confirmed + '/' + checked + ' bestätigt, ' + errors + ' Fehler');
+  console.log('[Milch v2] confirmAll ENDE (REST): ' + confirmed + '/' + checked + ' bestätigt, ' + errors + ' Fehler');
   updateSyncBanner();
   return {checked, confirmed, errors};
 }
@@ -372,6 +381,79 @@ window.milchConfirmAllPending = async function() {
         checked + ' Werte geprüft\n' +
         confirmed + ' Werte als synced markiert\n' +
         (countPending() > 0 ? '\n' + countPending() + ' Werte übrig — sind wirklich noch nicht in Cloud' : '\n\n✓ Alles bestätigt!'));
+};
+
+// ── RECOVERY: Werte aus Firebase-SDK-Cache holen und mit Server abgleichen ──
+// Wenn Werte fälschlich als "in Cloud" markiert wurden aber am Server fehlen (weil
+// PERMISSION_DENIED beim Write): findet sie im lokalen milchEintraege-Cache und
+// pusht sie sauber neu zum Server.
+window.milchRecoverLostValues = async function() {
+  if(typeof firebase === 'undefined' || !firebase.auth || !firebase.auth().currentUser) {
+    alert('❌ Bitte zuerst neu anmelden (currentUser == null)');
+    return;
+  }
+  console.log('[Milch v2] RECOVERY: Start');
+  const localEintraege = window.milchEintraege || {};
+  const heuteIso = new Date().toISOString().slice(0,10);
+  const gestern = new Date(Date.now() - 24*3600*1000).toISOString().slice(0,10);
+  // Vergleiche für die letzten 2 Tage: lokal vs. Server via REST
+  const zuPushen = [];   // [{entryKey, kuhId, wert}]
+  const eintrageKeys = Object.keys(localEintraege);
+  for(const entryKey of eintrageKeys) {
+    const local = localEintraege[entryKey];
+    if(!local || !local.prokuh) continue;
+    // Nur letzte 2 Tage (Recovery ist für frische Werte)
+    const localDay = (entryKey.match(/^v2_(\d{4}-\d{2}-\d{2})_/) || [])[1];
+    if(localDay !== heuteIso && localDay !== gestern) continue;
+    try {
+      const serverVal = await _milchRestGet('milch/' + entryKey);
+      const serverProkuh = (serverVal && serverVal.prokuh) || {};
+      Object.entries(local.prokuh).forEach(([kuhId, val]) => {
+        const localW = parseFloat(val && val.wert != null ? val.wert : val) || 0;
+        if(localW <= 0) return;
+        const serverW = parseFloat(serverProkuh[kuhId]);
+        if(isNaN(serverW) || Math.abs(serverW - localW) >= 0.05) {
+          zuPushen.push({entryKey, kuhId, wert: localW});
+        }
+      });
+    } catch(e) { console.warn('[Recovery] REST err:', e); }
+  }
+
+  if(zuPushen.length === 0) {
+    alert('✓ Alles konsistent — nichts wiederherzustellen.\n\nAlle lokalen Werte für heute/gestern sind auch am Server.');
+    return;
+  }
+
+  const ok = confirm(
+    '🔧 RECOVERY: ' + zuPushen.length + ' Werte gefunden die LOKAL da sind aber NICHT am Server.\n\n' +
+    'Wenn du OK klickst, werden sie ins Pending gelegt und automatisch hochgeladen.\n\n' +
+    'Beispiele:\n' +
+    zuPushen.slice(0, 5).map(z => {
+      const k = (window.kuehe||{})[z.kuhId];
+      return '  · #' + (k?.nr||'?') + ' ' + (k?.name||'?') + ': ' + z.wert + ' L';
+    }).join('\n') +
+    (zuPushen.length > 5 ? '\n  … und ' + (zuPushen.length - 5) + ' weitere' : '')
+  );
+  if(!ok) return;
+
+  // Zurück in pending legen und sync starten
+  const p = getPending();
+  const sessionId = getMilchSessionId();
+  const userUid = window.getMilchUserUid();
+  const userName = getUserName();
+  const now = Date.now();
+  zuPushen.forEach(({entryKey, kuhId, wert}) => {
+    if(!p[entryKey]) p[entryKey] = {};
+    p[entryKey][kuhId] = { wert: wert, session: sessionId, userUid: userUid, userName: userName, ts: now };
+  });
+  setPending(p);
+  updateSyncBanner();
+  console.log('[Milch v2] RECOVERY: ' + zuPushen.length + ' Werte ins Pending gelegt → sync');
+  syncMilchPending();
+  setTimeout(() => {
+    alert('✓ Recovery gestartet — ' + zuPushen.length + ' Werte werden hochgeladen.\n\n' +
+          'In 30 Sekunden auf "?"-Icon tippen zum Prüfen.');
+  }, 500);
 };
 
 // ── SMART RETRY: Auth-Check → Token refresh → Confirm (READ) → gezielter Write ──
@@ -920,6 +1002,7 @@ window.showMilchPendingDetails = function() {
           '<button class="btn-secondary" style="flex:1;min-width:7rem;background:rgba(77,184,78,.15);border-color:var(--green);color:var(--green)" onclick="milchConfirmAllPending();setTimeout(showMilchPendingDetails,1500)">🔍 Bestätigen</button>' +
           '<button class="btn-secondary" style="flex:1;min-width:7rem" onclick="milchTestWrite()">🧪 Test-Write</button>' +
           '<button class="btn-secondary" style="flex:1;min-width:7rem" onclick="milchSmartRetry();setTimeout(showMilchPendingDetails,1500)">🔄 Retry alle</button>' +
+          '<button class="btn-secondary" style="flex:1;min-width:7rem;background:rgba(255,150,50,.15);border-color:#ff9632;color:#ff9632" onclick="milchRecoverLostValues()" title="Werte die lokal noch da sind aber am Server fehlen zurückholen">🔧 Recovery</button>' +
           '<button class="btn-secondary" style="flex:1;min-width:7rem;background:rgba(74,184,232,.15);border-color:#4ab8e8;color:#4ab8e8" onclick="milchForceReconnect();setTimeout(showMilchPendingDetails,3000)">🔌 Neu verbinden</button>' +
           '<button style="flex:1;min-width:7rem;background:rgba(200,60,60,.15);border:1px solid rgba(200,60,60,.5);color:#e05a5a;padding:.5rem;border-radius:8px;font-family:inherit;cursor:pointer;font-weight:600" onclick="clearMilchPending();document.getElementById(\'milch-debug-overlay\').remove()">🗑 ALLE verwerfen</button>' +
         '</div>' +
