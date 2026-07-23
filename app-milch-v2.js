@@ -1033,14 +1033,15 @@ window.saveMilch = async function() {
     window._milchInputTimers = {};
   }
 
-  // ── Molkerei/Notiz zusätzlich schreiben ──
+  // ── Molkerei/Notiz zusätzlich schreiben (mit Auth-Retry) ──
   const molkerei = document.getElementById('m-molkerei')?.checked || false;
   const notiz = document.getElementById('m-notiz')?.value.trim() || '';
   const entryKey = getMilchEntryKey(datum, zeit);
   try {
-    await firebase.database().ref('milch/' + entryKey).update({
+    const _retryMN = window.withAuthRetry || (async fn => await fn());
+    await _retryMN(() => firebase.database().ref('milch/' + entryKey).update({
       molkerei: molkerei, notiz: notiz, lastUpdate: Date.now()
-    });
+    }));
   } catch(e) { console.warn('[Milch v2] Molkerei/Notiz:', e); }
 
   // ── VERIFIKATION: pending muss auf 0 gehen ──
@@ -1140,15 +1141,16 @@ window.saveMilch = async function() {
               }
             });
           }
+          const _retryCleanup = window.withAuthRetry || (async fn => await fn());
           if(Object.keys(updates).length > 0) {
-            await firebase.database().ref('milch/' + origEntryKey).update(updates);
+            await _retryCleanup(() => firebase.database().ref('milch/' + origEntryKey).update(updates));
             console.log('[Milch v2] Alte Werte am Termin', origEntryKey, 'entfernt:', Object.keys(updates).length / 2);
           }
           // Wenn danach der alte Eintrag komplett leer ist, ganz löschen
           const nachSnap = await firebase.database().ref('milch/' + origEntryKey + '/prokuh').once('value');
           const nachProkuh = nachSnap.val();
           if(!nachProkuh || Object.keys(nachProkuh).length === 0) {
-            await firebase.database().ref('milch/' + origEntryKey).remove();
+            await _retryCleanup(() => firebase.database().ref('milch/' + origEntryKey).remove());
             console.log('[Milch v2] Alter Eintrag komplett gelöscht:', origEntryKey);
           }
         }
