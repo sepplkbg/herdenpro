@@ -2,7 +2,7 @@
 //  HERDENPRO – MILCH v2  (LocalStorage-first Persistence)
 //  MODUL-VERSION: 5.0  ← wenn du das siehst, ist der Fix geladen
 // ══════════════════════════════════════════════════════════════
-window.MILCH_V2_VERSION = '5.0';
+window.MILCH_V2_VERSION = '5.3';
 //  Löst die alten Probleme (Datenverlust, hängende Saves offline,
 //  Multi-Melker-Kollisionen, Aggregations-Verdopplung).
 //
@@ -306,22 +306,38 @@ function confirmMilchPendingDirect(entryKey, kuhId, expectedWert) {
 }
 
 // ── Alle Pending gegen Firebase abgleichen (Bestätigung erzwingen) ──
-// silent=true → kein Alert, für Auto-Aufrufe
+// silent=true → kein Alert, für Auto-Aufrufe.
+// Nutzt .get() (echter SERVER-Fetch) statt .once() (lokaler Cache).
 async function _milchConfirmAllInternal(silent) {
-  if(typeof firebase === 'undefined' || !firebase.database) return {checked:0, confirmed:0};
+  if(typeof firebase === 'undefined' || !firebase.database) return {checked:0, confirmed:0, errors:0};
   const p = getPending();
   const entries = Object.entries(p);
-  if(entries.length === 0) return {checked:0, confirmed:0};
-  let confirmed = 0, checked = 0;
+  if(entries.length === 0) return {checked:0, confirmed:0, errors:0};
+  let confirmed = 0, checked = 0, errors = 0;
+  console.log('[Milch v2] confirmAll START: ' + entries.length + ' Termine');
   for(const [entryKey, cows] of entries) {
     try {
-      const snap = await firebase.database().ref('milch/' + entryKey).once('value');
+      // .get() ist echter Server-Read (bypasst lokalen Firebase-Cache).
+      // Fallback: wenn .get() nicht existiert (alter SDK) → .once('value').
+      const ref = firebase.database().ref('milch/' + entryKey);
+      let snap;
+      if(typeof ref.get === 'function') {
+        snap = await ref.get();
+      } else {
+        snap = await ref.once('value');
+      }
       const val = snap.val();
-      if(!val || !val.prokuh) continue;
+      if(!val || !val.prokuh) {
+        console.log('[Milch v2] confirmAll ' + entryKey + ': KEIN val.prokuh am Server');
+        continue;
+      }
       for(const [kuhId, payload] of Object.entries(cows)) {
         checked++;
         const fbVal = val.prokuh[kuhId];
-        if(fbVal == null) continue;
+        if(fbVal == null) {
+          console.log('[Milch v2] confirmAll ' + kuhId + ': NICHT am Server');
+          continue;
+        }
         const num = parseFloat(fbVal) || (fbVal && fbVal.wert) || 0;
         if(Math.abs(num - payload.wert) < 0.05) {
           const pNow = getPending();
@@ -331,12 +347,18 @@ async function _milchConfirmAllInternal(silent) {
             setPending(pNow);
             confirmed++;
           }
+        } else {
+          console.log('[Milch v2] confirmAll ' + kuhId + ': Werte weichen ab (Server:' + num + ' vs Pending:' + payload.wert + ')');
         }
       }
-    } catch(e) { console.warn('[Milch v2] confirmAll err:', e); }
+    } catch(e) {
+      errors++;
+      console.warn('[Milch v2] confirmAll err für ' + entryKey + ':', e);
+    }
   }
+  console.log('[Milch v2] confirmAll ENDE: ' + confirmed + '/' + checked + ' bestätigt, ' + errors + ' Fehler');
   updateSyncBanner();
-  return {checked, confirmed};
+  return {checked, confirmed, errors};
 }
 
 window.milchConfirmAllPending = async function() {
@@ -352,29 +374,43 @@ window.milchConfirmAllPending = async function() {
         (countPending() > 0 ? '\n' + countPending() + ' Werte übrig — sind wirklich noch nicht in Cloud' : '\n\n✓ Alles bestätigt!'));
 };
 
-// ── SMART RETRY: Token refresh → Confirm (READ) → nur echt fehlende neu schreiben ──
-// Der neue Standard-Retry der auf den Retry-Buttons hängt. Fixt den häufigsten Case
-// (Werte SIND am Server, pending hängt aber trotzdem).
+// ── SMART RETRY: Auth-Check → Token refresh → Confirm (READ) → gezielter Write ──
 window.milchSmartRetry = async function() {
   console.log('[Milch v2] SMART RETRY: gestartet');
+
+  // 0. KRITISCH: Prüfen ob Firebase-Auth überhaupt einen User hat.
+  // Wenn currentUser == null → Firebase weiß nicht dass wir angemeldet sind
+  // → jeder Write wird PERMISSION_DENIED (Rules: auth != null).
+  // Dann hilft Token-Refresh nicht — User muss sich neu anmelden.
+  const hasAuth = typeof firebase !== 'undefined' && firebase.auth && firebase.auth().currentUser;
+  if(!hasAuth) {
+    console.warn('[Milch v2] SMART RETRY: firebase.auth().currentUser == NULL — Neu-Anmeldung nötig');
+    // Persistente Fehler-Meldung setzen die klar sagt was zu tun ist
+    window._milchSyncError = {
+      msg: 'Firebase-Session ist abgemeldet. Bitte in Einstellungen → Abmelden → neu anmelden. Deine ' + countPending() + ' Werte bleiben lokal gesichert.',
+      op: 'auth-missing',
+      ts: Date.now()
+    };
+    updateSyncBanner();
+    if(window.showSaveToast) window.showSaveToast('❌ Firebase abgemeldet — bitte neu anmelden');
+    return;
+  }
+
   // 1. Sync-Error clearen damit Banner sich normal updated
   window._milchSyncError = null;
   window._milchErrorToastShown = false;
   updateSyncBanner();
-  // 2. Firebase-Token erneuern (falls PERMISSION_DENIED der Auslöser war)
+  // 2. Token erneuern
   try {
-    if(typeof firebase !== 'undefined' && firebase.auth) {
-      const user = firebase.auth().currentUser;
-      if(user) await user.getIdToken(true);
-      console.log('[Milch v2] SMART RETRY: Token erneuert');
-    }
+    await firebase.auth().currentUser.getIdToken(true);
+    console.log('[Milch v2] SMART RETRY: Token erneuert');
   } catch(e) { console.warn('[Milch v2] Token refresh:', e); }
-  // 3. Server-READ + auto-clear für alle pending die schon in Cloud sind
+  // 3. Server-READ + auto-clear
   try {
     const {checked, confirmed} = await _milchConfirmAllInternal(true);
     console.log('[Milch v2] SMART RETRY: Confirm ' + confirmed + '/' + checked);
   } catch(e) { console.warn('[Milch v2] Confirm:', e); }
-  // 4. Nur echt fehlende (die nach Confirm noch pending sind) neu schreiben
+  // 4. Rest neu schreiben
   const stillPending = countPending();
   if(stillPending > 0) {
     console.log('[Milch v2] SMART RETRY: ' + stillPending + ' echt fehlende → syncMilchPending');
@@ -859,6 +895,9 @@ window.showMilchPendingDetails = function() {
           '<b>Modul-Version:</b> v' + (window.MILCH_V2_VERSION || '?') + '<br>' +
           '<b>Session-ID:</b> <span style="font-family:monospace;font-size:.7rem">' + getMilchSessionId() + '</span><br>' +
           '<b>Firebase geladen:</b> ' + (typeof firebase !== 'undefined' && firebase.database ? 'ja' : 'NEIN!') + '<br>' +
+          '<b>Firebase-Auth-User:</b> ' + (typeof firebase !== 'undefined' && firebase.auth && firebase.auth().currentUser
+            ? '<span style="color:var(--green)">✓ ' + (firebase.auth().currentUser.email || firebase.auth().currentUser.uid.slice(0,8)) + '</span>'
+            : '<span style="color:#e05a5a">❌ NULL — nicht authentifiziert! → Neu anmelden</span>') + '<br>' +
           '<b>navigator.onLine:</b> ' + navigator.onLine + '<br>' +
           '<b>Firebase-Socket:</b> <span id="milch-debug-conn">wird geprüft…</span><br>' +
           '<b>Ausstehend:</b> ' + total + ' Wert' + (total > 1 ? 'e' : '') +
