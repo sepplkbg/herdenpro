@@ -4497,6 +4497,20 @@ function initAuth() {
       // Fix A: Auto-Token-Refresh starten (alle 25 min proaktiv erneuern)
       try { if(typeof window.startAuthRefreshLoop === 'function') window.startAuthRefreshLoop(); } catch(e) {}
 
+      // Nach Login: wenn Flag "milch_autoRetryAfterLogin" gesetzt → automatisch SmartRetry
+      // (User kam über den "🔑 Neu anmelden"-Banner-Button hierher zurück)
+      try {
+        if(localStorage.getItem('milch_autoRetryAfterLogin') === '1') {
+          localStorage.removeItem('milch_autoRetryAfterLogin');
+          setTimeout(() => {
+            if(typeof window.milchSmartRetry === 'function') {
+              window.milchSmartRetry();
+              if(window.showSaveToast) window.showSaveToast('🔑 Angemeldet — Werte werden hochgeladen…');
+            }
+          }, 2500);  // warten bis Firebase-Auth wirklich propagiert ist
+        }
+      } catch(e) {}
+
       if(!fastPath) {
         // Fast-Path nicht gelaufen → jetzt App zeigen
         zeigeApp();
@@ -4515,9 +4529,40 @@ function initAuth() {
 
       if(window._userExplicitlyLoggedOut) {
         window._userExplicitlyLoggedOut = false;
+        // Bei explizitem Logout: gespeicherte Credentials LÖSCHEN (User will wirklich raus)
+        try { localStorage.removeItem('hp_autoauth'); } catch(e) {}
         window._handleAuthLogout();
         return;
       }
+
+      // ── AUTO-LOGIN: bei verlorener Firebase-Session automatisch mit gespeicherten Credentials neu anmelden ──
+      // Passiert bei iOS Safari + Android Chrome wenn IndexedDB-Auth-Daten verloren gehen.
+      // User merkt idealerweise nichts — App loggt sich still im Hintergrund neu ein.
+      try {
+        const stored = localStorage.getItem('hp_autoauth');
+        if(stored && !window._autoLoginTried) {
+          window._autoLoginTried = true;
+          setTimeout(() => { window._autoLoginTried = false; }, 60000);  // Rate-Limit: nur 1x pro Minute versuchen
+          try {
+            const decoded = JSON.parse(decodeURIComponent(escape(atob(stored))));
+            if(decoded && decoded.e && decoded.p) {
+              console.log('[Auth] Firebase-Session weg → Auto-Login mit gespeicherten Credentials…');
+              firebase.auth().signInWithEmailAndPassword(decoded.e, decoded.p)
+                .then(() => console.log('[Auth] Auto-Login OK'))
+                .catch(err => {
+                  console.warn('[Auth] Auto-Login fehlgeschlagen:', err.code || err.message);
+                  // Bei falschem Passwort (User hat es geändert): Credentials löschen, Login zeigen
+                  if(err.code === 'auth/wrong-password' || err.code === 'auth/invalid-credential' || err.code === 'auth/user-not-found') {
+                    try { localStorage.removeItem('hp_autoauth'); } catch(e) {}
+                    if(!fastPath) window._handleAuthLogout();
+                  }
+                  // Bei Netz-Fehler: einfach ignorieren, User bleibt im Fast-Path
+                });
+              return;
+            }
+          } catch(e) { console.warn('[Auth] hp_autoauth decode fail:', e); }
+        }
+      } catch(e) {}
 
       if(!fastPath) {
         // Frische Installation, kein Cache → Login zeigen
@@ -5883,11 +5928,12 @@ window.doLogout = async function() {
   try {
     await firebase.auth().signOut();
   } catch(e) { console.warn('signOut err:', e); }
-  // Fast-Path-Cache löschen — sonst würde beim nächsten Start automatisch angemeldet
+  // Fast-Path-Cache UND gespeicherte Auto-Login-Credentials löschen
   try {
     const uid = localStorage.getItem('lastAuthUid');
     if(uid) localStorage.removeItem('cache_userProfile_' + uid);
     localStorage.removeItem('lastAuthUid');
+    localStorage.removeItem('hp_autoauth');  // Auto-Login deaktivieren
   } catch(e) {}
   window._currentUser = null;
   window._currentRole = null;

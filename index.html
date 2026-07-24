@@ -19,11 +19,11 @@
 ═══════════════════════════════════════════════════════════════════════════ -->
 <script>
 // Force clear cache if version changed
-if(localStorage.getItem('hp_version') !== 'v45.4') {
+if(localStorage.getItem('hp_version') !== 'v46.0') {
   localStorage.removeItem('mainNav');
   localStorage.removeItem('mehrOrder');
   localStorage.removeItem('mehrOrder');
-  localStorage.setItem('hp_version','v45.4');
+  localStorage.setItem('hp_version','v46.0');
   // Force SW update
   if('serviceWorker' in navigator) {
     navigator.serviceWorker.getRegistrations().then(function(regs) {
@@ -39,8 +39,8 @@ if(localStorage.getItem('hp_version') !== 'v45.4') {
       });
     }
     // Reload once after clearing
-    if(!sessionStorage.getItem('reloaded_v45_4')) {
-      sessionStorage.setItem('reloaded_v45_4','1');
+    if(!sessionStorage.getItem('reloaded_v46_0')) {
+      sessionStorage.setItem('reloaded_v46_0','1');
       window.location.reload(true);
     }
   }
@@ -123,6 +123,13 @@ window.doLogin = async function() {
     if(btn){btn.textContent='⏳ Anmelden…';btn.disabled=true;}
     try {
       await firebase.auth().signInWithEmailAndPassword(email, pw);
+      // Auto-Login: Credentials speichern damit App sich bei verlorener Session automatisch neu anmeldet.
+      // Ohne diese Speicherung müsste der User manuell neu anmelden wenn Firebase die Session verliert
+      // (passiert regelmäßig auf iOS + Android durch IndexedDB-Eviction).
+      try {
+        var packed = btoa(unescape(encodeURIComponent(JSON.stringify({e: email, p: pw}))));
+        localStorage.setItem('hp_autoauth', packed);
+      } catch(x) { console.warn('Auto-Login speichern:', x); }
       // onAuthStateChanged übernimmt den Rest
     } catch(e) {
       var msgs = {
