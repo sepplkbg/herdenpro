@@ -5,7 +5,7 @@
 //  Offline → Job in localStorage queuen, beim Online-Werden nachliefern.
 // ══════════════════════════════════════════════════════════════════════════════
 (function() {
-  const VERSION = '1.0';
+  const VERSION = '1.1';
   const SETTINGS_KEY = 'milch_email_settings_v1';
   const QUEUE_KEY = 'milch_email_queue_v1';
   const DEBOUNCE_MS = 30000;  // 30 Sekunden warten nach letztem Save
@@ -114,28 +114,87 @@
       gesamtTag += g.gesamt;
     });
 
+    // ── LANG-FORMAT (eine Zeile pro Kuh) für die Email-Anzeige ──
+    // Viel lesbarer als das WIDE-Format vom CSV (das für Excel-Import bleibt).
+    const gesMorgen = grup.morgen ? grup.morgen.gesamt : 0;
+    const gesAbend  = grup.abend  ? grup.abend.gesamt  : 0;
+    const molkereiMorgen = grup.morgen ? grup.morgen.molkerei : false;
+    const molkereiAbend  = grup.abend  ? grup.abend.molkerei  : false;
+    const notizenAlle = [];
+    if(grup.morgen && grup.morgen.notizen.length) notizenAlle.push('Morgens: ' + grup.morgen.notizen.join(' · '));
+    if(grup.abend && grup.abend.notizen.length)  notizenAlle.push('Abends: ' + grup.abend.notizen.join(' · '));
+
+    const escapeHtml = (s) => String(s||'').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c]);
+    const fmt = (v) => (v == null || v === 0) ? '–' : String(Math.round(v*10)/10).replace('.',',');
+
+    // HTML-Tabelle (eine Zeile pro Kuh, morgens + abends nebeneinander)
+    let tableRows = '';
+    sortedIds.forEach(id => {
+      const k = kuehe[id];
+      const nr = k?.nr || '?';
+      const nam = escapeHtml(k?.name || '');
+      const m = grup.morgen ? grup.morgen.prokuh[id] : null;
+      const a = grup.abend  ? grup.abend.prokuh[id]  : null;
+      const total = (parseFloat(m)||0) + (parseFloat(a)||0);
+      tableRows += '<tr>' +
+        '<td style="padding:4px 8px;border-bottom:1px solid #e5e5e5;color:#888;font-weight:600;text-align:right">#' + escapeHtml(nr) + '</td>' +
+        '<td style="padding:4px 8px;border-bottom:1px solid #e5e5e5">' + nam + '</td>' +
+        '<td style="padding:4px 8px;border-bottom:1px solid #e5e5e5;text-align:right;font-family:monospace">' + fmt(m) + '</td>' +
+        '<td style="padding:4px 8px;border-bottom:1px solid #e5e5e5;text-align:right;font-family:monospace">' + fmt(a) + '</td>' +
+        '<td style="padding:4px 8px;border-bottom:1px solid #e5e5e5;text-align:right;font-family:monospace;font-weight:700">' + fmt(total) + '</td>' +
+      '</tr>';
+    });
+
+    const htmlTable = '' +
+      '<div style="font-family:Georgia,serif;color:#2a2a2a;line-height:1.5;max-width:640px">' +
+        '<h2 style="color:#8b6914;border-bottom:2px solid #d4a84b;padding-bottom:6px;margin-bottom:12px">🥛 Milchmessung ' + escapeHtml(datumStr) + '</h2>' +
+        '<table style="border-collapse:collapse;margin-bottom:16px;font-size:14px">' +
+          '<tr><td style="padding:2px 12px 2px 0;color:#666">Morgens gesamt</td><td style="padding:2px 0;font-weight:700">' + fmt(gesMorgen) + ' L' + (molkereiMorgen ? ' <span style="color:#8b6914;font-weight:400">· 🏭 Molkerei</span>' : '') + '</td></tr>' +
+          '<tr><td style="padding:2px 12px 2px 0;color:#666">Abends gesamt</td><td style="padding:2px 0;font-weight:700">' + fmt(gesAbend) + ' L' + (molkereiAbend ? ' <span style="color:#8b6914;font-weight:400">· 🏭 Molkerei</span>' : '') + '</td></tr>' +
+          '<tr style="border-top:1px solid #ccc"><td style="padding:6px 12px 2px 0;color:#000;font-weight:700">Tages-Total</td><td style="padding:6px 0;font-weight:700;font-size:16px;color:#8b6914">' + fmt(gesamtTag) + ' L</td></tr>' +
+        '</table>' +
+        '<table style="border-collapse:collapse;width:100%;font-size:13px;background:#fafafa;border:1px solid #e5e5e5">' +
+          '<thead><tr style="background:#f0f0f0;font-size:11px;text-transform:uppercase;letter-spacing:0.05em;color:#666">' +
+            '<th style="padding:6px 8px;text-align:right">Nr</th>' +
+            '<th style="padding:6px 8px;text-align:left">Kuh</th>' +
+            '<th style="padding:6px 8px;text-align:right">Morgens</th>' +
+            '<th style="padding:6px 8px;text-align:right">Abends</th>' +
+            '<th style="padding:6px 8px;text-align:right">Total</th>' +
+          '</tr></thead>' +
+          '<tbody>' + tableRows + '</tbody>' +
+        '</table>' +
+        (notizenAlle.length ? '<p style="margin-top:12px;padding:8px 12px;background:#fff9e5;border-left:3px solid #d4a84b;color:#555;font-size:13px"><strong>📝 Notizen:</strong><br>' + escapeHtml(notizenAlle.join('\n')).replace(/\n/g,'<br>') + '</p>' : '') +
+        '<p style="margin-top:20px;color:#aaa;font-size:11px;font-style:italic">Automatisch verschickt von HerdenPro nach der Milchmessung.</p>' +
+      '</div>';
+
     return {
       csv: csv,
+      html: htmlTable,
       datumStr: datumStr,
       gesamtTag: Math.round(gesamtTag * 10) / 10,
+      gesMorgen: Math.round(gesMorgen * 10) / 10,
+      gesAbend: Math.round(gesAbend * 10) / 10,
       hatMorgen: !!grup.morgen,
       hatAbend: !!grup.abend
     };
   }
 
-  // ── Email-Body bauen (HTML + Text-Fallback) ──
+  // ── Email-Body bauen ──
+  // Variablen für EmailJS Template:
+  //   {{subject}}, {{alm_name}}, {{datum}}, {{gesamt_liter}}
+  //   {{html_table}}   → schöne HTML-Tabelle (empfohlen als Body-Inhalt)
+  //   {{csv_content}}  → rohe CSV für Excel-Import (optional als Anhang-Alternative)
+  //   {{message}}      → HTML-Body inkl. Tabelle (fertig, einfach im Template `{{{message}}}` einfügen)
   function buildEmailBody(data) {
     const alm = (window.saisonInfo && window.saisonInfo.alm) || 'Alm';
     return {
-      subject: 'Milchmessung ' + data.datumStr + ' – ' + alm,
+      subject: '🥛 Milchmessung ' + data.datumStr + ' – ' + alm,
       alm_name: alm,
       datum: data.datumStr,
       gesamt_liter: data.gesamtTag + ' L',
       csv_content: data.csv,
-      message: 'Milchmessung vom ' + data.datumStr + ' – ' + alm + '\n\n' +
-               'Gesamt: ' + data.gesamtTag + ' L\n\n' +
-               'CSV-Daten (in Excel/Numbers als CSV mit Trennzeichen „;" importierbar):\n\n' +
-               data.csv
+      html_table: data.html,
+      message: data.html   // Fertiger HTML-Body — Template kann einfach `{{{message}}}` nutzen
     };
   }
 
@@ -241,9 +300,17 @@
     const data = buildTagesCsv(heute);
     if(data.gesamtTag === 0) {
       // Dummy-Test
+      const heuteStr = new Date().toLocaleDateString('de-AT');
       data.csv = 'Datum;Zeit;An Molkerei;#1 Testkuh;Gesamt;Notiz\n' +
-                 new Date().toLocaleDateString('de-AT') + ';Morgens;Ja;12,5;12,5;Test-Email von HerdenPro\n';
+                 heuteStr + ';Morgens;Ja;12,5;12,5;Test-Email von HerdenPro\n';
       data.gesamtTag = 12.5;
+      data.datumStr = heuteStr;
+      data.html = '<div style="font-family:Georgia,serif;color:#2a2a2a">' +
+        '<h2 style="color:#8b6914;border-bottom:2px solid #d4a84b;padding-bottom:6px">🥛 TEST-Email HerdenPro</h2>' +
+        '<p>Dies ist eine Test-Email um die EmailJS-Konfiguration zu prüfen.</p>' +
+        '<p>Bei echten Milchmessungen erscheint hier eine schöne Tabelle mit allen Kühen und Werten.</p>' +
+        '<p style="color:#aaa;font-size:11px;font-style:italic">Automatisch verschickt von HerdenPro.</p>' +
+      '</div>';
     }
     const body = buildEmailBody(data);
     body.subject = '[TEST] ' + body.subject;
