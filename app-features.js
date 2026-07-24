@@ -5900,12 +5900,25 @@ window.doLogin = async function() {
   const email = document.getElementById('login-email')?.value.trim();
   const pw = document.getElementById('login-pw')?.value;
   if(!email || !pw) { showLoginError('Bitte E-Mail und Passwort eingeben.'); return; }
-  
-  const btn = document.querySelector('#login-form .btn-primary');
+
+  // Selektor fixed: Button hat Klasse .login-btn (nicht .btn-primary!)
+  const btn = document.querySelector('#login-form .login-btn') || document.querySelector('#login-form button');
   if(btn) { btn.textContent = '⏳ Anmelden…'; btn.disabled = true; }
-  
+
+  // Offline-Fall früh abfangen (sonst wartet signInWithEmailAndPassword ewig)
+  if(!navigator.onLine) {
+    showLoginError('Keine Internetverbindung. Bitte Netz prüfen und nochmal versuchen.');
+    if(btn) { btn.textContent = 'Anmelden'; btn.disabled = false; }
+    return;
+  }
+
   try {
     await firebase.auth().signInWithEmailAndPassword(email, pw);
+    // Auto-Login: Credentials speichern für automatische Neu-Anmeldung bei Session-Verlust
+    try {
+      const packed = btoa(unescape(encodeURIComponent(JSON.stringify({e: email, p: pw}))));
+      localStorage.setItem('hp_autoauth', packed);
+    } catch(x) { console.warn('Auto-Login speichern:', x); }
     // onAuthStateChanged handles the rest
   } catch(e) {
     const msgs = {
@@ -5914,8 +5927,9 @@ window.doLogin = async function() {
       'auth/invalid-email': 'Ungültige E-Mail-Adresse.',
       'auth/too-many-requests': 'Zu viele Versuche. Bitte warte kurz.',
       'auth/invalid-credential': 'E-Mail oder Passwort falsch.',
+      'auth/network-request-failed': 'Netzwerkfehler. Bitte Verbindung prüfen.',
     };
-    showLoginError(msgs[e.code] || 'Anmeldung fehlgeschlagen: ' + e.message);
+    showLoginError(msgs[e.code] || 'Anmeldung fehlgeschlagen: ' + (e.message || e.code));
   } finally {
     if(btn) { btn.textContent = 'Anmelden'; btn.disabled = false; }
   }
