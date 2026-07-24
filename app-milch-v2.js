@@ -2,7 +2,7 @@
 //  HERDENPRO – MILCH v2  (LocalStorage-first Persistence)
 //  MODUL-VERSION: 5.0  ← wenn du das siehst, ist der Fix geladen
 // ══════════════════════════════════════════════════════════════
-window.MILCH_V2_VERSION = '5.6';
+window.MILCH_V2_VERSION = '5.7';
 //  Löst die alten Probleme (Datenverlust, hängende Saves offline,
 //  Multi-Melker-Kollisionen, Aggregations-Verdopplung).
 //
@@ -222,18 +222,18 @@ window.pushMilchWert = function(kuhId, wert, datum, zeit) {
           clearPending();
         })
         .catch(async (e) => {
-          // Fix: VOR Fehler-Anzeige prüfen ob Wert doch am Server angekommen ist (WebSocket-Ack-Delay).
+          // Fix: VOR Fehler-Anzeige via REST (nicht SDK!) prüfen ob Wert am Server angekommen ist.
           try {
-            const snap = await firebase.database().ref(entryPath + '/prokuh/' + kuhId).get();
-            const serverVal = snap.val();
+            const serverEntry = await _milchRestGet(entryPath);
+            const serverVal = serverEntry && serverEntry.prokuh && serverEntry.prokuh[kuhId];
             if(serverVal != null && Math.abs(parseFloat(serverVal) - wertVal) < 0.05) {
-              console.log('[Milch v2] Timeout — aber Wert IST am Server:', serverVal, '→ clear pending');
+              console.log('[Milch v2] Timeout — aber Wert IST am Server (REST):', serverVal, '→ clear pending');
               clearPending();
-              return; // Kein Fehler — Write ist eigentlich durch
+              return;
             }
-            console.warn('[Milch v2] Timeout & Wert NICHT am Server → echter Fehler');
+            console.warn('[Milch v2] Timeout & Wert NICHT am Server (REST) → echter Fehler');
           } catch(readErr) {
-            console.warn('[Milch v2] Verify-Read fehlgeschlagen:', readErr);
+            console.warn('[Milch v2] REST-Verify-Read fehlgeschlagen:', readErr);
           }
           handleSyncError(e, 'write');
         });
@@ -818,23 +818,23 @@ window.syncMilchPending = function() {
         clearRetryPending();
       })
       .catch(async (e) => {
-        // Fix: bei Timeout READ machen — wenn Werte am Server sind → pending clearen (kein Fehler)
+        // Fix: bei Timeout via REST (nicht SDK!) prüfen
         try {
-          const snap = await firebase.database().ref('milch/' + entryKey + '/prokuh').get();
-          const serverProkuh = snap.val() || {};
+          const serverEntry = await _milchRestGet('milch/' + entryKey);
+          const serverProkuh = (serverEntry && serverEntry.prokuh) || {};
           let alleDrin = true;
           snapshotCows.forEach(({kuhId, wert}) => {
             const sv = parseFloat(serverProkuh[kuhId]);
             if(isNaN(sv) || Math.abs(sv - wert) >= 0.05) alleDrin = false;
           });
           if(alleDrin) {
-            console.log('[Milch v2] Retry-Timeout — aber ALLE Werte am Server → clear pending');
+            console.log('[Milch v2] Retry-Timeout — aber ALLE Werte am Server (REST) → clear pending');
             clearRetryPending();
             return;
           }
-          console.warn('[Milch v2] Retry-Timeout & Werte nicht komplett am Server → Fehler');
+          console.warn('[Milch v2] Retry-Timeout & Werte nicht komplett am Server (REST) → Fehler');
         } catch(readErr) {
-          console.warn('[Milch v2] Verify-Read fehlgeschlagen:', readErr);
+          console.warn('[Milch v2] REST-Verify-Read fehlgeschlagen:', readErr);
         }
         handleSyncError(e, 'retry-sync');
       });
@@ -1346,10 +1346,8 @@ window.saveMilch = async function() {
     if(saveBtn) saveBtn.textContent = '⏳ Warte auf Server (' + countPending() + ' offen)…';
   }
 
-  // ── Wenn NACH 40s noch pending → Server-READ-Verifikation als letzter Rettungsversuch ──
+  // ── Wenn NACH 40s noch pending → REST-Verifikation als letzter Rettungsversuch ──
   if(countPending() > 0) {
-    // LETZTER VERIFIKATIONS-VERSUCH: für jeden pending-Wert prüfen ob er nicht doch am Server ist.
-    // Websocket-Ack kann bei schlechter Alm-Verbindung > 40s dauern, aber der Write ist längst durch.
     try {
       const p = getPending();
       const eintragKeys = Object.keys(p);
@@ -1357,8 +1355,8 @@ window.saveMilch = async function() {
         const cows = p[entryKey];
         if(!cows) continue;
         try {
-          const snap = await firebase.database().ref('milch/' + entryKey + '/prokuh').get();
-          const sv = snap.val() || {};
+          const serverEntry = await _milchRestGet('milch/' + entryKey);
+          const sv = (serverEntry && serverEntry.prokuh) || {};
           Object.entries(cows).forEach(([kuhId, payload]) => {
             const server = parseFloat(sv[kuhId]);
             if(!isNaN(server) && Math.abs(server - (payload.wert || 0)) < 0.05) {
@@ -1370,7 +1368,7 @@ window.saveMilch = async function() {
               }
             }
           });
-        } catch(e) { console.warn('[saveMilch] Verify-READ-Fallback:', e); }
+        } catch(e) { console.warn('[saveMilch] REST-Verify-Fallback:', e); }
       }
       updateSyncBanner();
     } catch(e) { console.warn('[saveMilch] Final-Verify:', e); }
@@ -1473,10 +1471,43 @@ window.saveMilch = async function() {
   } catch(e) { console.warn('[Milch v2] Cleanup alter Termin:', e); }
   window._milchEditOriginal = null;
 
-  // 9) ERFOLG — Formular schließen, Toast, Bericht
+  // 9) FINAL-VERIFIKATION via REST — sind wirklich alle Werte am Server?
+  // Bei false-positive "gesichert" durch SDK-Cache-Bug würde User denken alles OK, aber Server hätte nix.
+  let fehlend = 0;
+  try {
+    const entryKey = getMilchEntryKey(datum, zeit);
+    const serverEntry = await _milchRestGet('milch/' + entryKey);
+    const serverProkuh = (serverEntry && serverEntry.prokuh) || {};
+    const sessionId = getMilchSessionId();
+    const userUid = window.getMilchUserUid();
+    const userName = getUserName();
+    const now = Date.now();
+    Object.entries(prokuh).forEach(([kuhId, wert]) => {
+      const sv = parseFloat(serverProkuh[kuhId]);
+      if(isNaN(sv) || Math.abs(sv - wert) >= 0.05) {
+        // FEHLT am Server — wieder in pending legen
+        fehlend++;
+        const p = getPending();
+        if(!p[entryKey]) p[entryKey] = {};
+        p[entryKey][kuhId] = { wert: wert, session: sessionId, userUid: userUid, userName: userName, ts: now };
+        setPending(p);
+      }
+    });
+    console.log('[saveMilch] REST-Final-Verify: ' + fehlend + ' von ' + Object.keys(prokuh).length + ' fehlen');
+  } catch(e) {
+    console.warn('[saveMilch] REST-Final-Verify Fehler:', e);
+  }
+
+  // 10) ERFOLG (nur wenn nichts fehlt) — sonst Warnung + Sync starten
   const gesRund = Math.round(gesamt * 10) / 10;
   restoreBtn();
-  window.showSaveToast && window.showSaveToast('✓ ' + gesRund + ' L / ' + Object.keys(prokuh).length + ' Kühe — in Cloud bestätigt');
+  if(fehlend > 0) {
+    window.showSaveToast && window.showSaveToast('⚠ ' + fehlend + ' Werte NICHT am Server — läuft Sync…');
+    // Sofort erneut versuchen mit Smart Retry
+    setTimeout(() => { if(window.milchSmartRetry) window.milchSmartRetry(); }, 300);
+  } else {
+    window.showSaveToast && window.showSaveToast('✓ ' + gesRund + ' L / ' + Object.keys(prokuh).length + ' Kühe — REST-verifiziert am Server');
+  }
   if(navigator.vibrate) navigator.vibrate([30,10,30]);
 
   // Zur Milch-Übersicht navigieren (statt Form-Overlay schließen)
