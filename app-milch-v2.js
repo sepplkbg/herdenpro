@@ -2,7 +2,7 @@
 //  HERDENPRO – MILCH v2  (LocalStorage-first Persistence)
 //  MODUL-VERSION: 5.0  ← wenn du das siehst, ist der Fix geladen
 // ══════════════════════════════════════════════════════════════
-window.MILCH_V2_VERSION = '5.4';
+window.MILCH_V2_VERSION = '5.6';
 //  Löst die alten Probleme (Datenverlust, hängende Saves offline,
 //  Multi-Melker-Kollisionen, Aggregations-Verdopplung).
 //
@@ -383,6 +383,57 @@ window.milchConfirmAllPending = async function() {
         (countPending() > 0 ? '\n' + countPending() + ' Werte übrig — sind wirklich noch nicht in Cloud' : '\n\n✓ Alles bestätigt!'));
 };
 
+// ── NEU ANMELDEN: bei verlorener Firebase-Auth-Session ohne Umweg über Einstellungen ──
+// Wichtig: Pending-Werte bleiben in localStorage. Nach dem Login → auto Smart Retry.
+window.milchNeuAnmelden = async function() {
+  const pendingCount = countPending();
+  // ── Wenn Auto-Login-Credentials existieren: erst still versuchen die zu nutzen ──
+  const stored = localStorage.getItem('hp_autoauth');
+  if(stored) {
+    try {
+      const decoded = JSON.parse(decodeURIComponent(escape(atob(stored))));
+      if(decoded && decoded.e && decoded.p) {
+        console.log('[Milch v2] Neu anmelden: probiere Auto-Login zuerst');
+        try {
+          await firebase.auth().signInWithEmailAndPassword(decoded.e, decoded.p);
+          // Klappt → warte 2s bis Auth propagiert, dann SmartRetry
+          if(window.showSaveToast) window.showSaveToast('🔑 Auto-angemeldet — Werte werden hochgeladen…');
+          setTimeout(() => { if(window.milchSmartRetry) window.milchSmartRetry(); }, 2000);
+          return;
+        } catch(err) {
+          console.warn('[Milch v2] Auto-Login-Retry failed:', err.code);
+          // Falsche Credentials → weiter zur manuellen Anmeldung
+          if(err.code === 'auth/wrong-password' || err.code === 'auth/invalid-credential' || err.code === 'auth/user-not-found') {
+            localStorage.removeItem('hp_autoauth');
+          }
+        }
+      }
+    } catch(e) {}
+  }
+  // Auto-Login gescheitert → manuelle Anmeldung
+  const ok = confirm(
+    '🔑 Firebase-Session verloren\n\n' +
+    'Zur Anmeldeseite wechseln. Deine ' + pendingCount + ' Pending-Werte bleiben sicher gespeichert ' +
+    'und werden nach dem Login automatisch hochgeladen.\n\nFortfahren?'
+  );
+  if(!ok) return;
+  try { localStorage.setItem('milch_autoRetryAfterLogin', '1'); } catch(e) {}
+  window._userExplicitlyLoggedOut = true;
+  try {
+    if(typeof firebase !== 'undefined' && firebase.auth) await firebase.auth().signOut();
+  } catch(e) { console.warn('signOut err:', e); }
+  try {
+    const uid = localStorage.getItem('lastAuthUid');
+    if(uid) localStorage.removeItem('cache_userProfile_' + uid);
+    localStorage.removeItem('lastAuthUid');
+    // hp_autoauth NICHT löschen — User will nicht dauerhaft raus, nur Session refreshen
+  } catch(e) {}
+  window._currentUser = null;
+  window._currentRole = null;
+  window._appInitialized = false;
+  if(typeof window._handleAuthLogout === 'function') window._handleAuthLogout();
+};
+
 // ── RECOVERY: Werte aus Firebase-SDK-Cache holen und mit Server abgleichen ──
 // Wenn Werte fälschlich als "in Cloud" markiert wurden aber am Server fehlen (weil
 // PERMISSION_DENIED beim Write): findet sie im lokalen milchEintraege-Cache und
@@ -460,22 +511,36 @@ window.milchRecoverLostValues = async function() {
 window.milchSmartRetry = async function() {
   console.log('[Milch v2] SMART RETRY: gestartet');
 
-  // 0. KRITISCH: Prüfen ob Firebase-Auth überhaupt einen User hat.
-  // Wenn currentUser == null → Firebase weiß nicht dass wir angemeldet sind
-  // → jeder Write wird PERMISSION_DENIED (Rules: auth != null).
-  // Dann hilft Token-Refresh nicht — User muss sich neu anmelden.
-  const hasAuth = typeof firebase !== 'undefined' && firebase.auth && firebase.auth().currentUser;
+  // 0. KRITISCH: Prüfen ob Firebase-Auth einen User hat.
+  // Wenn nicht → versuche stumm Auto-Login mit gespeicherten Credentials.
+  let hasAuth = typeof firebase !== 'undefined' && firebase.auth && firebase.auth().currentUser;
   if(!hasAuth) {
-    console.warn('[Milch v2] SMART RETRY: firebase.auth().currentUser == NULL — Neu-Anmeldung nötig');
-    // Persistente Fehler-Meldung setzen die klar sagt was zu tun ist
-    window._milchSyncError = {
-      msg: 'Firebase-Session ist abgemeldet. Bitte in Einstellungen → Abmelden → neu anmelden. Deine ' + countPending() + ' Werte bleiben lokal gesichert.',
-      op: 'auth-missing',
-      ts: Date.now()
-    };
-    updateSyncBanner();
-    if(window.showSaveToast) window.showSaveToast('❌ Firebase abgemeldet — bitte neu anmelden');
-    return;
+    console.warn('[Milch v2] SMART RETRY: currentUser == NULL — versuche Auto-Login');
+    const stored = localStorage.getItem('hp_autoauth');
+    if(stored) {
+      try {
+        const decoded = JSON.parse(decodeURIComponent(escape(atob(stored))));
+        if(decoded && decoded.e && decoded.p) {
+          try {
+            await firebase.auth().signInWithEmailAndPassword(decoded.e, decoded.p);
+            await new Promise(r => setTimeout(r, 1500)); // Auth propagieren lassen
+            hasAuth = !!firebase.auth().currentUser;
+            console.log('[Milch v2] SMART RETRY: Auto-Login erfolgreich? ' + hasAuth);
+          } catch(err) {
+            console.warn('[Milch v2] SMART RETRY: Auto-Login fehlgeschlagen:', err.code);
+          }
+        }
+      } catch(e) {}
+    }
+    if(!hasAuth) {
+      window._milchSyncError = {
+        msg: 'Firebase-Session weg + Auto-Login gescheitert. Bitte auf "🔑 Neu anmelden" tippen.',
+        op: 'auth-missing',
+        ts: Date.now()
+      };
+      updateSyncBanner();
+      return;
+    }
   }
 
   // 1. Sync-Error clearen damit Banner sich normal updated
@@ -863,6 +928,22 @@ window.updateSyncBanner = function() {
   const qBtn = '<button class="milch-sync-action" onclick="showMilchPendingDetails()" title="Details / Diagnose">?</button>';
 
   let stateClass, iconEmoji, msg, actionBtn = '';
+
+  // ── PRIO 1: Auth ist verloren (currentUser == null) → das ist der ECHTE Fehler ──
+  // Bevor irgendwas anderes gezeigt wird: prüfen ob Firebase überhaupt einen Auth-User hat.
+  // Wenn nicht → prominenter Neu-Anmelden-Button, weil kein Write geht ohne Auth.
+  const hasAuth = typeof firebase !== 'undefined' && firebase.auth && firebase.auth().currentUser;
+  if(!hasAuth && n > 0) {
+    stateClass = 'milch-sync-error';
+    iconEmoji = '🔑';
+    msg = 'Session verloren · ' + n + ' Wert' + (n > 1 ? 'e' : '') + ' warten · Neu anmelden!';
+    actionBtn = '<button class="milch-sync-action" style="background:#e05a5a;color:#fff;font-weight:700" onclick="milchNeuAnmelden()">🔑 Neu anmelden</button>';
+    banner.style.display = 'flex';
+    setBannerVisible(true);
+    banner.className = 'milch-sync-banner ' + stateClass;
+    banner.innerHTML = '<span>' + iconEmoji + '</span>' + '<span>' + msg + v + '</span>' + qBtn + actionBtn;
+    return;
+  }
 
   if(window._milchSyncError && n > 0) {
     stateClass = 'milch-sync-error';
