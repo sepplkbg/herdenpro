@@ -52,11 +52,31 @@
     setTimeout(() => doRefresh('online'), 500);
   });
 
+  // ── Auto-Login mit gespeicherten Credentials (nur wenn kein currentUser mehr) ──
+  async function tryAutoLogin(reason) {
+    try {
+      if(!firebase || !firebase.auth) return false;
+      const stored = localStorage.getItem('hp_autoauth');
+      if(!stored) return false;
+      const decoded = JSON.parse(decodeURIComponent(escape(atob(stored))));
+      if(!decoded || !decoded.e || !decoded.p) return false;
+      console.log('[Auth-Refresh] Auto-Login versucht (' + reason + ')…');
+      await firebase.auth().signInWithEmailAndPassword(decoded.e, decoded.p);
+      window._lastTokenRefresh = Date.now();
+      console.log('[Auth-Refresh] Auto-Login OK (' + reason + ')');
+      return true;
+    } catch(e) {
+      console.warn('[Auth-Refresh] Auto-Login fail (' + reason + '):', e.code || e.message);
+      // Bei falschem Passwort → Credentials löschen (User muss manuell neu anmelden)
+      if(e.code === 'auth/wrong-password' || e.code === 'auth/invalid-credential' || e.code === 'auth/user-not-found') {
+        try { localStorage.removeItem('hp_autoauth'); } catch(x) {}
+      }
+      return false;
+    }
+  }
+
   // ── Fix B: Auto-Retry-Wrapper ──
-  // Nutzung:
-  //   await withAuthRetry(() => update(ref(db,'behandlungen/'+id), data));
-  //   await withAuthRetry(() => firebase.database().ref(path).update(payload));
-  // Bei PERMISSION_DENIED: Token refresh + retry EINMAL. Sonst normaler Fehler.
+  // Bei PERMISSION_DENIED: 1) Token refresh 2) falls kein User: Auto-Login 3) Retry.
   window.withAuthRetry = async function(writeFn) {
     try {
       return await writeFn();
@@ -65,22 +85,25 @@
       const isPermission = /permission[_-]?denied/i.test(msg);
       if(!isPermission) throw err;
 
-      console.warn('[Auth-Refresh] PERMISSION_DENIED — versuche Token-Refresh + Retry');
-      const ok = await doRefresh('on-permission-denied');
-      if(!ok) throw err;
-      // Kurz warten damit Firebase das neue Token verbreitet
-      await new Promise(r => setTimeout(r, 300));
+      console.warn('[Auth-Refresh] PERMISSION_DENIED — Recovery-Kette startet');
+      let recovered = false;
+      // Weg A: einfacher Token-Refresh (funktioniert wenn currentUser noch da)
+      if(await doRefresh('on-permission-denied')) recovered = true;
+      // Weg B: Auto-Login mit gespeicherten Credentials (wenn currentUser null)
+      if(!recovered) recovered = await tryAutoLogin('on-permission-denied');
+      if(!recovered) throw err;
+
+      await new Promise(r => setTimeout(r, 500));
       try {
         const result = await writeFn();
-        console.log('[Auth-Refresh] Retry nach Token-Refresh erfolgreich');
-        // Sync-Error-Banner (falls milch-Modul einen gesetzt hatte) räumen
+        console.log('[Auth-Refresh] Retry nach Recovery erfolgreich');
         if(typeof window.clearMilchSyncError === 'function') {
           try { window.clearMilchSyncError(); } catch(e) {}
         }
         return result;
       } catch(retryErr) {
         console.error('[Auth-Refresh] Retry auch fehlgeschlagen:', retryErr);
-        throw retryErr;  // echter Permissions-Fehler → an Aufrufer weitergeben
+        throw retryErr;
       }
     }
   };

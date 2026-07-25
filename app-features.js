@@ -4511,11 +4511,12 @@ function initAuth() {
         }
       } catch(e) {}
 
-      if(!fastPath) {
-        // Fast-Path nicht gelaufen → jetzt App zeigen
+      // Login-Screen sichtbar? → App zeigen (deckt fastPath UND Re-Login-nach-Logout ab).
+      // Sonst: Fast-Path lief schon, nur User-Display aktualisieren.
+      const loginVisible = document.getElementById('login-screen')?.style.display !== 'none';
+      if(!fastPath || loginVisible) {
         zeigeApp();
       } else {
-        // Fast-Path lief bereits → nur Anzeige refreshen
         try { updateUserDisplay(); } catch(e) {}
       }
     } else {
@@ -5637,9 +5638,11 @@ window.saveWeideTag=async function(){
     createdAt: Date.now()
   };
   try {
-    const pushRef = firebase.database().ref('weideTage').push(data);
+    // Mit Auto-Retry — bei PERMISSION_DENIED: Token refresh + Auto-Login + Retry
+    const _retry = window.withAuthRetry || (async fn => await fn());
+    const pushRef = firebase.database().ref('weideTage').push();
     const newId = pushRef.key;
-    await pushRef;
+    await _retry(() => pushRef.set(data));
     // Lokal sofort eintragen — UI zeigt Eintrag sofort ohne auf Listener zu warten
     try { window.weideTage = window.weideTage || {}; window.weideTage[newId] = data; if(typeof weideTage !== 'undefined') weideTage[newId] = data; } catch(x) {}
     window.showSaveToast && showSaveToast('✓ Weidegang gespeichert');
