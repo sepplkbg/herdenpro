@@ -5904,26 +5904,34 @@ window.doLogin = async function() {
   const pw = document.getElementById('login-pw')?.value;
   if(!email || !pw) { showLoginError('Bitte E-Mail und Passwort eingeben.'); return; }
 
-  // Selektor fixed: Button hat Klasse .login-btn (nicht .btn-primary!)
   const btn = document.querySelector('#login-form .login-btn') || document.querySelector('#login-form button');
   if(btn) { btn.textContent = '⏳ Anmelden…'; btn.disabled = true; }
 
-  // Offline-Fall früh abfangen (sonst wartet signInWithEmailAndPassword ewig)
+  // Offline-Fall früh abfangen
   if(!navigator.onLine) {
     showLoginError('Keine Internetverbindung. Bitte Netz prüfen und nochmal versuchen.');
     if(btn) { btn.textContent = 'Anmelden'; btn.disabled = false; }
     return;
   }
 
+  // Progress-Anzeige nach 5s falls es dauert
+  let progressTimer = setTimeout(() => {
+    if(btn) btn.textContent = '⏳ Anmelden… (Server antwortet nicht)';
+  }, 5000);
+
   try {
-    await firebase.auth().signInWithEmailAndPassword(email, pw);
-    // Auto-Login: Credentials speichern für automatische Neu-Anmeldung bei Session-Verlust
+    // HARD-TIMEOUT: nach 20s abbrechen (verhindert dass Button ewig lädt bei schwacher Verbindung)
+    const signInPromise = firebase.auth().signInWithEmailAndPassword(email, pw);
+    const timeoutPromise = new Promise((_, rej) => setTimeout(() => rej(new Error('LOGIN_TIMEOUT')), 20000));
+    await Promise.race([signInPromise, timeoutPromise]);
+    // Auto-Login-Credentials speichern
     try {
       const packed = btoa(unescape(encodeURIComponent(JSON.stringify({e: email, p: pw}))));
       localStorage.setItem('hp_autoauth', packed);
     } catch(x) { console.warn('Auto-Login speichern:', x); }
     // onAuthStateChanged handles the rest
   } catch(e) {
+    const isTimeout = String(e.message || '').includes('LOGIN_TIMEOUT');
     const msgs = {
       'auth/user-not-found': 'E-Mail nicht gefunden.',
       'auth/wrong-password': 'Falsches Passwort.',
@@ -5932,8 +5940,13 @@ window.doLogin = async function() {
       'auth/invalid-credential': 'E-Mail oder Passwort falsch.',
       'auth/network-request-failed': 'Netzwerkfehler. Bitte Verbindung prüfen.',
     };
-    showLoginError(msgs[e.code] || 'Anmeldung fehlgeschlagen: ' + (e.message || e.code));
+    if(isTimeout) {
+      showLoginError('Timeout (20s) — Firebase antwortet nicht. Verbindung schwach? Nochmal versuchen.');
+    } else {
+      showLoginError(msgs[e.code] || 'Anmeldung fehlgeschlagen: ' + (e.message || e.code));
+    }
   } finally {
+    clearTimeout(progressTimer);
     if(btn) { btn.textContent = 'Anmelden'; btn.disabled = false; }
   }
 };

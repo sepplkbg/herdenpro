@@ -19,11 +19,11 @@
 ═══════════════════════════════════════════════════════════════════════════ -->
 <script>
 // Force clear cache if version changed
-if(localStorage.getItem('hp_version') !== 'v46.5') {
+if(localStorage.getItem('hp_version') !== 'v46.7') {
   localStorage.removeItem('mainNav');
   localStorage.removeItem('mehrOrder');
   localStorage.removeItem('mehrOrder');
-  localStorage.setItem('hp_version','v46.5');
+  localStorage.setItem('hp_version','v46.7');
   // Force SW update
   if('serviceWorker' in navigator) {
     navigator.serviceWorker.getRegistrations().then(function(regs) {
@@ -39,8 +39,8 @@ if(localStorage.getItem('hp_version') !== 'v46.5') {
       });
     }
     // Reload once after clearing
-    if(!sessionStorage.getItem('reloaded_v46_5')) {
-      sessionStorage.setItem('reloaded_v46_5','1');
+    if(!sessionStorage.getItem('reloaded_v46_7')) {
+      sessionStorage.setItem('reloaded_v46_7','1');
       window.location.reload(true);
     }
   }
@@ -122,16 +122,22 @@ window.doLogin = async function() {
     var btn = document.querySelector('#login-form button');
     if(btn){btn.textContent='⏳ Anmelden…';btn.disabled=true;}
     try {
-      await firebase.auth().signInWithEmailAndPassword(email, pw);
-      // Auto-Login: Credentials speichern damit App sich bei verlorener Session automatisch neu anmeldet.
-      // Ohne diese Speicherung müsste der User manuell neu anmelden wenn Firebase die Session verliert
-      // (passiert regelmäßig auf iOS + Android durch IndexedDB-Eviction).
+      // Hard-Timeout 20s — verhindert dass Button ewig lädt bei schwacher Verbindung
+      var signInP = firebase.auth().signInWithEmailAndPassword(email, pw);
+      var timeoutP = new Promise(function(_,rej){ setTimeout(function(){ rej(new Error('LOGIN_TIMEOUT')); }, 20000); });
+      await Promise.race([signInP, timeoutP]);
       try {
         var packed = btoa(unescape(encodeURIComponent(JSON.stringify({e: email, p: pw}))));
         localStorage.setItem('hp_autoauth', packed);
       } catch(x) { console.warn('Auto-Login speichern:', x); }
       // onAuthStateChanged übernimmt den Rest
     } catch(e) {
+      if(String(e.message||'').includes('LOGIN_TIMEOUT')) {
+        var errEl2=document.getElementById('login-error');
+        if(errEl2){errEl2.textContent='Timeout (20s) — Server antwortet nicht. Verbindung schwach? Nochmal versuchen.';errEl2.style.display='';}
+        if(btn){btn.textContent='Anmelden';btn.disabled=false;}
+        return;
+      }
       var msgs = {
         'auth/user-not-found':'E-Mail nicht gefunden.',
         'auth/wrong-password':'Falsches Passwort.',
