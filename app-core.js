@@ -259,6 +259,62 @@ function _hpSaveCache(name, data) {
 window._hpSaveCache = _hpSaveCache;
 window._hpLoadCache = _hpLoadCache;
 
+// ══════════════════════════════════════════════════════════════════════════════
+//  REALISTISCHE MILCH-PROGNOSE (Laktationskurve-basiert)
+// ══════════════════════════════════════════════════════════════════════════════
+// Reine lineare Regression ist bei fallenden Kurven katastrophal (führt zu 0L).
+// Diese Funktion:
+//   1. Berechnet Roh-Trend via Linreg
+//   2. CAPT den Slope: max -1% der Baseline pro Tag (aggressive Laktationskurve)
+//                     max +0.5% pro Tag (Kühe steigern nicht crazy)
+//   3. Floor bei 40% der Baseline (unter dieser Grenze wird Kuh trockengestellt)
+// data: Array von {d: timestamp, l: liter} sortiert chronologisch
+window.calcRealisticPrognose = function(data, days) {
+  days = days || 30;
+  const empty = { points: [], rawSlope: 0, cappedSlope: 0, baseline: 0, val14: 0, val30: 0, wasCapped: false };
+  if(!data || data.length < 3) return empty;
+
+  const n = data.length;
+  // Lineare Regression für Roh-Trend
+  let sumX=0, sumY=0, sumXY=0, sumX2=0;
+  data.forEach((d,i) => { sumX+=i; sumY+=d.l; sumXY+=i*d.l; sumX2+=i*i; });
+  const denom = n*sumX2 - sumX*sumX;
+  const rawSlope = denom !== 0 ? (n*sumXY - sumX*sumY) / denom : 0;
+
+  // Baseline = Ø der letzten min(5, n) Werte (aktueller Stand)
+  const lastN = Math.min(n, 5);
+  const last = data.slice(-lastN);
+  const baseline = last.reduce((s,d) => s + d.l, 0) / lastN;
+  if(baseline <= 0) return empty;
+
+  // Slope-CAP: realistische Laktationskurve
+  const maxDecline  = -baseline * 0.01;   // max 1%/Tag Rückgang
+  const maxIncrease =  baseline * 0.005;  // max 0.5%/Tag Zuwachs
+  const cappedSlope = Math.min(Math.max(rawSlope, maxDecline), maxIncrease);
+
+  // Floor: nie unter 40% der Baseline (darunter ist Kuh trocken)
+  const minValue = baseline * 0.4;
+
+  const lastDay = data[n-1].d || Date.now();
+  const startVal = data[n-1].l;
+  const points = [];
+  const ms86400 = 86400000;
+  for(let j=1; j<=days; j++) {
+    const wert = Math.max(minValue, Math.round((startVal + cappedSlope * j) * 10) / 10);
+    points.push({ d: lastDay + j*ms86400, l: wert, istPrognose: true });
+  }
+
+  return {
+    points,
+    rawSlope,
+    cappedSlope,
+    baseline: Math.round(baseline*10)/10,
+    val14: points[13] ? points[13].l : 0,
+    val30: points[29] ? points[29].l : 0,
+    wasCapped: Math.abs(rawSlope - cappedSlope) > 0.01
+  };
+};
+
 // Initial: aus localStorage laden falls vorhanden (das sind die letzten Firebase-Daten)
 kuehe = _hpLoadCache('kuehe') || {};
 behandlungen = _hpLoadCache('behandlungen') || {};
@@ -702,35 +758,24 @@ window.drawMilchSaisonChart = function(canvas, zeitFilter) {
     farbeMarker  = 'rgba(122,203,255,.25)';
   }
 
-  // ── Lineare Regression für Prognose ──
+  // ── REALISTISCHE Prognose (Laktationskurve-basiert, nicht reine lineare Regression) ──
   var zeigPrognose = window._milchPrognoseSaison;
   var prognosePunkte = [];
   var proVal14 = 0, proVal30 = 0;
-  if(zeigPrognose && data.length >= 5) {
-    var n = data.length;
-    var sumX=0,sumY=0,sumXY=0,sumX2=0;
-    data.forEach(function(d,i){ sumX+=i; sumY+=d.l; sumXY+=i*d.l; sumX2+=i*i; });
-    var slope=(n*sumXY-sumX*sumY)/(n*sumX2-sumX*sumX);
-    var intercept=(sumY-slope*sumX)/n;
-    var ms86400=86400000;
-    // Prognose: nächste 30 Tage
-    for(var j=1;j<=30;j++){
-      var idx=n-1+j;
-      var wert=Math.max(0,Math.round((intercept+slope*idx)*10)/10);
-      var datum=new Date(data[n-1].d+j*ms86400);
-      prognosePunkte.push({d:datum.getTime(),l:wert,idx:idx});
-    }
-    proVal14 = prognosePunkte[13]?.l || 0;
-    proVal30 = prognosePunkte[29]?.l || 0;
-    var trend = slope > 0.1 ? '📈 Steigend' : slope < -0.1 ? '📉 Sinkend' : '➡ Stabil';
-    // Info-Box befüllen
+  if(zeigPrognose && data.length >= 3) {
+    var progResult = window.calcRealisticPrognose(data, 30);
+    prognosePunkte = progResult.points;
+    proVal14 = progResult.val14;
+    proVal30 = progResult.val30;
+    var trend = progResult.cappedSlope > 0.1 ? '📈 Steigend' : progResult.cappedSlope < -0.1 ? '📉 Sinkend' : '➡ Stabil';
+    var capNote = progResult.wasCapped ? ' <span style="color:#e67e22" title="Der Roh-Trend war zu extrem — auf realistische Laktationskurve begrenzt">⚠ begrenzt</span>' : '';
     setTimeout(function(){
       var el = document.getElementById('milch-prognose-werte');
       if(el) el.innerHTML =
         'In 14 Tagen: <b style="color:var(--gold)">~'+proVal14+'L/Tag</b> · '+
         'In 30 Tagen: <b style="color:var(--gold)">~'+proVal30+'L/Tag</b> · '+
-        'Trend: <b>'+trend+'</b><br>'+
-        '<span style="font-size:.65rem;color:var(--text3)">Basis: letzte '+n+' Messtage · Steigung: '+(slope>=0?'+':'')+Math.round(slope*100)/100+'L/Tag</span>';
+        'Trend: <b>'+trend+'</b>' + capNote + '<br>'+
+        '<span style="font-size:.65rem;color:var(--text3)">Baseline: '+Math.round(progResult.baseline)+'L · max ±1%/Tag (Laktationskurve) · Floor: '+Math.round(progResult.baseline*0.4)+'L</span>';
     }, 50);
   }
 
