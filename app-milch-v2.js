@@ -2,7 +2,7 @@
 //  HERDENPRO – MILCH v2  (LocalStorage-first Persistence)
 //  MODUL-VERSION: 5.0  ← wenn du das siehst, ist der Fix geladen
 // ══════════════════════════════════════════════════════════════
-window.MILCH_V2_VERSION = '5.7';
+window.MILCH_V2_VERSION = '5.8';
 //  Löst die alten Probleme (Datenverlust, hängende Saves offline,
 //  Multi-Melker-Kollisionen, Aggregations-Verdopplung).
 //
@@ -1472,11 +1472,13 @@ window.saveMilch = async function() {
   window._milchEditOriginal = null;
 
   // 9) FINAL-VERIFIKATION via REST — sind wirklich alle Werte am Server?
-  // Bei false-positive "gesichert" durch SDK-Cache-Bug würde User denken alles OK, aber Server hätte nix.
+  // Zusätzlich: bei Erfolg den kompletten Server-Eintrag direkt in window.milchEintraege spielen
+  // damit UI sofort aktuell ist (unabhängig ob Firebase-Listener re-fired oder nicht).
   let fehlend = 0;
+  let serverEntry = null;
   try {
     const entryKey = getMilchEntryKey(datum, zeit);
-    const serverEntry = await _milchRestGet('milch/' + entryKey);
+    serverEntry = await _milchRestGet('milch/' + entryKey);
     const serverProkuh = (serverEntry && serverEntry.prokuh) || {};
     const sessionId = getMilchSessionId();
     const userUid = window.getMilchUserUid();
@@ -1485,7 +1487,6 @@ window.saveMilch = async function() {
     Object.entries(prokuh).forEach(([kuhId, wert]) => {
       const sv = parseFloat(serverProkuh[kuhId]);
       if(isNaN(sv) || Math.abs(sv - wert) >= 0.05) {
-        // FEHLT am Server — wieder in pending legen
         fehlend++;
         const p = getPending();
         if(!p[entryKey]) p[entryKey] = {};
@@ -1494,6 +1495,19 @@ window.saveMilch = async function() {
       }
     });
     console.log('[saveMilch] REST-Final-Verify: ' + fehlend + ' von ' + Object.keys(prokuh).length + ' fehlen');
+
+    // KRITISCH: milchEintraege lokal aktualisieren — verhindert stale-Cache-Anzeige
+    // (Bug: nach Auto-Login re-attacht der Firebase-Listener manchmal nicht → Cache bleibt alt)
+    if(serverEntry && !fehlend) {
+      window.milchEintraege = window.milchEintraege || {};
+      window.milchEintraege[entryKey] = serverEntry;
+      if(typeof milchEintraege !== 'undefined') { try { milchEintraege[entryKey] = serverEntry; } catch(x) {} }
+      console.log('[saveMilch] milchEintraege lokal aktualisiert für', entryKey);
+      // Listener-Callback triggern falls vorhanden (damit Verbrauchsdiagramme etc. aktualisieren)
+      try { if(window.onMilchEintraegeChanged) window.onMilchEintraegeChanged(); } catch(e) {}
+      // Re-render damit die Milch-Liste den neuen Eintrag sofort zeigt
+      try { if(typeof render === 'function') render(); } catch(e) {}
+    }
   } catch(e) {
     console.warn('[saveMilch] REST-Final-Verify Fehler:', e);
   }
@@ -1503,23 +1517,22 @@ window.saveMilch = async function() {
   restoreBtn();
   if(fehlend > 0) {
     window.showSaveToast && window.showSaveToast('⚠ ' + fehlend + ' Werte NICHT am Server — läuft Sync…');
-    // Sofort erneut versuchen mit Smart Retry
     setTimeout(() => { if(window.milchSmartRetry) window.milchSmartRetry(); }, 300);
   } else {
     window.showSaveToast && window.showSaveToast('✓ ' + gesRund + ' L / ' + Object.keys(prokuh).length + ' Kühe — REST-verifiziert am Server');
   }
   if(navigator.vibrate) navigator.vibrate([30,10,30]);
 
-  // Zur Milch-Übersicht navigieren (statt Form-Overlay schließen)
+  // Zur Milch-Übersicht navigieren (Liste rendert jetzt SOFORT den neuen Eintrag)
   if(typeof navigate === 'function') navigate('milch');
 
-  // Bericht anzeigen — 1.5s warten damit Firebase-Listener die neuen Daten in milchEintraege hat
+  // Bericht anzeigen — jetzt sofort, da milchEintraege bereits aktuell ist
   const berDatumTs = new Date(datum + 'T12:00').getTime();
   setTimeout(() => {
     if(window.showMilchBericht) {
       try { window.showMilchBericht(berDatumTs, zeit); } catch(e) { console.warn('showMilchBericht:', e); }
     }
-  }, 1500);
+  }, 300);
 
   // Automatischer Email-Versand (debounced, wartet 30s auf weitere Speichervorgänge)
   try {
