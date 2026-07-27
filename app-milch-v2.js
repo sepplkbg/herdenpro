@@ -2,7 +2,7 @@
 //  HERDENPRO – MILCH v2  (LocalStorage-first Persistence)
 //  MODUL-VERSION: 5.0  ← wenn du das siehst, ist der Fix geladen
 // ══════════════════════════════════════════════════════════════
-window.MILCH_V2_VERSION = '5.8';
+window.MILCH_V2_VERSION = '5.9';
 //  Löst die alten Probleme (Datenverlust, hängende Saves offline,
 //  Multi-Melker-Kollisionen, Aggregations-Verdopplung).
 //
@@ -250,25 +250,80 @@ window.pushMilchWert = function(kuhId, wert, datum, zeit) {
 //  Verbindungs-Reset: bei hängenden Writes hilft es Firebase's
 //  WebSocket zu killen und neu aufbauen zu lassen.
 // ══════════════════════════════════════════════════════════════
-window.milchForceReconnect = function() {
+window.milchForceReconnect = async function(silent) {
   try {
     if(typeof firebase === 'undefined' || !firebase.database) {
-      alert('Firebase nicht verfügbar');
+      if(!silent) alert('Firebase nicht verfügbar');
       return;
     }
+    if(!silent && window.showSaveToast) window.showSaveToast('🔌 Reconnect läuft…');
+
+    // 1. Auth-Token FRISCH holen — sonst lehnt der Websocket-Handshake ab
+    try {
+      if(firebase.auth && firebase.auth().currentUser) {
+        await firebase.auth().currentUser.getIdToken(true);
+        console.log('[Milch v2] Reconnect: Token frisch geholt');
+      }
+    } catch(e) { console.warn('[Milch v2] Reconnect Token-Refresh:', e); }
+
+    // 2. Auto-Login falls kein Auth-User (verlorene Session)
+    if(!(firebase.auth && firebase.auth().currentUser)) {
+      try {
+        const stored = localStorage.getItem('hp_autoauth');
+        if(stored) {
+          const decoded = JSON.parse(decodeURIComponent(escape(atob(stored))));
+          await firebase.auth().signInWithEmailAndPassword(decoded.e, decoded.p);
+          await new Promise(r => setTimeout(r, 1000));
+          console.log('[Milch v2] Reconnect: Auto-Login gemacht');
+        }
+      } catch(e) { console.warn('[Milch v2] Reconnect Auto-Login:', e); }
+    }
+
+    // 3. Socket zwangs-neustarten
     firebase.database().goOffline();
-    if(window.showSaveToast) window.showSaveToast('🔌 Verbindung getrennt…');
-    setTimeout(() => {
-      firebase.database().goOnline();
-      if(window.showSaveToast) window.showSaveToast('🔌 Verbindung neu aufgebaut');
-      setTimeout(() => {
-        syncMilchPending();
-        updateSyncBanner();
-      }, 1000);
-    }, 1500);
+    await new Promise(r => setTimeout(r, 800));
+    firebase.database().goOnline();
+    await new Promise(r => setTimeout(r, 1500));
+
+    // 4. Warte auf .info/connected == true (max 8s)
+    const connected = await new Promise(resolve => {
+      const timeout = setTimeout(() => resolve(false), 8000);
+      try {
+        const ref = firebase.database().ref('.info/connected');
+        const cb = (snap) => {
+          if(snap.val() === true) {
+            clearTimeout(timeout);
+            ref.off('value', cb);
+            resolve(true);
+          }
+        };
+        ref.on('value', cb);
+      } catch(e) { clearTimeout(timeout); resolve(false); }
+    });
+
+    if(connected) {
+      if(!silent && window.showSaveToast) window.showSaveToast('✓ Verbunden — Sync läuft');
+      syncMilchPending();
+      updateSyncBanner();
+    } else {
+      // 5. Socket lebt IMMER NOCH nicht → dem User Page-Reload anbieten
+      if(!silent) {
+        const doReload = confirm(
+          '⚠ Firebase-Verbindung lässt sich nicht wiederherstellen.\n\n' +
+          'Deine ' + countPending() + ' pending Werte sind SICHER im Geräte-Speicher.\n\n' +
+          'App neu laden (Fix)? Nach dem Reload werden die Werte automatisch hochgeladen.'
+        );
+        if(doReload) {
+          try { localStorage.setItem('milch_autoRetryAfterLogin', '1'); } catch(e) {}
+          window.location.reload();
+        }
+      } else {
+        console.warn('[Milch v2] Reconnect: Socket kommt nicht zurück');
+      }
+    }
   } catch(e) {
     console.error('[Milch v2] Reconnect err:', e);
-    alert('Fehler beim Neuverbinden: ' + e.message);
+    if(!silent) alert('Fehler beim Neuverbinden: ' + (e.message || e));
   }
 };
 
@@ -1996,6 +2051,7 @@ function toggleSystemOfflineBanner() {
 
 // Online/Offline Handler
 window.addEventListener('online', () => {
+  console.log('[Milch v2] Online-Event — force Firebase-Reconnect');
   // Alte Timeout-Fehler aus Offline-Phase löschen — sind nicht mehr relevant
   if(window._milchSyncError && (window._milchSyncError.msg||'').toLowerCase().includes('timeout')) {
     window._milchSyncError = null;
@@ -2003,11 +2059,20 @@ window.addEventListener('online', () => {
   }
   toggleSystemOfflineBanner();
   updateSyncBanner();
-  setTimeout(() => {
-    syncMilchPending();
-    // Nach kurzer Wartezeit Bestätigung prüfen (viele Werte könnten synced sein)
-    setTimeout(() => { if(window._milchConfirmAllPendingSilent) window._milchConfirmAllPendingSilent(); }, 3000);
-  }, 500);
+  // KRITISCH: Firebase-Socket ZWANGS-Reconnect. Sonst bleibt Socket tot obwohl WLAN wieder da ist.
+  // Das ist der Hauptbug bei „Werte werden nicht übertragen" nach Offline-Online-Wechsel.
+  try {
+    if(typeof firebase !== 'undefined' && firebase.database) {
+      firebase.database().goOffline();
+      setTimeout(() => {
+        try { firebase.database().goOnline(); } catch(e) {}
+        setTimeout(() => {
+          syncMilchPending();
+          setTimeout(() => { if(window._milchConfirmAllPendingSilent) window._milchConfirmAllPendingSilent(); }, 3000);
+        }, 1500);
+      }, 500);
+    }
+  } catch(e) { console.warn('[Milch v2] Force-reconnect fail:', e); }
 });
 window.addEventListener('offline', () => {
   // Bereits gemerkte Timeout-Fehler nicht als Fehler anzeigen — offline ist normal

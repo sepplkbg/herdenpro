@@ -520,12 +520,66 @@ function renderKuhDetail() {
   const _mWkd = window.milchWert || function(v){ return typeof v === 'number' ? v : (v && v.wert != null ? parseFloat(v.wert) || 0 : parseFloat(v) || 0); };
   const chartDaten = mListAll.map(([,m])=>({ l: _mWkd(m.prokuh[id]), d: m.datum, z: m.zeit }));
   const chartMax = Math.max(...chartDaten.map(d=>d.l), 1);
-  const mGesamt = chartDaten.reduce((s,d)=>s+d.l, 0);
-  const mSchnitt = chartDaten.length ? Math.round(mGesamt/chartDaten.length*10)/10 : 0;
-  const mZuletzt = chartDaten.length ? chartDaten[chartDaten.length-1].l : null;
-  const mTrend = chartDaten.length>=3
-    ? chartDaten[chartDaten.length-1].l - chartDaten[chartDaten.length-3].l
-    : 0;
+
+  // ── Erweiterte Milch-Kennzahlen: getrennt für morgens, abends, tagesmilch ──
+  const morgensDaten = chartDaten.filter(x => (x.z || 'morgen') === 'morgen' && x.l > 0);
+  const abendsDaten  = chartDaten.filter(x => x.z === 'abend' && x.l > 0);
+  // Chronologisch sortieren
+  morgensDaten.sort((a,b) => a.d - b.d);
+  abendsDaten.sort((a,b) => a.d - b.d);
+  const letzteMorgens = morgensDaten.length ? morgensDaten[morgensDaten.length-1] : null;
+  const letzteAbends  = abendsDaten.length  ? abendsDaten[abendsDaten.length-1]  : null;
+
+  // Tagesmilch = Morgens + Abends pro Tag (bei Paarung von Abend + nächst folgendem Morgen)
+  // Für „letzte Tagesmilch": neueste Kombination
+  const tagesmilchWerte = [];
+  const tagesmilchNachDatum = {};
+  morgensDaten.forEach(m => {
+    const tag = new Date(m.d).toISOString().slice(0,10);
+    if(!tagesmilchNachDatum[tag]) tagesmilchNachDatum[tag] = { m: 0, a: 0, hasM: false, hasA: false, ts: m.d };
+    tagesmilchNachDatum[tag].m = m.l;
+    tagesmilchNachDatum[tag].hasM = true;
+    if(m.d > tagesmilchNachDatum[tag].ts) tagesmilchNachDatum[tag].ts = m.d;
+  });
+  abendsDaten.forEach(a => {
+    const tag = new Date(a.d).toISOString().slice(0,10);
+    if(!tagesmilchNachDatum[tag]) tagesmilchNachDatum[tag] = { m: 0, a: 0, hasM: false, hasA: false, ts: a.d };
+    tagesmilchNachDatum[tag].a = a.l;
+    tagesmilchNachDatum[tag].hasA = true;
+    if(a.d > tagesmilchNachDatum[tag].ts) tagesmilchNachDatum[tag].ts = a.d;
+  });
+  const tagesArr = Object.entries(tagesmilchNachDatum)
+    .filter(([, v]) => v.hasM && v.hasA)  // Nur Tage mit BEIDEN Messungen zählen als vollständige Tagesmilch
+    .map(([tag, v]) => ({ tag, total: v.m + v.a, ts: v.ts }))
+    .sort((a,b) => a.ts - b.ts);
+  const letzteTagesmilch = tagesArr.length ? tagesArr[tagesArr.length-1] : null;
+  const avgTagesmilch = tagesArr.length ? tagesArr.reduce((s,x) => s+x.total, 0) / tagesArr.length : 0;
+
+  // ── CARRY-FORWARD GESAMT-SAISON (analog Blatt Milch, aber nur für diese Kuh) ──
+  // Jeder Morgens/Abends-Wert wird bis zum nächsten Wert weitergetragen. Getrennt für morgens/abends.
+  // Ergibt eine Schätzung der Gesamt-Liter dieser Kuh über die Saison.
+  const firstMeasurementTs = Math.min(
+    morgensDaten.length ? morgensDaten[0].d : Infinity,
+    abendsDaten.length ? abendsDaten[0].d : Infinity
+  );
+  let gesamtSaisonCarry = 0;
+  if(firstMeasurementTs !== Infinity) {
+    const heuteEnd = new Date(); heuteEnd.setHours(23,59,59,999);
+    const iter = new Date(firstMeasurementTs); iter.setHours(0,0,0,0);
+    while(iter.getTime() <= heuteEnd.getTime()) {
+      const dayEnd = new Date(iter); dayEnd.setHours(23,59,59,999);
+      const dayTs = dayEnd.getTime();
+      // Letzten Morgens-Wert ≤ dayTs
+      let lastM = 0;
+      for(const it of morgensDaten) { if(it.d > dayTs) break; lastM = it.l; }
+      // Letzten Abends-Wert ≤ dayTs
+      let lastA = 0;
+      for(const it of abendsDaten) { if(it.d > dayTs) break; lastA = it.l; }
+      gesamtSaisonCarry += lastM + lastA;
+      iter.setDate(iter.getDate() + 1);
+    }
+  }
+  const gesamtSaison = Math.round(gesamtSaisonCarry);
 
   // WZ
   const wzAlerts = aktBeh.filter(([,b])=>b.wzMilchEnde).map(([,b])=>{
@@ -878,17 +932,31 @@ function renderKuhDetail() {
     ${chartDaten.length>=2 ? `
     <!-- Milch Stats -->
     <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:.4rem;margin-bottom:.7rem">
-      <div style="background:var(--bg3);border:1px solid var(--border);border-radius:10px;padding:.5rem;text-align:center">
-        <div style="font-size:1.1rem;font-weight:800;color:var(--gold);animation:kd-num .5s .1s both">${mZuletzt}L</div>
-        <div style="font-size:.6rem;color:var(--text3)">Zuletzt</div>
+      <!-- Kachel 1: Zuletzt (gestapelt: Morgens / Abends / Tagesmilch) -->
+      <div style="background:var(--bg3);border:1px solid var(--border);border-radius:10px;padding:.5rem;text-align:left">
+        <div style="font-size:.55rem;color:var(--text3);text-transform:uppercase;letter-spacing:.05em;margin-bottom:.3rem;text-align:center">Zuletzt</div>
+        <div style="display:flex;justify-content:space-between;align-items:center;font-size:.72rem;margin-bottom:.15rem">
+          <span style="color:#7acbff">🌅 M</span>
+          <b style="color:var(--text)">${letzteMorgens ? letzteMorgens.l + 'L' : '–'}</b>
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:center;font-size:.72rem;margin-bottom:.15rem">
+          <span style="color:#e67e22">🌇 A</span>
+          <b style="color:var(--text)">${letzteAbends ? letzteAbends.l + 'L' : '–'}</b>
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:center;font-size:.72rem;border-top:1px solid var(--border);padding-top:.15rem;margin-top:.15rem">
+          <span style="color:var(--gold)">🥛 T</span>
+          <b style="color:var(--gold)">${letzteTagesmilch ? Math.round(letzteTagesmilch.total*10)/10 + 'L' : '–'}</b>
+        </div>
       </div>
+      <!-- Kachel 2: Ø Tagesmilch (Durchschnitt aus vollständigen Tagen) -->
       <div style="background:var(--bg3);border:1px solid var(--border);border-radius:10px;padding:.5rem;text-align:center">
-        <div style="font-size:1.1rem;font-weight:800;color:#4ab8e8;animation:kd-num .5s .18s both">${mSchnitt}L</div>
-        <div style="font-size:.6rem;color:var(--text3)">Ø Leistung</div>
+        <div style="font-size:1.1rem;font-weight:800;color:#4ab8e8;animation:kd-num .5s .18s both">${Math.round(avgTagesmilch*10)/10}L</div>
+        <div style="font-size:.6rem;color:var(--text3);line-height:1.2">Ø Tagesmilch<br><span style="opacity:.6">${tagesArr.length} volle Tage</span></div>
       </div>
+      <!-- Kachel 3: Gesamt Saison (Carry-Forward wie Blatt Milch) -->
       <div style="background:var(--bg3);border:1px solid var(--border);border-radius:10px;padding:.5rem;text-align:center">
-        <div style="font-size:1.1rem;font-weight:800;color:${mTrend>=0?'var(--green)':'var(--red)'};animation:kd-num .5s .26s both">${mTrend>=0?'+':''}${Math.round(mTrend*10)/10}L</div>
-        <div style="font-size:.6rem;color:var(--text3)">Trend</div>
+        <div style="font-size:1.1rem;font-weight:800;color:var(--gold);animation:kd-num .5s .26s both">${gesamtSaison}L</div>
+        <div style="font-size:.6rem;color:var(--text3);line-height:1.2">Gesamt Saison<br><span style="opacity:.6">Carry-Forward</span></div>
       </div>
     </div>
 
@@ -924,27 +992,30 @@ function renderKuhDetail() {
       </div>`;
     })()}
     <!-- Canvas Charts: Morgens, Abends und Tagesmilch (Sichtbarkeit via kdChartVisible) -->
+    <!-- Gemeinsamer Prognose-Toggle für alle 3 Charts -->
+    <div style="display:flex;justify-content:flex-end;margin-bottom:.4rem">
+      <button onclick="window._kdPrognose=!window._kdPrognose;kdDrawWithRetry(0);render()"
+        style="font-size:.7rem;background:${window._kdPrognose?'rgba(212,168,75,.2)':'var(--bg2)'};border:1px solid ${window._kdPrognose?'var(--gold)':'var(--border)'};color:${window._kdPrognose?'var(--gold)':'var(--text3)'};border-radius:8px;padding:4px 10px;cursor:pointer">
+        ${window._kdPrognose?'✓':'+'} 30-Tage-Prognose (realistisch)
+      </button>
+    </div>
     <div id="kd-chart-wrap-morgens" style="background:var(--bg3);border:1px solid var(--border);border-radius:12px;padding:.7rem .7rem .4rem;margin-bottom:.5rem;display:${window._kdChartVis?.morgen===false?'none':'block'}">
       <div style="font-size:.68rem;color:#7acbff;font-weight:600;letter-spacing:.05em;margin-bottom:.35rem">🌅 MORGENS — VERLAUF</div>
       <canvas id="kd-chart-canvas-morgens" style="width:100%;height:130px;display:block"></canvas>
+      ${window._kdPrognose?`<div id="kd-prognose-info-morgens" style="margin-top:.4rem;padding:.35rem .55rem;background:rgba(122,203,255,.06);border:1px solid rgba(122,203,255,.2);border-radius:8px;font-size:.7rem;color:var(--text3)">Wird berechnet…</div>`:''}
       <div class="kd-chart-label" id="kd-chart-label-morgens"></div>
     </div>
     <div id="kd-chart-wrap-abends" style="background:var(--bg3);border:1px solid var(--border);border-radius:12px;padding:.7rem .7rem .4rem;margin-bottom:.5rem;display:${window._kdChartVis?.abend===false?'none':'block'}">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.35rem">
-        <div style="font-size:.68rem;color:#e67e22;font-weight:600;letter-spacing:.05em">🌇 ABENDS — VERLAUF</div>
-        <button onclick="window._kdPrognose=!window._kdPrognose;kdDrawWithRetry(0)"
-          style="font-size:.6rem;background:${window._kdPrognose?'rgba(212,168,75,.2)':'var(--bg2)'};border:1px solid ${window._kdPrognose?'var(--gold)':'var(--border)'};color:${window._kdPrognose?'var(--gold)':'var(--text3)'};border-radius:8px;padding:2px 6px;cursor:pointer">
-          ${window._kdPrognose?'✓':'+'} Prognose
-        </button>
-      </div>
+      <div style="font-size:.68rem;color:#e67e22;font-weight:600;letter-spacing:.05em;margin-bottom:.35rem">🌇 ABENDS — VERLAUF</div>
       <canvas id="kd-chart-canvas-abends" style="width:100%;height:130px;display:block"></canvas>
       <canvas id="kd-chart-canvas" style="display:none"></canvas>
-      ${window._kdPrognose?`<div id="kd-prognose-info" style="margin-top:.4rem;padding:.4rem .6rem;background:rgba(212,168,75,.06);border:1px solid rgba(212,168,75,.2);border-radius:8px;font-size:.7rem;color:var(--text3)">Wird berechnet…</div>`:''}
+      ${window._kdPrognose?`<div id="kd-prognose-info-abends" style="margin-top:.4rem;padding:.35rem .55rem;background:rgba(230,126,34,.06);border:1px solid rgba(230,126,34,.2);border-radius:8px;font-size:.7rem;color:var(--text3)">Wird berechnet…</div>`:''}
       <div class="kd-chart-label" id="kd-chart-label-abends"></div>
     </div>
     <div id="kd-chart-wrap-tag" style="background:var(--bg3);border:1px solid rgba(212,168,75,.3);border-radius:12px;padding:.7rem .7rem .4rem;margin-bottom:.7rem;display:${window._kdChartVis?.tag===false?'none':'block'}">
       <div style="font-size:.68rem;color:var(--gold);font-weight:600;letter-spacing:.05em;margin-bottom:.35rem">🥛 TAGESMILCH — VERLAUF (Abend + nächst folgender Morgen)</div>
       <canvas id="kd-chart-canvas-tag" style="width:100%;height:130px;display:block"></canvas>
+      ${window._kdPrognose?`<div id="kd-prognose-info-tag" style="margin-top:.4rem;padding:.35rem .55rem;background:rgba(212,168,75,.06);border:1px solid rgba(212,168,75,.2);border-radius:8px;font-size:.7rem;color:var(--text3)">Wird berechnet…</div>`:''}
       <div class="kd-chart-label" id="kd-chart-label-tag"></div>
     </div>
 
@@ -1042,7 +1113,8 @@ window.drawKdChart = function() {
       extras: extras,
       herdData: window._kdShowHerd ? herdMorgens : null,
       labelId: 'kd-chart-label-morgens',
-      zeit: 'morgen'
+      zeit: 'morgen',
+      allowPrognose: true
     });
   }
   if(vis.abend !== false) {
@@ -1059,6 +1131,7 @@ window.drawKdChart = function() {
       extras: extras,
       herdData: null,
       labelId: 'kd-chart-label-tag',
+      allowPrognose: true,
       zeit: 'tag'
     });
   }
@@ -1093,17 +1166,26 @@ function _drawKdChartSingle(canvasId, data, hauptFarbe, areaHi, areaLo, opts) {
     return;
   }
 
-  // ── Prognose (nur bei Abends erlaubt) ──
+  // ── REALISTISCHE Prognose (Laktationskurve, nicht reine Linreg) ──
   var zeigPrognose = window._kdPrognose && opts.allowPrognose;
   var progPts = [];
-  if(zeigPrognose && data.length >= 4) {
-    var n=data.length, sumX=0,sumY=0,sumXY=0,sumX2=0;
-    data.forEach(function(d,i){sumX+=i;sumY+=d.l;sumXY+=i*d.l;sumX2+=i*i;});
-    var slope=(n*sumXY-sumX*sumY)/(n*sumX2-sumX*sumX);
-    var intercept=(sumY-slope*sumX)/n;
-    for(var j=1;j<=30;j++){
-      progPts.push({l:Math.max(0,Math.round((intercept+slope*(n-1+j))*10)/10), istPrognose:true, d: (data[n-1].d || Date.now()) + j*86400000});
-    }
+  var progResult = null;
+  if(zeigPrognose && data.length >= 3 && window.calcRealisticPrognose) {
+    progResult = window.calcRealisticPrognose(data, 30);
+    progPts = progResult.points;
+    // Info-Box befüllen — zeit-spezifisch (morgens/abends/tag)
+    var infoBoxId = 'kd-prognose-info-' + (opts.zeit === 'abend' ? 'abends' : opts.zeit === 'morgen' ? 'morgens' : 'tag');
+    setTimeout(function(){
+      var el = document.getElementById(infoBoxId);
+      if(el && progResult) {
+        var trendIcon = progResult.cappedSlope > 0.05 ? '📈' : progResult.cappedSlope < -0.05 ? '📉' : '➡';
+        var capNote = progResult.wasCapped ? ' <span style="color:#e67e22" title="Roh-Trend zu extrem, auf Laktationskurve begrenzt">⚠ begrenzt</span>' : '';
+        el.innerHTML =
+          'In 14 T: <b style="color:var(--gold)">~'+progResult.val14+'L</b> · '+
+          'In 30 T: <b style="color:var(--gold)">~'+progResult.val30+'L</b> · '+
+          trendIcon + capNote;
+      }
+    }, 50);
   }
 
   var allData = zeigPrognose ? data.concat(progPts) : data;
