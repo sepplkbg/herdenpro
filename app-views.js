@@ -530,29 +530,33 @@ function renderKuhDetail() {
   const letzteMorgens = morgensDaten.length ? morgensDaten[morgensDaten.length-1] : null;
   const letzteAbends  = abendsDaten.length  ? abendsDaten[abendsDaten.length-1]  : null;
 
-  // Tagesmilch = Morgens + Abends pro Tag (bei Paarung von Abend + nächst folgendem Morgen)
-  // Für „letzte Tagesmilch": neueste Kombination
-  const tagesmilchWerte = [];
-  const tagesmilchNachDatum = {};
-  morgensDaten.forEach(m => {
-    const tag = new Date(m.d).toISOString().slice(0,10);
-    if(!tagesmilchNachDatum[tag]) tagesmilchNachDatum[tag] = { m: 0, a: 0, hasM: false, hasA: false, ts: m.d };
-    tagesmilchNachDatum[tag].m = m.l;
-    tagesmilchNachDatum[tag].hasM = true;
-    if(m.d > tagesmilchNachDatum[tag].ts) tagesmilchNachDatum[tag].ts = m.d;
-  });
+  // ── Letzte Tagesmilch: einfach letzter Morgens + letzter Abends addieren ──
+  const letzteTagesmilch = (letzteMorgens && letzteAbends)
+    ? { total: letzteMorgens.l + letzteAbends.l, ts: Math.max(letzteMorgens.d, letzteAbends.d) }
+    : (letzteMorgens ? { total: letzteMorgens.l, ts: letzteMorgens.d }
+    : (letzteAbends  ? { total: letzteAbends.l,  ts: letzteAbends.d }
+    : null));
+
+  // ── Ø Tagesmilch: paare jeweils Abend + nächst-liegenden Morgen (in beide Richtungen) ──
+  // Für jeden Abend: finde den zeitlich nächsten Morgen (egal ob davor oder danach).
+  // Jeder Morgen wird max 1x verwendet (verhindert Doppelzählung).
+  const tagesArr = [];
+  const usedMorgIdx = new Set();
   abendsDaten.forEach(a => {
-    const tag = new Date(a.d).toISOString().slice(0,10);
-    if(!tagesmilchNachDatum[tag]) tagesmilchNachDatum[tag] = { m: 0, a: 0, hasM: false, hasA: false, ts: a.d };
-    tagesmilchNachDatum[tag].a = a.l;
-    tagesmilchNachDatum[tag].hasA = true;
-    if(a.d > tagesmilchNachDatum[tag].ts) tagesmilchNachDatum[tag].ts = a.d;
+    let bestIdx = -1, bestDist = Infinity;
+    for(let i=0; i<morgensDaten.length; i++) {
+      if(usedMorgIdx.has(i)) continue;
+      const dist = Math.abs(morgensDaten[i].d - a.d);
+      if(dist < bestDist) { bestDist = dist; bestIdx = i; }
+    }
+    if(bestIdx >= 0 && bestDist < 3 * 86400000) { // max 3 Tage auseinander
+      usedMorgIdx.add(bestIdx);
+      tagesArr.push({
+        total: a.l + morgensDaten[bestIdx].l,
+        ts: Math.max(a.d, morgensDaten[bestIdx].d)
+      });
+    }
   });
-  const tagesArr = Object.entries(tagesmilchNachDatum)
-    .filter(([, v]) => v.hasM && v.hasA)  // Nur Tage mit BEIDEN Messungen zählen als vollständige Tagesmilch
-    .map(([tag, v]) => ({ tag, total: v.m + v.a, ts: v.ts }))
-    .sort((a,b) => a.ts - b.ts);
-  const letzteTagesmilch = tagesArr.length ? tagesArr[tagesArr.length-1] : null;
   const avgTagesmilch = tagesArr.length ? tagesArr.reduce((s,x) => s+x.total, 0) / tagesArr.length : 0;
 
   // ── CARRY-FORWARD GESAMT-SAISON (analog Blatt Milch, aber nur für diese Kuh) ──
@@ -951,7 +955,7 @@ function renderKuhDetail() {
       <!-- Kachel 2: Ø Tagesmilch (Durchschnitt aus vollständigen Tagen) -->
       <div style="background:var(--bg3);border:1px solid var(--border);border-radius:10px;padding:.5rem;text-align:center">
         <div style="font-size:1.1rem;font-weight:800;color:#4ab8e8;animation:kd-num .5s .18s both">${Math.round(avgTagesmilch*10)/10}L</div>
-        <div style="font-size:.6rem;color:var(--text3);line-height:1.2">Ø Tagesmilch<br><span style="opacity:.6">${tagesArr.length} volle Tage</span></div>
+        <div style="font-size:.6rem;color:var(--text3);line-height:1.2">Ø Tagesmilch<br><span style="opacity:.6">${tagesArr.length} M+A-Paare</span></div>
       </div>
       <!-- Kachel 3: Gesamt Saison (Carry-Forward wie Blatt Milch) -->
       <div style="background:var(--bg3);border:1px solid var(--border);border-radius:10px;padding:.5rem;text-align:center">
