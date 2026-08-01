@@ -5,7 +5,7 @@
 //  Offline → Job in localStorage queuen, beim Online-Werden nachliefern.
 // ══════════════════════════════════════════════════════════════════════════════
 (function() {
-  const VERSION = '1.2';
+  const VERSION = '2.0';
   const SETTINGS_KEY = 'milch_email_settings_v1';
   const QUEUE_KEY = 'milch_email_queue_v1';
   const DEBOUNCE_MS = 30000;  // 30 Sekunden warten nach letztem Save
@@ -41,14 +41,8 @@
     localStorage.setItem(QUEUE_KEY, JSON.stringify(q));
   }
 
-  // ── Tages-CSV bauen ──
-  // Baut eine kompakte CSV für den gegebenen Tag: alle Kühe die an dem Tag
-  // gemolken wurden, morgens + abends getrennt, mit Notizen und Molkerei-Flag.
-  function buildTagesCsv(datumTs) {
-    const tagKey = new Date(datumTs).toISOString().slice(0,10);
-    const datumStr = new Date(datumTs).toLocaleDateString('de-AT');
-    const alle = Object.values(window.milchEintraege || {})
-      .filter(e => e && e.datum && new Date(e.datum).toISOString().slice(0,10) === tagKey);
+  // ── Aggregations-Kern: nimmt beliebige Eintragsliste, produziert CSV+HTML ──
+  function _buildFromEntries(alle, datumStr, ueberschrift) {
 
     // Aggregation per zeit (mehrere Melker → 1 Zeile)
     const grup = { morgen: null, abend: null };
@@ -157,7 +151,7 @@
         '.notes{margin-top:12px;padding:8px 12px;background:#fff9e5;border-left:3px solid #d4a84b;color:#555;font-size:13px}' +
         '.footer{margin-top:20px;color:#aaa;font-size:11px;font-style:italic}' +
       '</style>' +
-      '<h2>🥛 Milchmessung ' + escapeHtml(datumStr) + '</h2>' +
+      '<h2>🥛 ' + escapeHtml(ueberschrift || ('Milchmessung ' + datumStr)) + '</h2>' +
       '<table class=summary>' +
         '<tr><td class=label>Morgens gesamt</td><td class=val>' + fmt(gesMorgen) + ' L' + (molkereiMorgen ? ' · 🏭 Molkerei' : '') + '</td></tr>' +
         '<tr><td class=label>Abends gesamt</td><td class=val>' + fmt(gesAbend) + ' L' + (molkereiAbend ? ' · 🏭 Molkerei' : '') + '</td></tr>' +
@@ -182,22 +176,96 @@
     };
   }
 
+  // ── Wrapper 1: alle Einträge eines Kalender-Tages ──
+  function buildTagesCsv(datumTs) {
+    const tagKey = new Date(datumTs).toISOString().slice(0,10);
+    const datumStr = new Date(datumTs).toLocaleDateString('de-AT');
+    const alle = Object.values(window.milchEintraege || {})
+      .filter(e => e && e.datum && new Date(e.datum).toISOString().slice(0,10) === tagKey);
+    return _buildFromEntries(alle, datumStr, 'Milchmessung ' + datumStr);
+  }
+
+  // ── Wrapper 2: ein Paar (Abend + folgender Morgen) ──
+  function buildPaarCsv(abendEntry, morgenEntry) {
+    const abendStr = new Date(abendEntry.datum).toLocaleDateString('de-AT');
+    const morgenStr = new Date(morgenEntry.datum).toLocaleDateString('de-AT');
+    const ueberschrift = 'Tagesmilch Abend ' + abendStr + ' + Morgen ' + morgenStr;
+    return _buildFromEntries([abendEntry, morgenEntry], abendStr + ' → ' + morgenStr, ueberschrift);
+  }
+
+  // ── Paare finden: für jeden Abend den nächst-folgenden Morgen (max 5 Tage) ──
+  // Gibt nur Paare zurück, die noch NICHT per Email verschickt wurden.
+  function findCompleteUnsentPairs() {
+    const eintraege = window.milchEintraege || {};
+    const abende = [], morgene = [];
+    Object.entries(eintraege).forEach(([key, e]) => {
+      if(!e || !e.datum || !e.prokuh || Object.keys(e.prokuh).length === 0) return;
+      const item = { key, datum: e.datum, zeit: e.zeit, prokuh: e.prokuh, molkerei: e.molkerei, notiz: e.notiz };
+      if((e.zeit || 'morgen') === 'abend') abende.push(item);
+      else morgene.push(item);
+    });
+    abende.sort((a,b) => a.datum - b.datum);
+    morgene.sort((a,b) => a.datum - b.datum);
+
+    const sent = getSentPairs();
+    const usedMorgen = new Set();
+    const pairs = [];
+    abende.forEach(abend => {
+      // Nächsten Morgen NACH diesem Abend (max 5 Tage) finden, nicht schon verwendet
+      let match = null;
+      for(const m of morgene) {
+        if(usedMorgen.has(m.key)) continue;
+        if(m.datum <= abend.datum) continue;
+        const diffDays = (m.datum - abend.datum) / 86400000;
+        if(diffDays > 5) continue;
+        match = m;
+        break;
+      }
+      if(match) {
+        usedMorgen.add(match.key);
+        const pairId = abend.key + '|' + match.key;
+        if(!sent.includes(pairId)) {
+          pairs.push({ abend, morgen: match, pairId });
+        }
+      }
+    });
+    return pairs;
+  }
+
+  // ── Sent-Pair-Tracking (localStorage) ──
+  const SENT_PAIRS_KEY = 'milch_email_sent_pairs_v1';
+  function getSentPairs() {
+    try { return JSON.parse(localStorage.getItem(SENT_PAIRS_KEY) || '[]'); }
+    catch(e) { return []; }
+  }
+  function markPairSent(pairId) {
+    const cur = getSentPairs();
+    if(!cur.includes(pairId)) {
+      cur.push(pairId);
+      // Auf 100 begrenzen (rolling)
+      while(cur.length > 100) cur.shift();
+      try { localStorage.setItem(SENT_PAIRS_KEY, JSON.stringify(cur)); } catch(e) {}
+    }
+  }
+  window._milchEmailSentPairs = getSentPairs;  // Debug-Helper
+
   // ── Email-Body bauen ──
   // WICHTIG: EmailJS-Limit ist 50 KB für ALLE Variablen zusammen.
-  // Deshalb nur die HTML einmal senden (in `message`), keine Duplikate wie `html_table` oder `csv_content`.
-  // Template soll `{{{message}}}` nutzen (3 Klammern = HTML nicht escapen).
   function buildEmailBody(data) {
     const alm = (window.saisonInfo && window.saisonInfo.alm) || 'Alm';
     return {
-      subject: '🥛 Milchmessung ' + data.datumStr + ' – ' + alm,
+      subject: '🥛 ' + data.datumStr + ' – ' + alm,
       alm_name: alm,
       datum: data.datumStr,
       gesamt_liter: data.gesamtTag + ' L',
-      message: data.html   // Fertiger HTML-Body — Template nutzt `{{{message}}}`
+      message: data.html
     };
   }
 
   // ── Debounced Trigger ──
+  // Neue Logik: NICHT sofort für den gerade gespeicherten Tag Email queuen,
+  // sondern nach 30s (Debounce) alle vollständigen Paare (Abend + folgender Morgen)
+  // die noch nicht verschickt wurden queuen.
   window.scheduleMilchEmail = function(datumTs) {
     const s = window.getMilchEmailSettings();
     if(!s.enabled) return;
@@ -206,20 +274,22 @@
 
     if(_debounceTimer) clearTimeout(_debounceTimer);
     _debounceTimer = setTimeout(() => {
-      queueEmail(datumTs);
-      window.trySendMilchEmailQueue();
+      const pairs = findCompleteUnsentPairs();
+      console.log('[Milch-Email] Neue vollständige Paare gefunden:', pairs.length);
+      pairs.forEach(p => queuePairEmail(p));
+      if(pairs.length > 0) window.trySendMilchEmailQueue();
     }, DEBOUNCE_MS);
   };
 
-  function queueEmail(datumTs) {
+  function queuePairEmail(pair) {
     const q = getQueue();
-    const tagKey = new Date(datumTs).toISOString().slice(0,10);
-    // Duplikate für gleichen Tag vermeiden: alten Job überschreiben (neue CSV = frischere Daten)
-    const gefiltert = q.filter(j => j.tagKey !== tagKey);
+    // Duplikate: alten Job für gleiche pairId überschreiben
+    const gefiltert = q.filter(j => j.pairId !== pair.pairId);
     gefiltert.push({
       id: 'job_' + Date.now() + '_' + Math.random().toString(36).slice(2,7),
-      tagKey: tagKey,
-      datumTs: datumTs,
+      pairId: pair.pairId,
+      abendKey: pair.abend.key,
+      morgenKey: pair.morgen.key,
       createdAt: Date.now(),
       versucht: 0,
       lastError: null
@@ -268,14 +338,28 @@
   };
 
   async function sendJob(job, s) {
-    const data = buildTagesCsv(job.datumTs);
+    let data;
+    // Neuer Modus: Paar (abendKey + morgenKey)
+    if(job.pairId && job.abendKey && job.morgenKey) {
+      const ei = window.milchEintraege || {};
+      const abendE = ei[job.abendKey];
+      const morgenE = ei[job.morgenKey];
+      if(!abendE || !morgenE) throw new Error('Paar-Einträge nicht mehr im Cache: ' + job.pairId);
+      data = buildPaarCsv({...abendE, key: job.abendKey}, {...morgenE, key: job.morgenKey});
+    } else if(job.datumTs) {
+      // Alter Modus (legacy jobs in queue) — Tages-CSV
+      data = buildTagesCsv(job.datumTs);
+    } else {
+      throw new Error('Job hat weder pairId noch datumTs: ' + JSON.stringify(job));
+    }
     const body = buildEmailBody(data);
     const empfaenger = s.recipients.filter(r => r && r.trim());
-    // Für jeden Empfänger separaten Send
     for(const to of empfaenger) {
       const params = Object.assign({}, body, { to_email: to.trim() });
       await emailjs.send(s.serviceId, s.templateId, params, { publicKey: s.publicKey });
     }
+    // Nach erfolgreichem Send: Paar als versendet markieren (verhindert Re-Send bei Edit)
+    if(job.pairId) markPairSent(job.pairId);
   }
 
   // ── Test-Email ──
@@ -345,8 +429,9 @@
     msg += 'EmailJS konfiguriert: ' + (!!(s.serviceId && s.templateId && s.publicKey) ? 'JA' : 'NEIN') + '\n';
     msg += 'Queue: ' + q.length + ' Jobs\n';
     if(q.length) {
-      msg += '\n' + q.map(j => '  · ' + j.tagKey + ' (Versuche: ' + (j.versucht||0) + ')' + (j.lastError ? ' — ' + j.lastError : '')).join('\n');
+      msg += '\n' + q.map(j => '  · ' + (j.pairId || j.tagKey || '?') + ' (Versuche: ' + (j.versucht||0) + ')' + (j.lastError ? ' — ' + j.lastError : '')).join('\n');
     }
+    msg += '\n\nVersendete Paare: ' + getSentPairs().length;
     alert(msg);
   };
 
