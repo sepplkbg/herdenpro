@@ -2445,6 +2445,12 @@ function renderMilch() {
   });
   gesamtMolkerei = Math.round(gesamtMolkerei);
   gesamtSennerei = Math.round(gesamtSennerei);
+  // Saison-Kennzahlen mit Carry-Forward (analog Monatsübersicht):
+  //   gesamtSaisonCarry = Summe aller Monats-Hochrechnungen
+  //   tageSaisonBerechnet = Summe der Tage die berechnet wurden
+  const gesamtSaisonCarry = Object.values(proMonatDetail).reduce((s,d) => s + (d.gerechnet||0), 0);
+  const tageSaisonBerechnet = Object.values(proMonatDetail).reduce((s,d) => s + (d.tageBerechnet||0), 0);
+  const avgProTagSaison = tageSaisonBerechnet > 0 ? Math.round(gesamtSaisonCarry / tageSaisonBerechnet) : 0;
   // Melkkühe-Filter: standardmäßig NICHT-trockene Kühe. User kann per Toggle alle zeigen.
   const alleKueheSorted = Object.entries(kuehe).sort((a,b) => {
     const nA = parseInt(a[1].nr)||0, nB = parseInt(b[1].nr)||0; return nA - nB;
@@ -2488,8 +2494,8 @@ function renderMilch() {
   return `
     <div class="page-header"><h2>🥛 Milchleistung</h2><div style="display:flex;gap:.4rem"><button class="btn-ghost" onclick="showAktuellenBericht()" title="Bericht zur aktuellen Schicht">📊</button><button class="btn-primary" onclick="showMilchForm()">+ Eintrag</button></div></div>
     <div class="stats-grid" style="grid-template-columns:1fr 1fr 1fr">
-      <div class="stat-card"><div class="stat-icon" style="font-size:.9rem">Ø/Tag</div><div class="stat-num" style="font-size:1.4rem">${letzten14.length?Math.round(gesamtL14/letzten14.length):'–'}L</div><div class="stat-label">14 Tage</div></div>
-      <div class="stat-card"><div class="stat-icon" style="font-size:.9rem">Gesamt</div><div class="stat-num" style="font-size:1.4rem">${Math.round(gesamtAll)}L</div><div class="stat-label">Saison</div></div>
+      <div class="stat-card"><div class="stat-icon" style="font-size:.9rem">Ø/Tag</div><div class="stat-num" style="font-size:1.4rem">${avgProTagSaison || '–'}L</div><div class="stat-label">Saison (${tageSaisonBerechnet} Tage)</div></div>
+      <div class="stat-card"><div class="stat-icon" style="font-size:.9rem">Gesamt</div><div class="stat-num" style="font-size:1.4rem">${gesamtSaisonCarry}L</div><div class="stat-label">Saison · Carry-Forward</div></div>
       <div class="stat-card" onclick="exportMilchMolkerei()"><div class="stat-icon">📤</div><div class="stat-num" style="font-size:.9rem">Export</div><div class="stat-label">→ Molkerei</div></div>
     </div>
 

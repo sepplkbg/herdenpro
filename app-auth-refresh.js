@@ -109,4 +109,88 @@
   };
 
   console.log('[Auth-Refresh] Modul geladen v' + VERSION);
+
+  // ══════════════════════════════════════════════════════════════════════════════
+  // SAVE-WRAPPER: schützt alle window.saveXxx-Funktionen mit
+  //   • Button-Disable (verhindert Doppel-Klick → Duplikate)
+  //   • Try/Catch mit Alert (keine stummen Fehler)
+  //   • Overall-Timeout (verhindert ewiges Hängen)
+  // ══════════════════════════════════════════════════════════════════════════════
+  window._wrapSaveFn = function(fnName, overlayId, timeoutMs) {
+    timeoutMs = timeoutMs || 30000;
+    const original = window[fnName];
+    if(!original || typeof original !== 'function' || original._wrapped) return;
+
+    window[fnName] = async function(...args) {
+      // Button finden (im Overlay ODER global auf der Seite)
+      let btn = null;
+      if(overlayId) {
+        const ov = document.getElementById(overlayId);
+        if(ov) btn = ov.querySelector('.btn-primary');
+      }
+      if(!btn) btn = document.querySelector('button.btn-primary[onclick*="'+fnName+'"]');
+      const origLabel = btn ? btn.textContent : '';
+      if(btn && !btn.disabled) {
+        btn.disabled = true;
+        btn.dataset._origLabel = origLabel;
+        btn.textContent = '⏳ Speichern…';
+        btn.style.opacity = '.7';
+      }
+      const restore = () => {
+        if(btn && btn.dataset._origLabel !== undefined) {
+          btn.disabled = false;
+          btn.textContent = btn.dataset._origLabel || 'Speichern';
+          btn.style.opacity = '';
+          delete btn.dataset._origLabel;
+        }
+      };
+      // Timeout-Wrapper
+      const timeoutPromise = new Promise((_, rej) => setTimeout(() => rej(new Error(fnName+' Timeout '+timeoutMs+'ms')), timeoutMs));
+      try {
+        return await Promise.race([original.apply(this, args), timeoutPromise]);
+      } catch(err) {
+        console.error('['+fnName+'] FEHLER:', err);
+        alert('Fehler beim Speichern:\n\n' + (err && err.message || err));
+        throw err;
+      } finally {
+        restore();
+      }
+    };
+    window[fnName]._wrapped = true;
+    console.log('[Wrap] '+fnName+' geschützt');
+  };
+
+  // Beim Start: alle bekannten Save-Funktionen wrappen (nach kurzer Verzögerung)
+  // Wichtig: manuell schon geschützte Funktionen (saveMilch, saveBehandlung, saveKlauen, saveWeide)
+  //          werden NICHT nochmal gewrappt (per _wrapped Flag verhindert).
+  setTimeout(() => {
+    const saves = [
+      ['saveKuh',            'kuh-form-overlay'],
+      ['saveBesamung',       'besamung-form-overlay'],
+      ['saveKalbung',        'kalbung-form-overlay'],
+      ['saveJournal',        'journal-form-overlay'],
+      ['saveKontakt',        'kontakt-form-overlay'],
+      ['saveNotfallKontakt', 'notfall-kontakt-overlay'],
+      ['saveGruppe',         'gruppe-form-overlay'],
+      ['saveKalenderTermin', 'kalender-form-overlay'],
+      ['saveMaschine',       'maschine-form-overlay'],
+      ['saveChecklistePunkt','checkliste-form-overlay'],
+      ['saveService',        'service-form-overlay'],
+      ['saveAufgabe',        'aufgabe-form-overlay'],
+      ['saveLagerArtikel',   'lager-artikel-overlay'],
+      ['saveLagerVerbrauch', 'lager-verbrauch-overlay'],
+      ['saveLagerZugang',    'lager-zugang-overlay'],
+      ['saveSaisonArchiv',   'saison-archiv-overlay'],
+      ['saveTraenke',        'traenke-form-overlay'],
+      ['saveBauer',          'bauer-form-overlay'],
+      ['saveKfLieferung',    'kf-lieferung-overlay'],
+      ['saveKraftfutter',    'kf-overlay'],
+      ['saveSchalmViertel',  'schalm-form-overlay'],
+      ['saveAbtrieb',        'abtrieb-overlay'],
+      ['saveWeide',          'weide-overlay'],
+      ['saveWeideTag',       'weidetag-overlay']
+    ];
+    saves.forEach(([name, ovId]) => { try { window._wrapSaveFn(name, ovId); } catch(e) { console.warn('Wrap '+name+' fail:', e); } });
+    console.log('[Wrap] ' + saves.length + ' Save-Funktionen geprüft');
+  }, 3000);
 })();

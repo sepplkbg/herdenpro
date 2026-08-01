@@ -2279,10 +2279,15 @@ window.showBehandlungForm=function(kuhId, editBId, editData) {
   }, 50);
 };
 window.saveBehandlung=async function(){
+  // Save-Button sofort disablen — verhindert Doppel-Speichern bei mehrfachem Tap
+  const _saveBtn = document.querySelector('#behandlung-form-overlay .btn-primary');
+  const _origLabel = _saveBtn ? _saveBtn.textContent : '';
+  if(_saveBtn) { _saveBtn.disabled = true; _saveBtn.textContent = '⏳ Speichern…'; _saveBtn.style.opacity = '.7'; }
+  const _restoreBtn = () => { if(_saveBtn) { _saveBtn.disabled = false; _saveBtn.textContent = _origLabel || 'Speichern'; _saveBtn.style.opacity = ''; } };
   try {
   console.log('[saveBehandlung] Start');
   const kuhId=document.getElementById('b-kuh')?.value;
-  if(!kuhId){alert('Kuh wählen');return;}
+  if(!kuhId){alert('Kuh wählen'); _restoreBtn(); return;}
   const abgabe=document.getElementById('b-abgabe')?.value;
   const fl=document.getElementById('b-folge')?.value;
   const wzMilch=document.getElementById('b-wz-milch')?.value;
@@ -2320,28 +2325,36 @@ window.saveBehandlung=async function(){
     fotoData:document.getElementById('b-foto-data')?.value||null,
     tazettelData:document.getElementById('b-tazettel-data')?.value||null,
   };
-  // Fix B: mit Auth-Retry — bei PERMISSION_DENIED wird Token erneuert und nochmal versucht
+  // Fix B: mit Auth-Retry + Write-Timeout (20s) — bei PERMISSION_DENIED wird Token erneuert und nochmal versucht.
+  // Timeout verhindert dass Save ewig hängt bei schwacher Alm-Verbindung.
   const _retry = window.withAuthRetry || (async fn => await fn());
+  const _withTimeout = (promise, ms, label) => Promise.race([
+    promise,
+    new Promise((_, rej) => setTimeout(() => rej(new Error(label+' Timeout '+ms+'ms')), ms))
+  ]);
   if(editId){
-    await _retry(() => update(ref(db,'behandlungen/'+editId),{...data,updatedAt:Date.now()}));
+    await _withTimeout(_retry(() => update(ref(db,'behandlungen/'+editId),{...data,updatedAt:Date.now()})), 20000, 'Update');
     try { if(window.behandlungen?.[editId]) window.behandlungen[editId] = {...window.behandlungen[editId], ...data, updatedAt:Date.now()}; } catch(x) {}
   }
   else{
-    const nr = await _retry(() => push(ref(db,'behandlungen'),{...data,createdAt:Date.now()}));
-    editId=nr.key;
+    // Safer Pattern: Key VOR dem await holen (falls await das Ref-Objekt verliert)
+    const pushRef = firebase.database().ref('behandlungen').push();
+    const newId = pushRef.key;
+    await _withTimeout(_retry(() => pushRef.set({...data, createdAt: Date.now()})), 20000, 'Push');
+    editId = newId;
     try { window.behandlungen = window.behandlungen || {}; window.behandlungen[editId] = {...data, createdAt:Date.now()}; if(typeof behandlungen !== 'undefined') behandlungen[editId] = {...data, createdAt:Date.now()}; } catch(x) {}
   }
 
   // ── Auto-Trigger: Diagnose "Trockenstellen" → Kuh-Laktation auf 'trocken' ──
+  // Fire-and-forget mit Timeout — darf den Haupt-Flow nicht blockieren
   const diagnoseLower = (data.diagnose||'').toLowerCase();
   if(diagnoseLower.includes('trockenstell') || diagnoseLower.includes('trocken stell') || diagnoseLower.includes('trockenlegen')) {
-    try {
-      await update(ref(db,'kuehe/'+kuhId), { laktation: 'trocken', updatedAt: Date.now() });
-      window.showSaveToast && showSaveToast('🥛→💧 Status auf "trocken" gesetzt');
-    } catch(e) { console.warn('Laktations-Update fehlgeschlagen:', e); }
+    _withTimeout(_retry(() => update(ref(db,'kuehe/'+kuhId), { laktation: 'trocken', updatedAt: Date.now() })), 15000, 'Trocken')
+      .then(() => { window.showSaveToast && showSaveToast('🥛→💧 Status auf "trocken" gesetzt'); })
+      .catch(e => console.warn('Laktations-Update fehlgeschlagen:', e));
   }
 
-  // Temperaturverlauf anhängen wenn Temperatur eingegeben
+  // Temperaturverlauf anhängen wenn Temperatur eingegeben (fire-and-forget, blockt nicht)
   const tempVal = parseFloat(document.getElementById('b-temperatur')?.value);
   if(tempVal && editId) {
     const tempEntry = {
@@ -2350,7 +2363,8 @@ window.saveBehandlung=async function(){
       ts:   Date.now(),
       datum: isoDate(new Date())
     };
-    await push(ref(db,'behandlungen/'+editId+'/temperaturVerlauf'), tempEntry);
+    _withTimeout(_retry(() => push(ref(db,'behandlungen/'+editId+'/temperaturVerlauf'), tempEntry)), 15000, 'TempVerlauf')
+      .catch(e => console.warn('Temperaturverlauf-Push fehlgeschlagen:', e));
     // Fieber-Alert
     if(tempVal > 39.5 && typeof swNotify==='function') {
       const k = kuehe[data.kuhId];
@@ -2371,6 +2385,8 @@ window.saveBehandlung=async function(){
   } catch(err) {
     console.error('[saveBehandlung] FEHLER:', err);
     alert('Fehler beim Speichern der Behandlung:\n\n' + (err && err.message || err) + '\n\nBitte Screenshot machen und melden.');
+  } finally {
+    _restoreBtn();
   }
 };
 
@@ -3117,30 +3133,63 @@ window.fugeKuhZuGruppe = async function(kuhId, gruppenName) {
   const set = new Set(String(k.gruppe||'').split(/\s*[,;\/]\s*/).filter(Boolean));
   set.add(gruppenName);
   const neueListe = [...set].join(', ');
-  const updates = { ['kuehe/'+kuhId+'/gruppe']: neueListe, ['kuehe/'+kuhId+'/updatedAt']: Date.now() };
-  // 2) In gruppen[gid].mitglieder eintragen
   const gEntry = Object.entries(gruppen).find(([, g]) => g && g.name === gruppenName);
-  if(gEntry) updates['gruppen/'+gEntry[0]+'/mitglieder/'+kuhId] = true;
+  const _retry = window.withAuthRetry || (async fn => await fn());
   try {
-    await update(ref(db, '/'), updates);
+    // Zwei separate Updates (statt Root-Multipath) — vermeidet Firebase-Rules-Probleme
+    await _retry(() => update(ref(db,'kuehe/'+kuhId), { gruppe: neueListe, updatedAt: Date.now() }));
+    if(gEntry) {
+      const gid = gEntry[0];
+      const newMitglieder = { ...(gruppen[gid]?.mitglieder || {}), [kuhId]: true };
+      await _retry(() => update(ref(db,'gruppen/'+gid), { mitglieder: newMitglieder }));
+      // Lokal SOFORT updaten damit UI sofort korrekt rendert (Firebase-Listener kommt später)
+      try {
+        if(window.gruppen && window.gruppen[gid]) {
+          window.gruppen[gid].mitglieder = newMitglieder;
+          if(typeof gruppen !== 'undefined') gruppen[gid].mitglieder = newMitglieder;
+        }
+      } catch(x) {}
+    }
+    // Lokale Kuh auch updaten
+    try {
+      if(window.kuehe && window.kuehe[kuhId]) window.kuehe[kuhId].gruppe = neueListe;
+      if(typeof kuehe !== 'undefined' && kuehe[kuhId]) kuehe[kuhId].gruppe = neueListe;
+    } catch(x) {}
     window.showSaveToast && showSaveToast('✓ ' + (k.name || '#'+k.nr) + ' → ' + gruppenName);
-  } catch(e) { console.error('fugeKuhZuGruppe:', e); alert('Fehler: '+e.message); }
+    // Force re-render damit UI die Änderung sofort zeigt
+    setTimeout(() => { try { if(typeof render === 'function') render(); } catch(e){} }, 50);
+  } catch(e) { console.error('fugeKuhZuGruppe:', e); alert('Fehler: '+(e.message||e)); }
 };
 
 // Kuh aus einer Gruppe entfernen (andere Gruppen bleiben!)
 window.removeKuhAusGruppe = async function(kuhId, gruppenName) {
   const k = kuehe[kuhId];
   if(!k) return;
-  // 1) Aus k.gruppe entfernen (Komma-Liste)
   const list = String(k.gruppe||'').split(/\s*[,;\/]\s*/).filter(Boolean).filter(x => x !== gruppenName);
-  const updates = { ['kuehe/'+kuhId+'/gruppe']: list.join(', '), ['kuehe/'+kuhId+'/updatedAt']: Date.now() };
-  // 2) Aus gruppen[gid].mitglieder entfernen
+  const neueListe = list.join(', ');
   const gEntry = Object.entries(gruppen).find(([, g]) => g && g.name === gruppenName);
-  if(gEntry) updates['gruppen/'+gEntry[0]+'/mitglieder/'+kuhId] = null;
+  const _retry = window.withAuthRetry || (async fn => await fn());
   try {
-    await update(ref(db, '/'), updates);
+    await _retry(() => update(ref(db,'kuehe/'+kuhId), { gruppe: neueListe, updatedAt: Date.now() }));
+    if(gEntry) {
+      const gid = gEntry[0];
+      const newMitglieder = { ...(gruppen[gid]?.mitglieder || {}) };
+      delete newMitglieder[kuhId];
+      await _retry(() => update(ref(db,'gruppen/'+gid), { mitglieder: newMitglieder }));
+      try {
+        if(window.gruppen && window.gruppen[gid]) {
+          window.gruppen[gid].mitglieder = newMitglieder;
+          if(typeof gruppen !== 'undefined') gruppen[gid].mitglieder = newMitglieder;
+        }
+      } catch(x) {}
+    }
+    try {
+      if(window.kuehe && window.kuehe[kuhId]) window.kuehe[kuhId].gruppe = neueListe;
+      if(typeof kuehe !== 'undefined' && kuehe[kuhId]) kuehe[kuhId].gruppe = neueListe;
+    } catch(x) {}
     window.showSaveToast && showSaveToast('✓ ' + (k.name || '#'+k.nr) + ' aus „' + gruppenName + '" entfernt');
-  } catch(e) { console.error('removeKuhAusGruppe:', e); alert('Fehler: '+e.message); }
+    setTimeout(() => { try { if(typeof render === 'function') render(); } catch(e){} }, 50);
+  } catch(e) { console.error('removeKuhAusGruppe:', e); alert('Fehler: '+(e.message||e)); }
 };
 
 // Live-Filter der Hinzufügen-Liste
@@ -6811,9 +6860,8 @@ window.exportJSON = function() {
   // Backup-Zeitstempel speichern
   localStorage.setItem('letzteBackup', Date.now().toString());
   localStorage.setItem('letzteBackupDatum', isoDate(new Date()));
-  // Banner ausblenden falls vorhanden
-  const banner = document.getElementById('backup-reminder-banner');
-  if(banner) banner.style.display = 'none';
+  // Banner ausblenden + Body-Klasse entfernen
+  if(typeof window.hideBackupBanner === 'function') window.hideBackupBanner();
 };
 
 // ── Auto-Backup System ──
@@ -6869,7 +6917,16 @@ window.zeigBackupBanner = function(tageOhneBackup) {
       '<div style="font-size:.68rem;color:var(--text3)">Empfehlung: wöchentlich sichern</div>' +
     '</div>' +
     '<button onclick="exportJSON()" style="background:var(--gold);color:#0a0800;border:none;border-radius:8px;padding:.35rem .7rem;font-size:.75rem;font-weight:700;cursor:pointer;flex-shrink:0;white-space:nowrap">💾 Jetzt</button>' +
-    '<button onclick="document.getElementById(\'backup-reminder-banner\').style.display=\'none\'" style="background:none;border:none;color:var(--text3);font-size:1rem;cursor:pointer;padding:.2rem;flex-shrink:0">✕</button>';
+    '<button onclick="hideBackupBanner()" style="background:none;border:none;color:var(--text3);font-size:1rem;cursor:pointer;padding:.2rem;flex-shrink:0">✕</button>';
+  // Body-Klasse setzen damit Form-Overlays (Weidegang, Behandlung etc.) korrekt gekürzt werden
+  document.body.classList.add('backup-banner-visible');
+};
+
+// Banner explizit ausblenden + body-Klasse entfernen
+window.hideBackupBanner = function() {
+  const b = document.getElementById('backup-reminder-banner');
+  if(b) b.style.display = 'none';
+  document.body.classList.remove('backup-banner-visible');
 };
 
 window.exportKueheCSV = function() {
@@ -8382,32 +8439,40 @@ window.klauenFotoGewaehlt = function(input) {
 };
 
 window.saveKlauen = async function() {
-  const kuhId = document.getElementById('kl-kuh-id')?.value;
-  const datum = document.getElementById('kl-datum')?.value;
-  if(!datum){alert('Datum Pflicht');return;}
-  const data = {
-    kuhId,
-    datum: new Date(datum+'T12:00').getTime(),
-    klauenpfleger: document.getElementById('kl-klauenpfleger')?.value.trim()||'',
-    befund:    document.getElementById('kl-befund')?.value.trim()||'',
-    behandlung:document.getElementById('kl-behandlung')?.value.trim()||'',
-    naechsterTermin: document.getElementById('kl-naechster')?.value||'',
-    notiz:     document.getElementById('kl-notiz')?.value.trim()||'',
-    fotoData:  document.getElementById('kl-foto-data')?.value||null,
-    createdAt: Date.now()
-  };
-  await push(ref(db,'klauenpflege'), data);
-  // Nächsten Termin in Kalender eintragen
-  if(data.naechsterTermin) {
-    const k = kuehe[kuhId];
-    await push(ref(db,'kalenderTermine'),{
-      titel: 'Klauenpflege: '+(k?'#'+k.nr+' '+(k.name||''):''),
-      datum: new Date(data.naechsterTermin+'T12:00').getTime(),
-      kategorie:'kontrolle', erledigt:false, createdAt:Date.now()
-    });
+  try {
+    console.log('[saveKlauen] Start');
+    const kuhId = document.getElementById('kl-kuh-id')?.value;
+    const datum = document.getElementById('kl-datum')?.value;
+    if(!datum){alert('Datum Pflicht');return;}
+    const data = {
+      kuhId,
+      datum: new Date(datum+'T12:00').getTime(),
+      klauenpfleger: document.getElementById('kl-klauenpfleger')?.value.trim()||'',
+      befund:    document.getElementById('kl-befund')?.value.trim()||'',
+      behandlung:document.getElementById('kl-behandlung')?.value.trim()||'',
+      naechsterTermin: document.getElementById('kl-naechster')?.value||'',
+      notiz:     document.getElementById('kl-notiz')?.value.trim()||'',
+      fotoData:  document.getElementById('kl-foto-data')?.value||null,
+      createdAt: Date.now()
+    };
+    const _retry = window.withAuthRetry || (async fn => await fn());
+    await _retry(() => push(ref(db,'klauenpflege'), data));
+    // Nächsten Termin in Kalender eintragen
+    if(data.naechsterTermin) {
+      const k = kuehe[kuhId];
+      await _retry(() => push(ref(db,'kalenderTermine'),{
+        titel: 'Klauenpflege: '+(k?'#'+k.nr+' '+(k.name||''):''),
+        datum: new Date(data.naechsterTermin+'T12:00').getTime(),
+        kategorie:'kontrolle', erledigt:false, createdAt:Date.now()
+      }));
+    }
+    closeForm('klauen-overlay');
+    showSaveToast&&showSaveToast('Klauenpflege gespeichert');
+    console.log('[saveKlauen] Fertig');
+  } catch(err) {
+    console.error('[saveKlauen] FEHLER:', err);
+    alert('Fehler beim Speichern der Klauenpflege:\n\n' + (err && err.message || err) + '\n\nBitte Screenshot machen.');
   }
-  closeForm('klauen-overlay');
-  showSaveToast&&showSaveToast('Klauenpflege gespeichert');
 };
 
 window.deleteKlauen = async function(id) {

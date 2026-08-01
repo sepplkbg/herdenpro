@@ -586,6 +586,22 @@ body.milch-banner-visible .form-sheet {
   height: calc(100vh - 2.6rem - var(--safe-t,0px)) !important;
   height: calc(100dvh - 2.6rem - var(--safe-t,0px)) !important;
 }
+/* Wenn Backup-Banner sichtbar: form-sheet ist entsprechend kürzer (topbar + banner ≈ 5rem) */
+body.backup-banner-visible .form-sheet {
+  height: calc(100vh - 5.5rem - var(--safe-t,0px)) !important;
+  height: calc(100dvh - 5.5rem - var(--safe-t,0px)) !important;
+}
+body.backup-banner-visible .form-overlay {
+  top: calc(5.5rem + var(--safe-t,0px)) !important;
+}
+/* Kombiniert: beide Banner sichtbar */
+body.milch-banner-visible.backup-banner-visible .form-sheet {
+  height: calc(100vh - 8.1rem - var(--safe-t,0px)) !important;
+  height: calc(100dvh - 8.1rem - var(--safe-t,0px)) !important;
+}
+body.milch-banner-visible.backup-banner-visible .form-overlay {
+  top: calc(8.1rem + var(--safe-t,0px)) !important;
+}
 .form-overlay[style*="display:flex"], .form-overlay[style*="display: flex"] {
   display:flex !important;
 }
