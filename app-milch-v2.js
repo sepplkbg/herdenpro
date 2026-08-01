@@ -1578,8 +1578,18 @@ window.saveMilch = async function() {
   }
   if(navigator.vibrate) navigator.vibrate([30,10,30]);
 
+  // 📸 Screenshot als extra Sicherheit (fire-and-forget) — Download aufs Handy + Firebase Storage Upload
+  // Läuft NOCH vor navigate(), solange das milch-erfassen View sichtbar ist.
+  try {
+    if(typeof window.milchMakeAndSaveScreenshot === 'function') {
+      // Nicht awaiten — soll parallel laufen und save nicht blockieren
+      window.milchMakeAndSaveScreenshot(datum, zeit, gesRund).catch(e => console.warn('Screenshot fail:', e));
+    }
+  } catch(e) { console.warn('[saveMilch] Screenshot-Call:', e); }
+
   // Zur Milch-Übersicht navigieren (Liste rendert jetzt SOFORT den neuen Eintrag)
-  if(typeof navigate === 'function') navigate('milch');
+  // 1s warten damit html2canvas noch das milch_erfassen-View erfassen kann
+  setTimeout(() => { if(typeof navigate === 'function') navigate('milch'); }, 1000);
 
   // Bericht anzeigen — jetzt sofort, da milchEintraege bereits aktuell ist
   const berDatumTs = new Date(datum + 'T12:00').getTime();
