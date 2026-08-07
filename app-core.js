@@ -518,6 +518,8 @@ function render() {
     kraftfutter:  function(){return renderKraftfutter();},
     wetter:       function(){return renderWetter();},
     kaese:        function(){return (window.renderKaese||function(){return '<div class="empty-state">Käse-Modul lädt…</div>';})();},
+    sennerei:     function(){return (window.renderSennerei||function(){return '<div class="empty-state">Sennerei-Modul lädt…</div>';})();},
+    sennerei_woche: function(){return (window.renderSennereiWoche||function(){return '<div class="empty-state">Sennerei-Woche lädt…</div>';})();},
     bauer_detail: function(){return renderBauerDetail();},
     bauern_menu:  function(){return renderBauernMenu();},
     bauern:       function(){return renderBauernMenu();},
