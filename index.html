@@ -19,11 +19,11 @@
 ═══════════════════════════════════════════════════════════════════════════ -->
 <script>
 // Force clear cache if version changed
-if(localStorage.getItem('hp_version') !== 'v48.2') {
+if(localStorage.getItem('hp_version') !== 'v49.0') {
   localStorage.removeItem('mainNav');
   localStorage.removeItem('mehrOrder');
   localStorage.removeItem('mehrOrder');
-  localStorage.setItem('hp_version','v48.2');
+  localStorage.setItem('hp_version','v49.0');
   // Force SW update
   if('serviceWorker' in navigator) {
     navigator.serviceWorker.getRegistrations().then(function(regs) {
@@ -39,8 +39,8 @@ if(localStorage.getItem('hp_version') !== 'v48.2') {
       });
     }
     // Reload once after clearing
-    if(!sessionStorage.getItem('reloaded_v48_2')) {
-      sessionStorage.setItem('reloaded_v48_2','1');
+    if(!sessionStorage.getItem('reloaded_v49_0')) {
+      sessionStorage.setItem('reloaded_v49_0','1');
       window.location.reload(true);
     }
   }
@@ -64,7 +64,7 @@ window.toggleMehrMenu = function(e) {
     if(uh) {
       var mail = (window._currentUser && window._currentUser.email) || '–';
       var rolle = window._currentRole || 'hirte';
-      var rolleLabels = {admin:'Admin',hirte:'Hirte',molkerei:'Molkerei',milchmesser:'Milchmesser'};
+      var rolleLabels = {admin:'Admin',hirte:'Hirte',molkerei:'Molkerei',milchmesser:'Milchmesser',sennerei:'Sennerei'};
       uh.innerHTML =
         '<div style="min-width:0;flex:1">' +
           '<div style="font-size:.62rem;color:var(--text3);letter-spacing:.05em">ANGEMELDET ALS</div>' +
@@ -85,7 +85,7 @@ window.toggleMehrMenu = function(e) {
         {id:'statistik',icon:'📊',label:'Statistik'},{id:'backup',icon:'💾',label:'Backup'},
         {id:'suche',icon:'🔎',label:'Suche'},{id:'chat',icon:'💬',label:'Chat'},
         {id:'kraftfutter',icon:'🌾',label:'Kraftfutter'},{id:'wetter',icon:'⛅',label:'Wetter'},
-        {id:'kaese',icon:'🧀',label:'Käse'},{id:'bauern_menu',icon:'👥',label:'Bauern'},
+        {id:'kaese',icon:'🧀',label:'Käse'},{id:'sennerei',icon:'🥛',label:'Sennerei'},{id:'bauern_menu',icon:'👥',label:'Bauern'},
         {id:'wartung',icon:'🔧',label:'Wartung'},{id:'lager',icon:'📦',label:'Lager'},
         {id:'aufgaben',icon:'✅',label:'Aufgaben'},
         {id:'milchqualitaet',icon:'🧪',label:'Milchqualität'},
@@ -188,6 +188,7 @@ window.FIREBASE_CONFIG = {
     {id:'kraftfutter',icon:'🌾',  label:'Kraftfutter'},
     {id:'wetter',    icon:'⛅',  label:'Wetter'},
     {id:'kaese',     icon:'🧀',  label:'Käse'},
+    {id:'sennerei',  icon:'🥛',  label:'Sennerei'},
     {id:'bauern_menu',icon:'👥',  label:'Bauern'},
     {id:'saisonvergleich',icon:'📈',label:'Saisonvergleich'},
     {id:'traenke',   icon:'💧',  label:'Tränke'},
@@ -222,6 +223,8 @@ window.FIREBASE_CONFIG = {
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-storage-compat.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script>if(typeof pdfjsLib !== 'undefined'){pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';}</script>
 <!-- SheetJS für Excel-Export -->
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -386,6 +389,7 @@ window.FIREBASE_CONFIG = {
 <script src="app-milch-screenshot.js"></script>
 <script src="app-email-send.js"></script>
 <script src="app-auth-refresh.js"></script>
+<script src="app-sennerei.js"></script>
 <script>
 document.addEventListener('DOMContentLoaded', function() {
   var mb = document.getElementById('nav-mehr');

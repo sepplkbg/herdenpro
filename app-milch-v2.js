@@ -2,7 +2,7 @@
 //  HERDENPRO – MILCH v2  (LocalStorage-first Persistence)
 //  MODUL-VERSION: 5.0  ← wenn du das siehst, ist der Fix geladen
 // ══════════════════════════════════════════════════════════════
-window.MILCH_V2_VERSION = '5.9';
+window.MILCH_V2_VERSION = '6.0';
 //  Löst die alten Probleme (Datenverlust, hängende Saves offline,
 //  Multi-Melker-Kollisionen, Aggregations-Verdopplung).
 //
@@ -1554,14 +1554,21 @@ window.saveMilch = async function() {
     // KRITISCH: milchEintraege lokal aktualisieren — verhindert stale-Cache-Anzeige
     // (Bug: nach Auto-Login re-attacht der Firebase-Listener manchmal nicht → Cache bleibt alt)
     if(serverEntry && !fehlend) {
-      window.milchEintraege = window.milchEintraege || {};
-      window.milchEintraege[entryKey] = serverEntry;
-      if(typeof milchEintraege !== 'undefined') { try { milchEintraege[entryKey] = serverEntry; } catch(x) {} }
+      // MUTATION statt Replacement — behält Referenz-Sync zwischen module-scope und window
+      if(typeof milchEintraege !== 'undefined') {
+        milchEintraege[entryKey] = serverEntry;
+        window.milchEintraege = milchEintraege;
+      } else {
+        window.milchEintraege = window.milchEintraege || {};
+        window.milchEintraege[entryKey] = serverEntry;
+      }
+      // Cache updaten
+      try { _hpSaveCache && _hpSaveCache('milchEintraege', window.milchEintraege); } catch(x) {}
       console.log('[saveMilch] milchEintraege lokal aktualisiert für', entryKey);
-      // Listener-Callback triggern falls vorhanden (damit Verbrauchsdiagramme etc. aktualisieren)
       try { if(window.onMilchEintraegeChanged) window.onMilchEintraegeChanged(); } catch(e) {}
-      // Re-render damit die Milch-Liste den neuen Eintrag sofort zeigt
       try { if(typeof render === 'function') render(); } catch(e) {}
+      // Zusätzlich: Poll sofort auslösen (holt ALLE Daten frisch, deckt Multi-Kuh-Änderungen ab)
+      setTimeout(() => { if(window.milchPollNow) window.milchPollNow(); }, 500);
     }
   } catch(e) {
     console.warn('[saveMilch] REST-Final-Verify Fehler:', e);
@@ -2113,6 +2120,76 @@ setInterval(() => {
   }
 }, 30000);
 
-console.log('[Milch v2] Persistence-Modul geladen (LocalStorage-first, per-Kuh Attribution)');
+// ══════════════════════════════════════════════════════════════════════════════
+// MILCH-POLL: alle 30 s via REST vom Server holen und milchEintraege aktualisieren
+// Fallback für den unzuverlässigen Firebase-Listener. Damit sehen alle User
+// (auch Nur-Lese wie Molkerei) immer die neuesten Werte ohne App-Reload.
+// ══════════════════════════════════════════════════════════════════════════════
+let _milchPollBusy = false;
+let _milchLastPollHash = null;
+
+async function _milchPollFromServer() {
+  if(_milchPollBusy) return;
+  if(!navigator.onLine) return;
+  if(typeof firebase === 'undefined' || !firebase.auth || !firebase.auth().currentUser) return;
+  if(document.visibilityState !== 'visible') return;
+  _milchPollBusy = true;
+  try {
+    const serverData = await _milchRestGet('milch');
+    if(!serverData || typeof serverData !== 'object') return;
+    // Hash zum Change-Detection (billig genug bei ~100 Einträgen)
+    const keys = Object.keys(serverData).sort();
+    const hash = keys.length + '|' + keys.map(k => k + ':' + (serverData[k].lastUpdate || 0)).join(',');
+    if(hash === _milchLastPollHash) return; // Keine Änderung
+    _milchLastPollHash = hash;
+
+    // Merge in bestehendes milchEintraege (mutation statt Replacement,
+    // damit alle Referenzen erhalten bleiben — sowohl window als auch module-scope)
+    if(typeof milchEintraege !== 'undefined') {
+      // Lösche entfernte Keys
+      Object.keys(milchEintraege).forEach(k => { if(!(k in serverData)) delete milchEintraege[k]; });
+      // Update alle
+      Object.entries(serverData).forEach(([k, v]) => { milchEintraege[k] = v; });
+      window.milchEintraege = milchEintraege;
+    } else {
+      window.milchEintraege = serverData;
+    }
+    _hpSaveCache && _hpSaveCache('milchEintraege', window.milchEintraege);
+    console.log('[Milch-Poll] Update via REST — ' + keys.length + ' Einträge');
+
+    // Re-render nur wenn user auf einer Milch-relevanten View ist (spart Rechenzeit)
+    const v = window.currentView;
+    if(v === 'milch' || v === 'milch_erfassen' || v === 'dashboard' || v === 'herde') {
+      try { if(typeof render === 'function') render(); } catch(e) {}
+    }
+    // Callback für andere Module (Charts etc.)
+    try { if(window.onMilchEintraegeChanged) window.onMilchEintraegeChanged(); } catch(e) {}
+  } catch(e) {
+    console.warn('[Milch-Poll] Fehler:', e.message || e);
+  } finally {
+    _milchPollBusy = false;
+  }
+}
+
+// Alle 30 s pollen (im Vordergrund)
+setInterval(_milchPollFromServer, 30000);
+
+// Beim App-Wake-Up (Tab wird sichtbar): sofort pollen
+document.addEventListener('visibilitychange', () => {
+  if(document.visibilityState === 'visible') {
+    setTimeout(_milchPollFromServer, 500);
+  }
+});
+
+// Beim Online-Werden: sofort pollen
+window.addEventListener('online', () => setTimeout(_milchPollFromServer, 1000));
+
+// Initial nach 5 s einmal pollen (nach App-Start)
+setTimeout(_milchPollFromServer, 5000);
+
+// Manuell auslösbar für Debug oder nach eigenem Save
+window.milchPollNow = _milchPollFromServer;
+
+console.log('[Milch v2] Persistence-Modul geladen (LocalStorage-first, per-Kuh Attribution) + Poll-Fallback aktiv');
 
 })();

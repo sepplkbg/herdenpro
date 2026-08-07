@@ -3213,7 +3213,7 @@ function renderEinstellungen() {
       </div>
       <div class="info-row">
         <span>Rolle</span>
-        <span class="role-badge role-${window._currentRole||'hirte'}">${{admin:'Admin',hirte:'Hirte',molkerei:'Molkerei',milchmesser:'Milchmesser'}[window._currentRole]||window._currentRole||'–'}</span>
+        <span class="role-badge role-${window._currentRole||'hirte'}">${{admin:'Admin',hirte:'Hirte',molkerei:'Molkerei',milchmesser:'Milchmesser',sennerei:'Sennerei'}[window._currentRole]||window._currentRole||'–'}</span>
       </div>
       <button class="btn-secondary" style="width:100%;margin-top:.5rem;border-color:var(--red);color:var(--red)" onclick="doLogout()">⎋ Abmelden</button>
     </div>
@@ -4382,17 +4382,19 @@ window.ladeWetterPrognose = async function() {
 
 // Role definitions: what each role can do
 const ROLE_PERMISSIONS = {
-  admin:       {read:true, write:true, milch:true, behandlung:true, zaehlung:true, benutzer:true, alles:true},
-  hirte:       {read:true, write:true, milch:true, behandlung:true, zaehlung:true, benutzer:false, alles:false},
-  milchmesser: {read:false, write:false, milch:true, behandlung:false, zaehlung:false, benutzer:false, alles:false},
-  molkerei:    {read:true, write:false, milch:true, behandlung:false, zaehlung:false, benutzer:false, alles:false},
+  admin:       {read:true, write:true, milch:true, behandlung:true, zaehlung:true, benutzer:true, alles:true, sennerei:true},
+  hirte:       {read:true, write:true, milch:true, behandlung:true, zaehlung:true, benutzer:false, alles:false, sennerei:false},
+  milchmesser: {read:false, write:false, milch:true, behandlung:false, zaehlung:false, benutzer:false, alles:false, sennerei:false},
+  molkerei:    {read:true, write:false, milch:true, behandlung:false, zaehlung:false, benutzer:false, alles:false, sennerei:false},
+  sennerei:    {read:true, write:false, milch:false, behandlung:false, zaehlung:false, benutzer:false, alles:false, sennerei:true},
 };
 
 // Hidden modules per role
 var ROLE_HIDDEN_MODULES = {
-  milchmesser: ['zaehlung','weide','behandlung','besamung','bestandsbuch','einstellungen','journal','alpung','kontakte','gruppen','kontrolle','kalender','statistik','backup','suche','chat','kraftfutter','wetter','bauern_menu','saison','__drucken__'],
-  molkerei:    ['behandlung','besamung','bestandsbuch','einstellungen','journal','alpung','kontakte','gruppen','kontrolle','chat','kraftfutter','wetter','bauern_menu','zaehlung','__drucken__'],
-  hirte:       ['einstellungen','benutzer'],
+  milchmesser: ['zaehlung','weide','behandlung','besamung','bestandsbuch','einstellungen','journal','alpung','kontakte','gruppen','kontrolle','kalender','statistik','backup','suche','chat','kraftfutter','wetter','bauern_menu','saison','__drucken__','sennerei'],
+  molkerei:    ['behandlung','besamung','bestandsbuch','einstellungen','journal','alpung','kontakte','gruppen','kontrolle','chat','kraftfutter','wetter','bauern_menu','zaehlung','__drucken__','sennerei'],
+  sennerei:    ['zaehlung','weide','behandlung','besamung','bestandsbuch','einstellungen','journal','alpung','kontakte','gruppen','kontrolle','kalender','statistik','backup','suche','chat','kraftfutter','wetter','bauern_menu','saison','milch','herde','__drucken__'],
+  hirte:       ['einstellungen','benutzer','sennerei'],
   admin:       [],
 };
 
@@ -5881,7 +5883,7 @@ window.removeStep = function(si,ai){
 
 function updateUserDisplay() {
   const role = window._currentRole || 'hirte';
-  const roleLabels = {admin:'Admin',hirte:'Hirte',molkerei:'Molkerei',milchmesser:'Milchmesser'};
+  const roleLabels = {admin:'Admin',hirte:'Hirte',molkerei:'Molkerei',milchmesser:'Milchmesser',sennerei:'Sennerei'};
   const dot = document.getElementById('status-dot');
   if(dot && dot.parentElement) {
     // Add role badge next to status dot
@@ -6066,6 +6068,7 @@ window.renderBenutzer = function() {
     '<option value="hirte">🌿 Hirte</option>' +
     '<option value="milchmesser">🥛 Milchmesser</option>' +
     '<option value="molkerei">🧀 Molkerei</option>' +
+    '<option value="sennerei">🥛 Sennerei</option>' +
     '<option value="admin">⚙ Admin</option>' +
     '</select>' +
     '<div class="section-label" style="margin-bottom:.4rem">Sichtbare Module</div>' +
@@ -6096,7 +6099,7 @@ window.loadBenutzerListe = async function() {
   try {
     const snap = await firebase.database().ref('benutzer').get();
     const data = snap.val() || {};
-    const roleLabels = {admin:'Admin',hirte:'Hirte',molkerei:'Molkerei',milchmesser:'Milchmesser'};
+    const roleLabels = {admin:'Admin',hirte:'Hirte',molkerei:'Molkerei',milchmesser:'Milchmesser',sennerei:'Sennerei'};
     const roleColors = {admin:'var(--gold)',hirte:'var(--green)',molkerei:'#7acbff',milchmesser:'#c87ee8'};
     
     if(Object.keys(data).length === 0) {
@@ -6121,6 +6124,7 @@ window.loadBenutzerListe = async function() {
               <option value="hirte" ${(u.rolle||'hirte')==='hirte'?'selected':''}>Hirte</option>
               <option value="milchmesser" ${u.rolle==='milchmesser'?'selected':''}>Milchmesser</option>
               <option value="molkerei" ${u.rolle==='molkerei'?'selected':''}>Molkerei</option>
+              <option value="sennerei" ${u.rolle==='sennerei'?'selected':''}>Sennerei</option>
               <option value="admin" ${u.rolle==='admin'?'selected':''}>Admin</option>
             </select>
             <button class="btn-xs-danger" onclick="deleteBenutzer('${uid}','${u.email||''}')">✕</button>` : 
