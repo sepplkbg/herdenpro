@@ -6,7 +6,7 @@
 //  Phase B (später): Abholung + Touch-Signatur + PDF-Export
 // ══════════════════════════════════════════════════════════════════════════════
 (function() {
-  const VERSION = '2.0';
+  const VERSION = '4.0';
   window.SENNEREI_VERSION = VERSION;
 
   // ── Utilities ──
@@ -54,34 +54,10 @@
       yOffset += viewport.height + 20; // Puffer zwischen Seiten
     }
 
-    // Zeilen bilden (nach y-Koordinate mit Toleranz von 3 pt)
-    allItems.sort((a,b) => a.y - b.y || a.x - b.x);
-    const rows = [];
-    let currentRow = null;
-    const Y_TOL = 3;
-    allItems.forEach(item => {
-      if(currentRow && Math.abs(item.y - currentRow.y) < Y_TOL) {
-        currentRow.items.push(item);
-      } else {
-        currentRow = { y: item.y, items: [item] };
-        rows.push(currentRow);
-      }
-    });
-    // Innerhalb jeder Zeile nach x sortieren
-    rows.forEach(r => r.items.sort((a,b) => a.x - b.x));
-
-    // Struktur analysieren: Erkennt Header-Zeile "Bauer Produkt Verk% Soll Guthaben..."
-    // Danach Datenzeilen (Käse/Butter im Wechsel), Bauer-Name kann in eigener Zeile davor stehen
-    const headerRowIdx = rows.findIndex(r =>
-      r.items.some(i => /^Bauer$/i.test(i.str)) &&
-      r.items.some(i => /^Produkt$/i.test(i.str))
-    );
-    if(headerRowIdx < 0) throw new Error('Kein Header "Bauer Produkt" gefunden — ist das die richtige PDF?');
-
-    // Meta aus dem oberen Bereich
-    const headerText = rows.slice(0, headerRowIdx).map(r => r.items.map(i => i.str).join(' ')).join(' ');
+    // Meta aus komplettem Text extrahieren (bevor wir in Zeilen aufteilen)
+    const gesamtText = allItems.map(i => i.str).join(' ');
     let wocheNr = null, jahr = new Date().getFullYear(), startDatum = null, endeDatum = null;
-    const wocheMatch = headerText.match(/Woche\s+(\d+)\s*\((\d{2}\.\d{2}\.)-\s*(\d{2}\.\d{2}\.\d{4})\)/);
+    const wocheMatch = gesamtText.match(/Woche\s+(\d+)\s*\((\d{2}\.\d{2}\.)-\s*(\d{2}\.\d{2}\.\d{4})\)/);
     if(wocheMatch) {
       wocheNr = parseInt(wocheMatch[1]);
       jahr = parseInt(wocheMatch[3].slice(-4));
@@ -89,82 +65,72 @@
       endeDatum = wocheMatch[3];
     }
     let maxKaese = 0, maxButter = 0;
-    const maxMatch = headerText.match(/Neu\s+K:\s*([\d,.-]+)\s*\/\s*B:\s*([\d,.-]+)/i);
+    const maxMatch = gesamtText.match(/Neu\s+K:\s*([\d,.-]+)\s*\/\s*B:\s*([\d,.-]+)/i);
     if(maxMatch) {
       maxKaese = parseFloat(maxMatch[1].replace(',', '.')) || 0;
       maxButter = parseFloat(maxMatch[2].replace(',', '.')) || 0;
     }
 
-    // Header-Row-Muster erkennen (auf JEDER Seite: "Bauer Produkt Verk% Soll ...")
-    // Diese müssen komplett übersprungen werden, sonst landen sie im Bauer-Namen
-    const isHeaderRow = (row) => {
-      const text = row.items.map(i => i.str).join(' ');
-      return /Bauer/i.test(text) && /Produkt/i.test(text) &&
-             (/Verk/i.test(text) || /Soll/i.test(text) || /Guthaben/i.test(text) || /Naturalr/i.test(text) || /Chargen/i.test(text) || /Unterschrift/i.test(text));
-    };
-    const isFooterRow = (row) => {
-      const text = row.items.map(i => i.str).join(' ');
-      return /Nassereinalm|Sommer\s*20\d\d|Engineering\s+by/i.test(text);
-    };
-    // Alle Header-Wörter die NICHT in einen Bauernamen gehören
-    const isNoiseText = (text) => {
-      return /^(Bauer|Produkt|Verk%|Soll|Guthaben|Vorwoche|Zum|Abholen|Klötze|Abgeholt|Naturalr\.?|Anspruch|abgeholt|Chargen|Abholung|Gesamt|Unterschrift|Neu|Max\.?\s*verkaufbar|Wochenabholung|Woche\s+\d)$/i.test(text.trim());
-    };
+    // ══════════════════════════════════════════════════════════════════════════
+    // NEUER Parser-Ansatz: nutze x/y-Position von "Käse"/"Butter"-Wörtern als Anker
+    // Bauer-Name = alle Text-Items links vom Produkt-Wort im y-Bereich zwischen
+    // Ende des vorherigen Bauers und Ende dieses Bauers (Butter-Zeile).
+    // ══════════════════════════════════════════════════════════════════════════
 
-    const dataRows = rows.slice(headerRowIdx + 1).filter(r => {
-      if(!r.items.length) return false;
-      if(isHeaderRow(r)) return false;
-      if(isFooterRow(r)) return false;
-      const text = r.items.map(i => i.str).join('').trim();
-      if(!text) return false;
-      // Max-verkaufbar-Zeile skippen
-      if(/^Max\.?\s*verkaufbar/i.test(text)) return false;
-      return true;
-    });
+    // 1) Alle Käse/Butter-Anker finden
+    const produktAnker = allItems
+      .filter(i => /^(Käse|Butter)$/i.test(i.str))
+      .sort((a,b) => a.y - b.y);
 
-    // Bauer-Name kann über 2 Zeilen gehen (z.B. "Achenrainer" / "Simon" ODER "Auer Günther" auf 1 Zeile)
-    // Muster: [Name-Zeile(n)] → Käse-Zeile → Butter-Zeile → nächster Bauer
+    // 2) Zu Paaren gruppieren (jeder Käse gehört mit dem folgenden Butter zusammen)
+    const paare = [];
+    for(let i = 0; i < produktAnker.length; i++) {
+      const p = produktAnker[i];
+      if(!/^Käse$/i.test(p.str)) continue;
+      // Nächsten Butter finden (y-Abstand < 30 pt = gleiche Bauer-Zeile)
+      const next = produktAnker.slice(i + 1).find(x => /^Butter$/i.test(x.str) && x.y - p.y > 0 && x.y - p.y < 30);
+      if(next) { paare.push({ kaese: p, butter: next }); i++; }
+    }
+    if(paare.length === 0) throw new Error('Keine Käse/Butter-Paare gefunden — ist das die richtige PDF?');
+
+    // 3) Produkt-Spalten-X ermitteln (durchschnittliche x-Position von Käse/Butter)
+    const produktX = produktAnker.reduce((s,p) => s + p.x, 0) / produktAnker.length;
+
+    // 4) Für jedes Paar: Name + Werte extrahieren
     const bauern = [];
-    let currentBauer = null;
-    let pendingName = '';
+    let prevButterY = 0;
+    // Noise-Words (Header/Footer die niemals als Bauer-Name gelten dürfen)
+    const NOISE_WORDS = /^(Bauer|Produkt|Verk%|Soll|Guthaben|Vorwoche|Zum|Abholen|Klötze|Abgeholt|Naturalr\.?|Anspruch|abgeholt|Chargen|Abholung|Gesamt|Unterschrift|Neu|Max\.?|verkaufbar|Wochenabholung|Woche|Nassereinalm|Sommer|Engineering|by|LN|Machinery|Erstellt:|K:|B:|kg|\|)$/i;
 
-    // Text-Fragmente die als Bauer-Name durchgehen (nicht Header/Noise)
-    const cleanNameFragment = (text) => {
-      const parts = text.split(/\s+/).filter(p => p && !isNoiseText(p) && !/^\d/.test(p) && !/^-?\d+[,.]\d/.test(p));
-      return parts.join(' ').trim();
-    };
+    paare.forEach(paar => {
+      // Name-Items: x < produktX (links vom Produkt) UND y > prevButterY UND y <= paar.butter.y + 3
+      const nameItems = allItems.filter(item => {
+        if(item.x >= produktX - 3) return false;
+        if(item.y <= prevButterY) return false;
+        if(item.y > paar.butter.y + 5) return false;
+        if(/^(Käse|Butter)$/i.test(item.str)) return false;
+        if(NOISE_WORDS.test(item.str.trim())) return false;
+        if(/^\d+([,.]\d+)?%?$/.test(item.str.trim())) return false;
+        return true;
+      });
+      nameItems.sort((a,b) => a.y - b.y || a.x - b.x);
+      const name = nameItems.map(i => i.str).join(' ').replace(/\s+/g, ' ').trim() || 'UNBEKANNT';
 
-    dataRows.forEach(row => {
-      const hasKaese = row.items.some(i => /^Käse$/i.test(i.str));
-      const hasButter = row.items.some(i => /^Butter$/i.test(i.str));
+      // Käse-Werte: y ≈ paar.kaese.y (±3), x > paar.kaese.x
+      const kaeseVals = allItems
+        .filter(i => Math.abs(i.y - paar.kaese.y) < 4 && i.x > paar.kaese.x + 5)
+        .sort((a,b) => a.x - b.x);
+      const butterVals = allItems
+        .filter(i => Math.abs(i.y - paar.butter.y) < 4 && i.x > paar.butter.x + 5)
+        .sort((a,b) => a.x - b.x);
 
-      if(hasKaese) {
-        const kaeseIdx = row.items.findIndex(i => /^Käse$/i.test(i.str));
-        const nameFragmente = row.items.slice(0, kaeseIdx).map(i => i.str).join(' ').trim();
-        const nameHier = cleanNameFragment(nameFragmente);
-        const finalName = (pendingName + ' ' + nameHier).trim().replace(/\s+/g, ' ') || pendingName || nameHier || 'UNBEKANNT';
-        const vals = row.items.slice(kaeseIdx + 1);
-        currentBauer = {
-          name: finalName,
-          nameNorm: normalisierName(finalName),
-          kaese: extractProduktZeile(vals),
-          butter: null
-        };
-        bauern.push(currentBauer);
-        pendingName = '';
-      } else if(hasButter && currentBauer) {
-        const butterIdx = row.items.findIndex(i => /^Butter$/i.test(i.str));
-        const vals = row.items.slice(butterIdx + 1);
-        currentBauer.butter = extractProduktZeile(vals);
-        // Nach Butter-Zeile: Bauer ist fertig, pendingName resetten
-        pendingName = '';
-      } else {
-        // Zeile ohne Käse/Butter — potenzieller Name-Fragment für den NÄCHSTEN Bauer
-        const cleaned = cleanNameFragment(row.items.map(i => i.str).join(' '));
-        if(cleaned) {
-          pendingName = (pendingName + ' ' + cleaned).trim().replace(/\s+/g, ' ');
-        }
-      }
+      bauern.push({
+        name: name,
+        nameNorm: normalisierName(name),
+        kaese: extractProduktZeile(kaeseVals),
+        butter: extractProduktZeile(butterVals)
+      });
+      prevButterY = paar.butter.y;
     });
 
     return {
@@ -360,6 +326,18 @@
     }
     const bauern = Object.entries(woche.bauern || {}).sort((a,b) => (a[1].name||'').localeCompare(b[1].name||''));
     const abgeholtCount = bauern.filter(([,b]) => b.abgeholtAm).length;
+    // Auswertung: Summen aus tatsächlich abgeholten Werten
+    let sumKaese = 0, sumButter = 0, sumKaeseNatur = 0, sumButterNatur = 0;
+    let sumKaeseKlotze = 0, sumButterKlotze = 0;
+    bauern.forEach(([,b]) => {
+      sumKaese += (b.kaese?.abgeholt || 0);
+      sumButter += (b.butter?.abgeholt || 0);
+      sumKaeseNatur += (b.kaese?.naturalrAbgeholt || 0);
+      sumButterNatur += (b.butter?.naturalrAbgeholt || 0);
+      sumKaeseKlotze += (b.kaese?.klotze || 0);
+      sumButterKlotze += (b.butter?.klotze || 0);
+    });
+    const fmt = (n) => Math.round(n * 10) / 10;
     return `
       <div class="page-header">
         <h2>🥛 Woche ${woche.wocheNr}</h2>
@@ -370,6 +348,24 @@
         Max. verkaufbar: <b>Käse ${woche.maxVerkaufbar?.kaese||0} kg</b> · <b>Butter ${woche.maxVerkaufbar?.butter||0} kg</b><br>
         <span style="color:var(--gold);font-weight:600">${abgeholtCount} / ${bauern.length} abgeholt</span>
       </div>
+
+      <div class="section-title" style="display:flex;justify-content:space-between;align-items:center">
+        <span>📊 Wochenauswertung</span>
+        <button class="btn-xs" onclick="sennereiDruckeWoche('${wid}')" title="Wochen-Übersicht als PDF drucken">📄 PDF drucken</button>
+      </div>
+      <div class="card-section" style="padding:.7rem .8rem;margin-bottom:.8rem;font-size:.85rem">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:.4rem">
+          <div>🧀 <b>Käse abgeholt:</b> ${fmt(sumKaese)} kg</div>
+          <div>🧈 <b>Butter abgeholt:</b> ${fmt(sumButter)} kg</div>
+          <div style="color:var(--text3)">Klötze Käse: ${sumKaeseKlotze}</div>
+          <div style="color:var(--text3)">Klötze Butter: ${sumButterKlotze}</div>
+          ${sumKaeseNatur > 0 || sumButterNatur > 0 ? `
+            <div style="color:#ff9632">Naturalr. Käse: ${fmt(sumKaeseNatur)} kg</div>
+            <div style="color:#ff9632">Naturalr. Butter: ${fmt(sumButterNatur)} kg</div>
+          ` : ''}
+        </div>
+      </div>
+
       <div class="section-title">Bauern (${bauern.length})</div>
       <div class="card-list">
         ${bauern.map(([bid, b]) => {
@@ -404,8 +400,122 @@
 
   window.sennereiOeffneBauer = function(bid) {
     window._sennereiAktiverBauer = bid;
+    window._sennereiWizardStep = 1;
+    // Wizard-Daten von bestehendem Eintrag vorbelegen
+    const woche = (_wochenCache || []).find(w => w.id === window._sennereiAktiveWoche);
+    const b = woche && woche.bauern && woche.bauern[bid];
+    window._sennereiWizardData = {
+      kaese: {
+        klotze: b?.kaese?.klotze || 0,
+        abgeholt: b?.kaese?.abgeholt || 0,
+        naturalrAbgeholt: b?.kaese?.naturalrAbgeholt || 0,
+        chargen: (b?.kaese?.chargen || []).join(', ')
+      },
+      butter: {
+        klotze: b?.butter?.klotze || 0,
+        abgeholt: b?.butter?.abgeholt || 0,
+        naturalrAbgeholt: b?.butter?.naturalrAbgeholt || 0,
+        chargen: (b?.butter?.chargen || []).join(', ')
+      },
+      signaturPng: b?.unterschriftPng || null
+    };
     if(typeof navigate === 'function') navigate('sennerei_bauer');
   };
+
+  // Speichert aktuelle Formular-Eingaben im Wizard-State (bevor Step-Wechsel)
+  function _sennereiSaveCurrentStepData() {
+    const step = window._sennereiWizardStep;
+    const data = window._sennereiWizardData || {};
+    const parseNum = (id) => {
+      const v = document.getElementById(id)?.value;
+      const n = parseFloat(String(v||'').replace(',','.'));
+      return isNaN(n) ? 0 : n;
+    };
+    const parseI = (id) => parseInt(document.getElementById(id)?.value) || 0;
+    if(step === 2) {
+      // Butter-Seite
+      data.butter.klotze = parseI('sb-b-klotze');
+      data.butter.abgeholt = parseNum('sb-b-abgeholt');
+      data.butter.naturalrAbgeholt = parseNum('sb-b-natabg');
+      data.butter.chargen = document.getElementById('sb-b-chargen')?.value || '';
+    } else if(step === 3) {
+      // Käse-Seite
+      data.kaese.klotze = parseI('sb-k-klotze');
+      data.kaese.abgeholt = parseNum('sb-k-abgeholt');
+      data.kaese.naturalrAbgeholt = parseNum('sb-k-natabg');
+      data.kaese.chargen = document.getElementById('sb-k-chargen')?.value || '';
+    } else if(step === 5) {
+      // Signatur-Seite
+      const canvas = document.getElementById('sb-signatur-canvas');
+      if(canvas && window._sennereiSignaturDirty) {
+        const ctx = canvas.getContext('2d');
+        const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        let hasContent = false;
+        for(let i = 3; i < imgData.data.length; i += 4) {
+          if(imgData.data[i] > 0) { hasContent = true; break; }
+        }
+        if(hasContent) data.signaturPng = canvas.toDataURL('image/png');
+      }
+    }
+    window._sennereiWizardData = data;
+  }
+
+  window.sennereiWizardWeiter = function() {
+    _sennereiSaveCurrentStepData();
+    const step = window._sennereiWizardStep || 1;
+    if(step < 6) {
+      window._sennereiWizardStep = step + 1;
+      window._sennereiSignaturDirty = false;
+      if(typeof render === 'function') render();
+    }
+  };
+  window.sennereiWizardZurueck = function() {
+    _sennereiSaveCurrentStepData();
+    const step = window._sennereiWizardStep || 1;
+    if(step > 1) {
+      window._sennereiWizardStep = step - 1;
+      window._sennereiSignaturDirty = false;
+      if(typeof render === 'function') render();
+    }
+  };
+
+  // Letzte Tagesmilch aller Kühe eines Bauern berechnen (aus window.milchEintraege + window.kuehe)
+  function _sennereiTagesmilchFuerBauer(bauerName) {
+    const kuehe = window.kuehe || {};
+    const eintraege = window.milchEintraege || {};
+    const bauerNameNorm = normalisierName(bauerName);
+    // Kühe dieses Bauern finden
+    const meineKuehe = Object.entries(kuehe).filter(([, k]) => {
+      return normalisierName(k.bauer || '') === bauerNameNorm ||
+             (k.bauer || '').toLowerCase().includes(bauerName.toLowerCase().split(' ')[0]);
+    });
+    if(!meineKuehe.length) return null;
+    const _mW = window.milchWert || function(v){ return typeof v === 'number' ? v : (v && v.wert != null ? parseFloat(v.wert)||0 : parseFloat(v)||0); };
+    // Für jede Kuh: letzte morgens + letzte abends Werte finden
+    let sumTagesmilch = 0;
+    let kuhCount = 0;
+    let kuehePergreifTag = [];
+    meineKuehe.forEach(([kid, k]) => {
+      let letzterM = 0, letzterA = 0, tsM = 0, tsA = 0;
+      Object.values(eintraege).forEach(e => {
+        if(!e || !e.prokuh || !e.datum) return;
+        const val = _mW(e.prokuh[kid]);
+        if(val <= 0) return;
+        if((e.zeit || 'morgen') === 'abend') {
+          if(e.datum > tsA) { letzterA = val; tsA = e.datum; }
+        } else {
+          if(e.datum > tsM) { letzterM = val; tsM = e.datum; }
+        }
+      });
+      const tages = letzterM + letzterA;
+      if(tages > 0) {
+        sumTagesmilch += tages;
+        kuhCount++;
+        kuehePergreifTag.push({ nr: k.nr, name: k.name, m: letzterM, a: letzterA, tages });
+      }
+    });
+    return { sum: sumTagesmilch, count: kuhCount, kuehe: kuehePergreifTag, gesamtKuehe: meineKuehe.length };
+  }
 
   // ══════════════════════════════════════════════════════════════════════════════
   // BAUER-DETAIL / ABHOLUNGS-FORMULAR
@@ -421,75 +531,283 @@
       `;
     }
     const b = woche.bauern[bid];
-    const k = b.kaese || {};
-    const bt = b.butter || {};
-    const isAbgeholt = !!b.abgeholtAm;
-    const chargenStr = (k.chargen || []).join(', ');
+    const step = window._sennereiWizardStep || 1;
+    const data = window._sennereiWizardData || {};
+
+    const stepNames = ['Übersicht', 'Butter', 'Käse', 'Zwischenbilanz', 'Unterschrift', 'Bestätigung'];
+    const stepIndicator = '<div style="display:flex;justify-content:center;gap:.3rem;margin-bottom:.8rem">' +
+      stepNames.map((n, i) => {
+        const active = (i + 1) === step;
+        const done = (i + 1) < step;
+        return '<div style="flex:1;max-width:60px;text-align:center;padding:.3rem;border-radius:8px;background:' +
+          (active ? 'var(--gold)' : done ? 'rgba(77,184,78,.2)' : 'var(--bg3)') +
+          ';border:1px solid ' + (active ? 'var(--gold)' : 'var(--border)') +
+          ';font-size:.65rem;color:' + (active ? '#0a0800' : done ? 'var(--green)' : 'var(--text3)') +
+          ';font-weight:' + (active ? '700' : '400') + '">' + (i+1) + '</div>';
+      }).join('') +
+    '</div>';
+
+    let body = '';
+    let footerButtons = '';
+    switch(step) {
+      case 1: body = _wizardStep1(b, woche); break;
+      case 2: body = _wizardStep2Butter(b, data); break;
+      case 3: body = _wizardStep3Kaese(b, data); break;
+      case 4: body = _wizardStep4Zwischen(b, data); break;
+      case 5: body = _wizardStep5Signatur(b, data); break;
+      case 6: body = _wizardStep6Final(b, data); break;
+    }
+    if(step === 1) {
+      footerButtons = `<button class="btn-secondary" style="flex:1" onclick="navigate('sennerei_woche')">Abbrechen</button>
+                      <button class="btn-primary" style="flex:1" onclick="sennereiWizardWeiter()">Weiter ▸</button>`;
+    } else if(step < 6) {
+      footerButtons = `<button class="btn-secondary" style="flex:1" onclick="sennereiWizardZurueck()">◂ Zurück</button>
+                      <button class="btn-primary" style="flex:1" onclick="sennereiWizardWeiter()">Weiter ▸</button>`;
+    } else {
+      footerButtons = `<button class="btn-secondary" style="flex:1" onclick="sennereiWizardZurueck()">◂ Zurück</button>
+                      <button class="btn-primary" style="flex:1;background:var(--green)" onclick="sennereiWizardFinalSpeichern()">✓ Abholung speichern</button>`;
+    }
 
     return `
       <div class="page-header">
         <h2>🥛 ${b.name}</h2>
-        <button class="btn-secondary" onclick="navigate('sennerei_woche')">← Zurück</button>
+        <button class="btn-secondary" onclick="navigate('sennerei_woche')">✕</button>
       </div>
-      <div style="background:var(--bg3);border:1px solid var(--border);border-radius:10px;padding:.6rem .8rem;margin-bottom:.8rem;font-size:.82rem;color:var(--text2)">
-        Woche ${woche.wocheNr} · ${woche.startDatum || ''} – ${woche.endeDatum || ''}
-        ${isAbgeholt ? '<br><span style="color:var(--green);font-weight:600">✓ Bereits abgeholt am ' + new Date(b.abgeholtAm).toLocaleString('de-AT') + '</span>' : ''}
+      ${stepIndicator}
+      <div style="background:var(--bg3);border:1px solid var(--border);border-radius:10px;padding:.4rem .7rem;margin-bottom:.6rem;font-size:.75rem;color:var(--text3);text-align:center">
+        Schritt ${step} / 6 · <b style="color:var(--gold)">${stepNames[step-1]}</b>
       </div>
+      ${body}
+      <div class="form-actions" style="position:sticky;bottom:0;background:linear-gradient(180deg,transparent,var(--bg) 30%);padding-top:1rem">
+        ${footerButtons}
+      </div>
+    `;
+  };
 
-      <!-- KÄSE -->
-      <div class="section-title">🧀 Käse</div>
-      <div class="card-section" style="padding:.7rem .8rem;margin-bottom:.8rem">
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:.4rem;font-size:.85rem;margin-bottom:.6rem">
-          <div style="color:var(--text3)">Verk%: <b style="color:var(--text)">${k.verkProzent||0}%</b></div>
-          <div style="color:var(--text3)">Zum Abholen: <b style="color:var(--gold)">${k.zumAbholen||0} kg</b></div>
-          <div style="color:var(--text3)">Soll: <b style="color:var(--text)">${k.soll||0} kg</b></div>
-          <div style="color:var(--text3)">Guthaben Vorwoche: <b style="color:var(--text)">${k.guthabenVorwoche||0} kg</b></div>
-          ${k.naturalrAnspruch ? '<div style="color:var(--text3);grid-column:1/-1">Naturalr.-Anspruch: <b style="color:#ff9632">' + k.naturalrAnspruch + ' kg</b></div>' : ''}
+  // ─── Step 1: Übersicht ─────────────────────────────────────────────────────
+  function _wizardStep1(b, woche) {
+    const k = b.kaese || {};
+    const bt = b.butter || {};
+    const isAbgeholt = !!b.abgeholtAm;
+    const tm = _sennereiTagesmilchFuerBauer(b.name);
+    let tagesmilchHtml = '';
+    if(tm && tm.count > 0) {
+      const kuhZeilen = tm.kuehe.map(k => `<div style="display:flex;justify-content:space-between;padding:.2rem .3rem;font-size:.8rem;border-bottom:1px solid var(--border)">
+        <span>#${k.nr} ${k.name||''}</span>
+        <span style="color:var(--text3)">M ${k.m||'–'}L · A ${k.a||'–'}L · <b style="color:var(--gold)">T ${Math.round(k.tages*10)/10}L</b></span>
+      </div>`).join('');
+      tagesmilchHtml = `
+        <div class="section-title">🥛 Letzte Tagesmilch (${tm.count} von ${tm.gesamtKuehe} Kühen)</div>
+        <div class="card-section" style="padding:.3rem;margin-bottom:.8rem">
+          ${kuhZeilen}
+          <div style="padding:.4rem .3rem;font-weight:700;color:var(--gold);border-top:2px solid var(--gold);margin-top:.2rem">
+            SUMME: ${Math.round(tm.sum*10)/10} L
+          </div>
+        </div>`;
+    } else {
+      tagesmilchHtml = '<div class="card-section" style="padding:.6rem;margin-bottom:.8rem;color:var(--text3);font-size:.85rem;text-align:center">Keine Kuh-Zuordnung für „' + b.name + '" gefunden</div>';
+    }
+    return `
+      ${isAbgeholt ? '<div style="background:rgba(77,184,78,.15);border:1px solid var(--green);padding:.5rem .7rem;border-radius:8px;margin-bottom:.7rem;color:var(--green);font-size:.85rem;font-weight:600">✓ Bereits abgeholt am ' + new Date(b.abgeholtAm).toLocaleString('de-AT') + '</div>' : ''}
+      <div class="section-title">📦 Zum Abholen</div>
+      <div class="card-section" style="padding:.7rem;margin-bottom:.8rem">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:.6rem;font-size:.9rem">
+          <div>🧀 <b>Käse:</b> ${k.zumAbholen||0} kg</div>
+          <div>🧈 <b>Butter:</b> ${bt.zumAbholen||0} kg</div>
+          ${k.naturalrAnspruch ? '<div style="color:#ff9632;font-size:.8rem">Naturalr. Käse: ' + k.naturalrAnspruch + ' kg</div>' : '<div></div>'}
+          ${bt.naturalrAnspruch ? '<div style="color:#ff9632;font-size:.8rem">Naturalr. Butter: ' + bt.naturalrAnspruch + ' kg</div>' : '<div></div>'}
         </div>
-        <label class="inp-label">Klötze (Stück)</label>
-        <input id="sb-k-klotze" class="inp" type="number" step="1" min="0" inputmode="numeric" value="${k.klotze||''}" style="margin-bottom:.4rem" />
-        <label class="inp-label">Abgeholt (kg)</label>
-        <input id="sb-k-abgeholt" class="inp" type="number" step="0.1" min="0" inputmode="decimal" value="${k.abgeholt||''}" style="margin-bottom:.4rem" />
-        ${k.naturalrAnspruch ? '<label class="inp-label">Naturalrabatt abgeholt (kg)</label><input id="sb-k-natabg" class="inp" type="number" step="0.1" min="0" inputmode="decimal" value="' + (k.naturalrAbgeholt||'') + '" style="margin-bottom:.4rem" />' : '<input type="hidden" id="sb-k-natabg" value="0" />'}
-        <label class="inp-label">Chargen (kommagetrennt: z.B. 28, 32, 15)</label>
-        <input id="sb-k-chargen" class="inp" type="text" placeholder="z.B. 28, 32" value="${chargenStr}" />
       </div>
+      ${isAbgeholt ? `
+      <div class="section-title">✓ Bereits abgeholt</div>
+      <div class="card-section" style="padding:.7rem;margin-bottom:.8rem;font-size:.85rem">
+        🧀 ${k.abgeholt||0} kg (+ ${k.naturalrAbgeholt||0} kg Natur) · ${(k.chargen||[]).join(', ')||'keine Chargen'}<br>
+        🧈 ${bt.abgeholt||0} kg (+ ${bt.naturalrAbgeholt||0} kg Natur)
+      </div>` : ''}
+      ${tagesmilchHtml}
+    `;
+  }
 
-      <!-- BUTTER -->
+  // ─── Step 2: Butter ────────────────────────────────────────────────────────
+  function _wizardStep2Butter(b, data) {
+    const bt = b.butter || {};
+    const d = data.butter || {};
+    // Abholvorschlag = zumAbholen minus naturalr.Anspruch (nur der aktive Selbst-Anteil)
+    const abholvorschlag = Math.round(((bt.zumAbholen||0) - (bt.naturalrAnspruch||0)) * 10) / 10;
+    return `
       <div class="section-title">🧈 Butter</div>
       <div class="card-section" style="padding:.7rem .8rem;margin-bottom:.8rem">
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:.4rem;font-size:.85rem;margin-bottom:.6rem">
-          <div style="color:var(--text3)">Verk%: <b style="color:var(--text)">${bt.verkProzent||0}%</b></div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:.4rem;font-size:.85rem;margin-bottom:.7rem">
+          <div style="color:var(--text3)">Verkauf%: <b style="color:var(--text)">${bt.verkProzent||0}%</b></div>
           <div style="color:var(--text3)">Zum Abholen: <b style="color:var(--gold)">${bt.zumAbholen||0} kg</b></div>
-          <div style="color:var(--text3)">Soll: <b style="color:var(--text)">${bt.soll||0} kg</b></div>
-          <div style="color:var(--text3)">Guthaben Vorwoche: <b style="color:var(--text)">${bt.guthabenVorwoche||0} kg</b></div>
-          ${bt.naturalrAnspruch ? '<div style="color:var(--text3);grid-column:1/-1">Naturalr.-Anspruch: <b style="color:#ff9632">' + bt.naturalrAnspruch + ' kg</b></div>' : ''}
+          <div style="color:var(--text3);grid-column:1/-1">
+            📌 <b style="color:#ff9632;font-size:1rem">Abholvorschlag: ${abholvorschlag} kg</b>
+            ${bt.naturalrAnspruch ? '<span style="font-size:.75rem;color:var(--text3)"> (= ' + bt.zumAbholen + ' − ' + bt.naturalrAnspruch + ' Naturalr.)</span>' : ''}
+          </div>
         </div>
-        <label class="inp-label">Klötze / Stück</label>
-        <input id="sb-b-klotze" class="inp" type="number" step="1" min="0" inputmode="numeric" value="${bt.klotze||''}" style="margin-bottom:.4rem" />
-        <label class="inp-label">Abgeholt (kg)</label>
-        <input id="sb-b-abgeholt" class="inp" type="number" step="0.1" min="0" inputmode="decimal" value="${bt.abgeholt||''}" style="margin-bottom:.4rem" />
-        ${bt.naturalrAnspruch ? '<label class="inp-label">Naturalrabatt abgeholt (kg)</label><input id="sb-b-natabg" class="inp" type="number" step="0.1" min="0" inputmode="decimal" value="' + (bt.naturalrAbgeholt||'') + '" style="margin-bottom:.4rem" />' : '<input type="hidden" id="sb-b-natabg" value="0" />'}
+        <label class="inp-label">Tatsächlich abgeholt (kg)</label>
+        <input id="sb-b-abgeholt" class="inp" type="number" step="0.1" min="0" inputmode="decimal" value="${d.abgeholt || ''}" placeholder="${abholvorschlag}" style="margin-bottom:.5rem" />
+        <label class="inp-label">Chargen (kommagetrennt)</label>
+        <input id="sb-b-chargen" class="inp" type="text" placeholder="z.B. 15, 22" value="${d.chargen || ''}" style="margin-bottom:.5rem" />
+        ${bt.naturalrAnspruch ? `<label class="inp-label">Naturalrückgabe abgeholt (kg) — Anspruch: ${bt.naturalrAnspruch} kg</label>
+          <input id="sb-b-natabg" class="inp" type="number" step="0.1" min="0" inputmode="decimal" value="${d.naturalrAbgeholt || ''}" />` : '<input type="hidden" id="sb-b-natabg" value="0" />'}
+        <input type="hidden" id="sb-b-klotze" value="${d.klotze || 0}" />
       </div>
+    `;
+  }
 
-      <!-- UNTERSCHRIFT -->
+  // ─── Step 3: Käse ──────────────────────────────────────────────────────────
+  function _wizardStep3Kaese(b, data) {
+    const k = b.kaese || {};
+    const d = data.kaese || {};
+    return `
+      <div class="section-title">🧀 Käse</div>
+      <div class="card-section" style="padding:.7rem .8rem;margin-bottom:.8rem">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:.4rem;font-size:.85rem;margin-bottom:.7rem">
+          <div style="color:var(--text3)">Verkauf%: <b style="color:var(--text)">${k.verkProzent||0}%</b></div>
+          <div style="color:var(--text3)">Zum Abholen: <b style="color:var(--gold)">${k.zumAbholen||0} kg</b></div>
+        </div>
+        <label class="inp-label">Klötze (Stück)</label>
+        <input id="sb-k-klotze" class="inp" type="number" step="1" min="0" inputmode="numeric" value="${d.klotze || ''}" style="margin-bottom:.5rem" />
+        <label class="inp-label">Tatsächlich abgeholt (kg)</label>
+        <input id="sb-k-abgeholt" class="inp" type="number" step="0.1" min="0" inputmode="decimal" value="${d.abgeholt || ''}" style="margin-bottom:.5rem" />
+        <label class="inp-label">Chargen (kommagetrennt: z.B. 28, 32, 15)</label>
+        <input id="sb-k-chargen" class="inp" type="text" placeholder="z.B. 28, 32" value="${d.chargen || ''}" style="margin-bottom:.5rem" />
+        ${k.naturalrAnspruch ? `<label class="inp-label">Naturalrückgabe abgeholt (kg) — Anspruch: ${k.naturalrAnspruch} kg</label>
+          <input id="sb-k-natabg" class="inp" type="number" step="0.1" min="0" inputmode="decimal" value="${d.naturalrAbgeholt || ''}" />` : '<input type="hidden" id="sb-k-natabg" value="0" />'}
+      </div>
+    `;
+  }
+
+  // ─── Step 4: Zwischen-Übersicht ────────────────────────────────────────────
+  function _wizardStep4Zwischen(b, data) {
+    const k = data.kaese || {};
+    const bt = data.butter || {};
+    const chargenB = String(bt.chargen||'').trim();
+    const chargenK = String(k.chargen||'').trim();
+    return `
+      <div class="section-title">📋 Zwischenbilanz</div>
+      <div class="card-section" style="padding:.7rem .8rem;margin-bottom:.8rem">
+        <div style="font-weight:700;color:var(--gold);margin-bottom:.3rem">🧈 Butter</div>
+        <div style="font-size:.9rem;padding-left:.5rem">
+          Abgeholt: <b>${bt.abgeholt||0} kg</b><br>
+          ${bt.naturalrAbgeholt ? 'Naturalrückgabe: <b>' + bt.naturalrAbgeholt + ' kg</b><br>' : ''}
+          ${chargenB ? 'Chargen: ' + chargenB + '<br>' : ''}
+        </div>
+        <div style="font-weight:700;color:var(--gold);margin:.7rem 0 .3rem">🧀 Käse</div>
+        <div style="font-size:.9rem;padding-left:.5rem">
+          Klötze: <b>${k.klotze||0}</b><br>
+          Abgeholt: <b>${k.abgeholt||0} kg</b><br>
+          ${k.naturalrAbgeholt ? 'Naturalrückgabe: <b>' + k.naturalrAbgeholt + ' kg</b><br>' : ''}
+          ${chargenK ? 'Chargen: ' + chargenK + '<br>' : ''}
+        </div>
+      </div>
+      <div style="font-size:.8rem;color:var(--text3);text-align:center;padding:.5rem">
+        Sind die Werte korrekt? Falls nein → mit „◂ Zurück" korrigieren.<br>
+        Sonst → „Weiter ▸" zur Unterschrift.
+      </div>
+    `;
+  }
+
+  // ─── Step 5: Unterschrift ──────────────────────────────────────────────────
+  function _wizardStep5Signatur(b, data) {
+    const existing = data.signaturPng;
+    return `
       <div class="section-title">✍ Unterschrift ${b.name}</div>
       <div class="card-section" style="padding:.7rem .8rem;margin-bottom:.8rem">
-        <div style="background:#ffffff;border:2px dashed #d4a84b;border-radius:10px;position:relative;height:180px;touch-action:none;overflow:hidden">
+        <div style="background:#ffffff;border:2px dashed #d4a84b;border-radius:10px;position:relative;height:220px;touch-action:none;overflow:hidden">
           <canvas id="sb-signatur-canvas" style="display:block;width:100%;height:100%;cursor:crosshair;touch-action:none"></canvas>
-          ${b.unterschriftPng ? '<img id="sb-signatur-existing" src="' + b.unterschriftPng + '" style="position:absolute;top:0;left:0;width:100%;height:100%;object-fit:contain;pointer-events:none;opacity:.7" />' : ''}
+          ${existing ? '<img id="sb-signatur-existing" src="' + existing + '" style="position:absolute;top:0;left:0;width:100%;height:100%;object-fit:contain;pointer-events:none;opacity:.7" />' : ''}
         </div>
         <div style="display:flex;gap:.4rem;margin-top:.4rem">
           <button class="btn-secondary" style="flex:1" onclick="sennereiSignaturLoeschen()">🗑 Löschen</button>
-          <span style="flex:1;text-align:center;color:var(--text3);font-size:.75rem;align-self:center">Mit Finger unterschreiben</span>
+          <span style="flex:2;text-align:center;color:var(--text3);font-size:.75rem;align-self:center">Mit Finger unterschreiben</span>
         </div>
       </div>
+    `;
+  }
 
-      <div class="form-actions" style="position:sticky;bottom:0;background:linear-gradient(180deg,transparent,var(--bg) 30%);padding-top:1rem">
-        <button class="btn-secondary" style="flex:1" onclick="navigate('sennerei_woche')">Abbrechen</button>
-        <button class="btn-primary" style="flex:1" onclick="sennereiSpeichereAbholung()">${isAbgeholt ? '💾 Änderung speichern' : '✓ Abholung speichern'}</button>
+  // ─── Step 6: Final-Übersicht ──────────────────────────────────────────────
+  function _wizardStep6Final(b, data) {
+    const k = data.kaese || {};
+    const bt = data.butter || {};
+    const sig = data.signaturPng;
+    return `
+      <div class="section-title">✓ Alle Werte auf einen Blick</div>
+      <div class="card-section" style="padding:.7rem .8rem;margin-bottom:.7rem">
+        <div style="font-size:1rem;font-weight:700;color:var(--gold);margin-bottom:.4rem">${b.name}</div>
+        <div style="font-weight:700;margin-bottom:.2rem">🧈 Butter</div>
+        <div style="font-size:.9rem;padding-left:.5rem;margin-bottom:.5rem">
+          Abgeholt: <b>${bt.abgeholt||0} kg</b>${bt.naturalrAbgeholt ? ' · Naturalr.: <b>' + bt.naturalrAbgeholt + ' kg</b>' : ''}${bt.chargen ? '<br>Chargen: ' + bt.chargen : ''}
+        </div>
+        <div style="font-weight:700;margin-bottom:.2rem">🧀 Käse</div>
+        <div style="font-size:.9rem;padding-left:.5rem;margin-bottom:.5rem">
+          Klötze: <b>${k.klotze||0}</b> · Abgeholt: <b>${k.abgeholt||0} kg</b>${k.naturalrAbgeholt ? ' · Naturalr.: <b>' + k.naturalrAbgeholt + ' kg</b>' : ''}${k.chargen ? '<br>Chargen: ' + k.chargen : ''}
+        </div>
+      </div>
+      <div class="section-title">✍ Unterschrift</div>
+      <div class="card-section" style="padding:.5rem;margin-bottom:.8rem">
+        ${sig ? '<img src="' + sig + '" style="width:100%;max-height:120px;object-fit:contain;background:white;border-radius:6px" />' : '<div style="color:#ff9632;padding:.5rem;text-align:center;font-size:.85rem">⚠ Keine Unterschrift vorhanden</div>'}
+      </div>
+      <div style="font-size:.85rem;color:var(--gold);text-align:center;padding:.5rem;font-weight:600">
+        Jetzt „✓ Abholung speichern" drücken um fertigzustellen.
       </div>
     `;
+  }
+
+  // Final speichern (nur Step 6)
+  window.sennereiWizardFinalSpeichern = async function() {
+    _sennereiSaveCurrentStepData();
+    const wid = window._sennereiAktiveWoche;
+    const bid = window._sennereiAktiverBauer;
+    const data = window._sennereiWizardData || {};
+    if(!wid || !bid) return;
+    const woche = (_wochenCache || []).find(w => w.id === wid);
+    if(!woche || !woche.bauern[bid]) { alert('Bauer nicht gefunden'); return; }
+    if(!data.signaturPng) {
+      if(!confirm('Keine Unterschrift vorhanden. Trotzdem speichern?')) return;
+    }
+    const btn = document.querySelector('button.btn-primary[onclick*="sennereiWizardFinalSpeichern"]');
+    if(btn) { btn.disabled = true; btn.textContent = '⏳ Speichere…'; }
+    try {
+      const chargenB = String(data.butter.chargen || '').split(/[,;]/).map(s => s.trim()).filter(Boolean);
+      const chargenK = String(data.kaese.chargen || '').split(/[,;]/).map(s => s.trim()).filter(Boolean);
+      const kaeseUpdate = {
+        klotze: parseInt(data.kaese.klotze) || 0,
+        abgeholt: parseFloat(data.kaese.abgeholt) || 0,
+        naturalrAbgeholt: parseFloat(data.kaese.naturalrAbgeholt) || 0,
+        chargen: chargenK
+      };
+      const butterUpdate = {
+        klotze: parseInt(data.butter.klotze) || 0,
+        abgeholt: parseFloat(data.butter.abgeholt) || 0,
+        naturalrAbgeholt: parseFloat(data.butter.naturalrAbgeholt) || 0,
+        chargen: chargenB
+      };
+      const path = 'sennerei/wochen/' + wid + '/bauern/' + bid;
+      const uid = firebase.auth && firebase.auth().currentUser && firebase.auth().currentUser.uid;
+      const _retry = window.withAuthRetry || (async fn => await fn());
+      await _retry(() => firebase.database().ref(path + '/kaese').update(kaeseUpdate));
+      await _retry(() => firebase.database().ref(path + '/butter').update(butterUpdate));
+      await _retry(() => firebase.database().ref(path).update({
+        unterschriftPng: data.signaturPng || null,
+        abgeholtAm: Date.now(),
+        abgeholtVon: uid || null
+      }));
+      Object.assign(woche.bauern[bid].kaese || {}, kaeseUpdate);
+      Object.assign(woche.bauern[bid].butter || {}, butterUpdate);
+      woche.bauern[bid].unterschriftPng = data.signaturPng;
+      woche.bauern[bid].abgeholtAm = Date.now();
+      woche.bauern[bid].abgeholtVon = uid;
+      window._sennereiSignaturDirty = false;
+      if(window.showSaveToast) window.showSaveToast('✓ Abholung ' + woche.bauern[bid].name + ' gespeichert');
+      if(navigator.vibrate) navigator.vibrate([30,10,30]);
+      if(typeof navigate === 'function') navigate('sennerei_woche');
+    } catch(err) {
+      console.error('[Sennerei] Speichern fail:', err);
+      alert('Fehler beim Speichern:\n\n' + (err.message||err));
+      if(btn) { btn.disabled = false; btn.textContent = '✓ Abholung speichern'; }
+    }
   };
 
   // ══════════════════════════════════════════════════════════════════════════════
@@ -762,6 +1080,208 @@
       if(btn) { btn.disabled = false; btn.textContent = '✓ Woche speichern'; }
     }
   };
+
+  // ══════════════════════════════════════════════════════════════════════════════
+  // PDF-DRUCK: Wochen-Übersicht (mit ausgefüllten Werten + Unterschriften)
+  // ══════════════════════════════════════════════════════════════════════════════
+  window.sennereiDruckeWoche = function(wid) {
+    const woche = (_wochenCache || []).find(w => w.id === wid);
+    if(!woche) { alert('Woche nicht gefunden'); return; }
+    const bauern = Object.entries(woche.bauern || {}).sort((a,b) => (a[1].name||'').localeCompare(b[1].name||''));
+
+    const fmt = (n) => n == null || n === 0 ? '' : String(Math.round(n * 10) / 10).replace('.', ',');
+    const fmtI = (n) => n == null || n === 0 ? '' : String(n);
+    const escapeHtml = (s) => String(s||'').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c]);
+
+    // Header + Zeilen
+    let rows = '';
+    bauern.forEach(([bid, b]) => {
+      const k = b.kaese || {};
+      const bt = b.butter || {};
+      const chargen = (k.chargen || []).join(', ');
+      const kaeseGesamt = (k.abgeholt||0) + (k.naturalrAbgeholt||0);
+      const butterGesamt = (bt.abgeholt||0) + (bt.naturalrAbgeholt||0);
+      const sigImg = b.unterschriftPng ? '<img src="' + b.unterschriftPng + '" style="max-height:35px;max-width:110px;object-fit:contain">' : '';
+      rows += `
+        <tr class="bauer-erste">
+          <td rowspan="2" class="bauer">${escapeHtml(b.name)}</td>
+          <td class="prod">Käse</td>
+          <td class="num">${fmtI(k.verkProzent)}%</td>
+          <td class="num">${fmt(k.soll)}</td>
+          <td class="num">${fmt(k.guthabenVorwoche)}</td>
+          <td class="num zumab">${fmt(k.zumAbholen)}</td>
+          <td class="num klotze">${fmtI(k.klotze)}</td>
+          <td class="num abgeh">${fmt(k.abgeholt)}</td>
+          <td class="num natur">${fmt(k.naturalrAnspruch)}</td>
+          <td class="num naturabg">${fmt(k.naturalrAbgeholt)}</td>
+          <td class="chargen">${escapeHtml(chargen)}</td>
+          <td class="num gesamt">${fmt(kaeseGesamt) || '0,0'}</td>
+          <td rowspan="2" class="sig">${sigImg}</td>
+        </tr>
+        <tr class="bauer-zweite">
+          <td class="prod">Butter</td>
+          <td class="num">${fmtI(bt.verkProzent)}%</td>
+          <td class="num">${fmt(bt.soll)}</td>
+          <td class="num">${fmt(bt.guthabenVorwoche)}</td>
+          <td class="num zumab">${fmt(bt.zumAbholen)}</td>
+          <td class="num klotze">${fmtI(bt.klotze)}</td>
+          <td class="num abgeh">${fmt(bt.abgeholt)}</td>
+          <td class="num natur">${fmt(bt.naturalrAnspruch)}</td>
+          <td class="num naturabg">${fmt(bt.naturalrAbgeholt)}</td>
+          <td class="chargen"></td>
+          <td class="num gesamt">${fmt(butterGesamt) || '0,0'}</td>
+        </tr>
+      `;
+    });
+
+    // Auswertung
+    let sumKaese = 0, sumButter = 0, sumKaeseNatur = 0, sumButterNatur = 0;
+    bauern.forEach(([,b]) => {
+      sumKaese += (b.kaese?.abgeholt || 0);
+      sumButter += (b.butter?.abgeholt || 0);
+      sumKaeseNatur += (b.kaese?.naturalrAbgeholt || 0);
+      sumButterNatur += (b.butter?.naturalrAbgeholt || 0);
+    });
+
+    const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Abholung Woche ${woche.wocheNr}</title>
+<style>
+  * { box-sizing: border-box; }
+  body { font-family: 'Segoe UI', Arial, sans-serif; margin: 15mm 8mm; color: #1a2a08; font-size: 9pt; }
+  h1 { color: #1a4a6e; font-size: 14pt; margin: 0 0 4pt 0; }
+  .meta { background: #fff8e0; border: 1px solid #d4a84b; padding: 4pt 8pt; margin-bottom: 6pt; font-size: 9pt; border-radius: 4pt; }
+  .erstellt { color: #666; font-size: 8pt; float: right; }
+  table { width: 100%; border-collapse: collapse; margin-top: 4pt; }
+  th { background: #e8ebc7; color: #1a4a6e; font-weight: 700; text-align: left; padding: 3pt 4pt; border: .5pt solid #999; font-size: 7.5pt; }
+  th.num { text-align: right; }
+  td { padding: 2pt 4pt; border: .5pt solid #ccc; vertical-align: middle; font-size: 8pt; }
+  td.bauer { font-weight: 700; background: #f7f7ee; text-align: left; }
+  td.prod { font-weight: 600; background: #f7f7ee; }
+  td.num { text-align: right; font-family: 'Courier New', monospace; }
+  td.zumab { background: #e6f4d8; color: #2a5a15; font-weight: 700; }
+  td.klotze { background: #dcf3d0; }
+  td.abgeh { background: #fff2c4; }
+  td.natur { background: #e8d9f3; color: #4a2a70; }
+  td.naturabg { background: #f0e5f8; }
+  td.gesamt { background: #e6f4d8; font-weight: 700; }
+  td.sig { text-align: center; padding: 2pt; background: #fafafa; }
+  td.sig img { display: block; margin: 0 auto; }
+  .bauer-erste td { border-bottom: none; }
+  .bauer-zweite td { border-top: none; padding-top: 0; }
+  .footer { margin-top: 8pt; padding-top: 4pt; border-top: 1pt solid #999; display: flex; justify-content: space-between; font-size: 8pt; color: #666; }
+  .auswertung { background: #f0f7e5; border: 1px solid #4b8b0d; padding: 6pt 10pt; margin-top: 8pt; border-radius: 4pt; font-size: 9pt; }
+  .auswertung h3 { margin: 0 0 4pt 0; color: #2a5a15; font-size: 10pt; }
+  @page { size: A4 landscape; margin: 10mm; }
+  @media print {
+    body { margin: 0; }
+    .no-print { display: none !important; }
+  }
+</style>
+</head><body>
+<div class="no-print" style="text-align:right;margin-bottom:8pt">
+  <button onclick="window.print()" style="padding:6pt 14pt;font-size:11pt;cursor:pointer;background:#d4a84b;border:none;border-radius:4pt;font-weight:700">🖨 Drucken / Als PDF speichern</button>
+  <button onclick="window.close()" style="padding:6pt 14pt;font-size:11pt;cursor:pointer;margin-left:6pt">Schließen</button>
+</div>
+<h1>Abholungsliste Sennerei Nasserein — Woche ${woche.wocheNr} (${escapeHtml(woche.startDatum||'')} – ${escapeHtml(woche.endeDatum||'')})</h1>
+<div class="erstellt">Gedruckt: ${new Date().toLocaleString('de-AT')}</div>
+<div class="meta"><b>Max. verkaufbar (Woche ${woche.wocheNr}):</b> Käse ${woche.maxVerkaufbar?.kaese||0} kg &middot; Butter ${woche.maxVerkaufbar?.butter||0} kg</div>
+<table>
+  <thead>
+    <tr>
+      <th>Bauer</th>
+      <th>Produkt</th>
+      <th class="num">Verk%</th>
+      <th class="num">Soll</th>
+      <th class="num">Guthaben<br>Vorwoche</th>
+      <th class="num">Zum<br>Abholen</th>
+      <th class="num">Klötze</th>
+      <th class="num">Abgeholt</th>
+      <th class="num">Naturalr.<br>Anspruch</th>
+      <th class="num">Naturalr.<br>abgeholt</th>
+      <th>Chargen</th>
+      <th class="num">Abholung<br>Gesamt</th>
+      <th>Unterschrift</th>
+    </tr>
+  </thead>
+  <tbody>${rows}</tbody>
+</table>
+<div class="auswertung">
+  <h3>📊 Wochenauswertung</h3>
+  Käse abgeholt: <b>${fmt(sumKaese) || '0,0'} kg</b> &middot;
+  Butter abgeholt: <b>${fmt(sumButter) || '0,0'} kg</b> &middot;
+  Naturalr. Käse: <b>${fmt(sumKaeseNatur) || '0,0'} kg</b> &middot;
+  Naturalr. Butter: <b>${fmt(sumButterNatur) || '0,0'} kg</b><br>
+  <span style="color:#666">Abgeholt: ${bauern.filter(([,b])=>b.abgeholtAm).length} / ${bauern.length} Bauern</span>
+</div>
+<div class="footer">
+  <span>Nassereinalm | Sommer ${new Date().getFullYear()}</span>
+  <span>Engineering by LN Machinery</span>
+</div>
+</body></html>`;
+
+    // Neues Fenster öffnen und Print-Dialog triggern
+    const win = window.open('', '_blank');
+    if(!win) { alert('Popup blockiert. Bitte im Browser Popups für diese Seite erlauben.'); return; }
+    win.document.open();
+    win.document.write(html);
+    win.document.close();
+  };
+
+  // ══════════════════════════════════════════════════════════════════════════════
+  // BAUER-HISTORIE: alle Wochen für einen bestimmten Bauer laden
+  // ══════════════════════════════════════════════════════════════════════════════
+  // Wird direkt in der Bauer-Detail-Ansicht angezeigt (unten anhängen)
+  window.sennereiLadeBauerHistorie = async function(nameNorm) {
+    if(typeof firebase === 'undefined' || !firebase.database) return [];
+    try {
+      const snap = await firebase.database().ref('sennerei/wochen').orderByKey().limitToLast(20).once('value');
+      const wochen = snap.val() || {};
+      const rows = [];
+      Object.entries(wochen).forEach(([wid, w]) => {
+        const b = w.bauern && w.bauern[nameNorm];
+        if(b) rows.push({ wid, wocheNr: w.wocheNr, startDatum: w.startDatum, endeDatum: w.endeDatum, bauer: b });
+      });
+      return rows.sort((a,b) => (b.wid||'').localeCompare(a.wid||''));
+    } catch(e) { console.warn('[Sennerei] Historie laden:', e); return []; }
+  };
+
+  // Erweitert die Bauer-Detail-Anzeige (im renderSennereiBauer) um vergangene Wochen
+  // Wird per setInterval nachgeladen wenn User auf Bauer-Detail-View ist
+  let _historieLoaded = false;
+  let _historieForBauer = null;
+  setInterval(async () => {
+    if(window.currentView !== 'sennerei_bauer') { _historieLoaded = false; return; }
+    const bid = window._sennereiAktiverBauer;
+    if(!bid || _historieForBauer === bid) return;
+    const el = document.getElementById('sennerei-bauer-historie');
+    if(!el) return;
+    _historieForBauer = bid;
+    el.innerHTML = '<div style="color:var(--text3);font-size:.8rem;padding:.4rem">⏳ Lade Historie…</div>';
+    const rows = await window.sennereiLadeBauerHistorie(bid);
+    const currentWid = window._sennereiAktiveWoche;
+    const filtered = rows.filter(r => r.wid !== currentWid);
+    if(filtered.length === 0) {
+      el.innerHTML = '<div style="color:var(--text3);font-size:.8rem;padding:.4rem">Keine früheren Abholungen für diesen Bauern.</div>';
+      return;
+    }
+    el.innerHTML = filtered.map(r => {
+      const b = r.bauer;
+      const kAbg = b.kaese?.abgeholt || 0;
+      const btAbg = b.butter?.abgeholt || 0;
+      const kNat = b.kaese?.naturalrAbgeholt || 0;
+      const btNat = b.butter?.naturalrAbgeholt || 0;
+      const datum = b.abgeholtAm ? new Date(b.abgeholtAm).toLocaleDateString('de-AT') : '–';
+      const status = b.abgeholtAm ? '<span style="color:var(--green)">✓</span>' : '<span style="color:#ff9632">⏳</span>';
+      return `<div style="padding:.4rem .5rem;border-bottom:1px solid var(--border);font-size:.82rem">
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <b>Woche ${r.wocheNr||r.wid}</b>
+          <span style="color:var(--text3);font-size:.75rem">${status} ${datum}</span>
+        </div>
+        <div style="color:var(--text2);font-size:.75rem;margin-top:.15rem">
+          🧀 ${Math.round(kAbg*10)/10}kg${kNat?' (+ '+Math.round(kNat*10)/10+' Natur)':''} · 🧈 ${Math.round(btAbg*10)/10}kg${btNat?' (+ '+Math.round(btNat*10)/10+' Natur)':''}
+        </div>
+      </div>`;
+    }).join('');
+  }, 400);
 
   console.log('[Sennerei] Modul geladen v' + VERSION);
 })();
