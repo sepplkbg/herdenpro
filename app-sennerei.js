@@ -6,7 +6,7 @@
 //  Phase B (später): Abholung + Touch-Signatur + PDF-Export
 // ══════════════════════════════════════════════════════════════════════════════
 (function() {
-  const VERSION = '1.0';
+  const VERSION = '2.0';
   window.SENNEREI_VERSION = VERSION;
 
   // ── Utilities ──
@@ -95,37 +95,54 @@
       maxButter = parseFloat(maxMatch[2].replace(',', '.')) || 0;
     }
 
-    // Datenzeilen: nach Header, jeweils 2 Zeilen pro Bauer (Käse + Butter)
-    // Muster: [Bauer-Name-Fragment(e)] Käse VerkProz SollKg GuthKg ZumAbholenKg [KloetzeKäse] [AbgeholtKg] [NaturalrAnspruch] [NaturalrAbgeholt] [Chargen] [AbholungGesamt] [Unterschrift]
-    // Bauern werden extrahiert indem wir Zeilen mit "Käse" bzw "Butter" als Produkt-Indikator finden.
+    // Header-Row-Muster erkennen (auf JEDER Seite: "Bauer Produkt Verk% Soll ...")
+    // Diese müssen komplett übersprungen werden, sonst landen sie im Bauer-Namen
+    const isHeaderRow = (row) => {
+      const text = row.items.map(i => i.str).join(' ');
+      return /Bauer/i.test(text) && /Produkt/i.test(text) &&
+             (/Verk/i.test(text) || /Soll/i.test(text) || /Guthaben/i.test(text) || /Naturalr/i.test(text) || /Chargen/i.test(text) || /Unterschrift/i.test(text));
+    };
+    const isFooterRow = (row) => {
+      const text = row.items.map(i => i.str).join(' ');
+      return /Nassereinalm|Sommer\s*20\d\d|Engineering\s+by/i.test(text);
+    };
+    // Alle Header-Wörter die NICHT in einen Bauernamen gehören
+    const isNoiseText = (text) => {
+      return /^(Bauer|Produkt|Verk%|Soll|Guthaben|Vorwoche|Zum|Abholen|Klötze|Abgeholt|Naturalr\.?|Anspruch|abgeholt|Chargen|Abholung|Gesamt|Unterschrift|Neu|Max\.?\s*verkaufbar|Wochenabholung|Woche\s+\d)$/i.test(text.trim());
+    };
+
     const dataRows = rows.slice(headerRowIdx + 1).filter(r => {
-      const text = r.items.map(i => i.str).join(' ');
-      // Footer-Zeilen ausfiltern
-      if(/Nassereinalm|Sommer\s*20|Engineering by/i.test(text)) return false;
-      if(!text.trim()) return false;
+      if(!r.items.length) return false;
+      if(isHeaderRow(r)) return false;
+      if(isFooterRow(r)) return false;
+      const text = r.items.map(i => i.str).join('').trim();
+      if(!text) return false;
+      // Max-verkaufbar-Zeile skippen
+      if(/^Max\.?\s*verkaufbar/i.test(text)) return false;
       return true;
     });
 
-    // Jeweils 2 Zeilen zusammen: Käse-Zeile + Butter-Zeile (mit Bauer-Name)
-    // Bauer-Name kann in der Käse-Zeile stehen ODER in der Zeile darüber
+    // Bauer-Name kann über 2 Zeilen gehen (z.B. "Achenrainer" / "Simon" ODER "Auer Günther" auf 1 Zeile)
+    // Muster: [Name-Zeile(n)] → Käse-Zeile → Butter-Zeile → nächster Bauer
     const bauern = [];
     let currentBauer = null;
-    let pendingName = ''; // Sammelt Text vor der Käse-Zeile
+    let pendingName = '';
+
+    // Text-Fragmente die als Bauer-Name durchgehen (nicht Header/Noise)
+    const cleanNameFragment = (text) => {
+      const parts = text.split(/\s+/).filter(p => p && !isNoiseText(p) && !/^\d/.test(p) && !/^-?\d+[,.]\d/.test(p));
+      return parts.join(' ').trim();
+    };
 
     dataRows.forEach(row => {
-      const text = row.items.map(i => i.str).join(' ');
       const hasKaese = row.items.some(i => /^Käse$/i.test(i.str));
       const hasButter = row.items.some(i => /^Butter$/i.test(i.str));
 
       if(hasKaese) {
-        // Bauer-Name = alles vor dem "Käse"-Wort
         const kaeseIdx = row.items.findIndex(i => /^Käse$/i.test(i.str));
-        const nameFragmente = row.items.slice(0, kaeseIdx).map(i => i.str);
-        let nameHier = nameFragmente.join(' ').trim();
-        // Falls Name in Vorzeile war (pendingName gesetzt), nutze diesen
-        const finalName = (pendingName + ' ' + nameHier).trim() || pendingName || nameHier || 'UNBEKANNT';
-
-        // Werte extrahieren aus den Items nach "Käse"
+        const nameFragmente = row.items.slice(0, kaeseIdx).map(i => i.str).join(' ').trim();
+        const nameHier = cleanNameFragment(nameFragmente);
+        const finalName = (pendingName + ' ' + nameHier).trim().replace(/\s+/g, ' ') || pendingName || nameHier || 'UNBEKANNT';
         const vals = row.items.slice(kaeseIdx + 1);
         currentBauer = {
           name: finalName,
@@ -139,9 +156,14 @@
         const butterIdx = row.items.findIndex(i => /^Butter$/i.test(i.str));
         const vals = row.items.slice(butterIdx + 1);
         currentBauer.butter = extractProduktZeile(vals);
+        // Nach Butter-Zeile: Bauer ist fertig, pendingName resetten
+        pendingName = '';
       } else {
-        // Zeile ohne Käse/Butter — vermutlich Name der nächsten Käse-Zeile
-        pendingName = (pendingName + ' ' + text).trim();
+        // Zeile ohne Käse/Butter — potenzieller Name-Fragment für den NÄCHSTEN Bauer
+        const cleaned = cleanNameFragment(row.items.map(i => i.str).join(' '));
+        if(cleaned) {
+          pendingName = (pendingName + ' ' + cleaned).trim().replace(/\s+/g, ' ');
+        }
       }
     });
 
@@ -255,21 +277,25 @@
   // ══════════════════════════════════════════════════════════════════════════════
   // VIEWS
   // ══════════════════════════════════════════════════════════════════════════════
-  let _wochenCache = [];
+  let _wochenCache = null;   // null = noch nie geladen, [] = geladen aber leer
   let _wochenLoading = false;
 
+  window.sennereiInvalidateCache = function() {
+    _wochenCache = null;
+    _wochenLoading = false;
+  };
+
   window.renderSennerei = function() {
-    // Wochen im Hintergrund laden
-    if(!_wochenLoading) {
+    // Nur EINMAL laden (nicht nach jedem render neu triggern → verhindert Flackern)
+    if(_wochenCache === null && !_wochenLoading) {
       _wochenLoading = true;
       window.sennereiLadeWochen(w => {
-        _wochenCache = w;
+        _wochenCache = w || [];
         _wochenLoading = false;
-        // Neu rendern falls User noch auf Sennerei-Seite
         if(window.currentView === 'sennerei' && typeof render === 'function') render();
       });
     }
-    const wochen = _wochenCache;
+    const wochen = _wochenCache || [];
     return `
       <div class="page-header">
         <h2>🥛 Sennerei — Abholung</h2>
@@ -287,23 +313,22 @@
       </div>
 
       <div class="section-title">Aktuelle & vergangene Wochen</div>
-      ${wochen.length === 0 ? (
-        _wochenLoading
-          ? '<div class="empty-state">⏳ Lade Wochen…</div>'
-          : '<div class="empty-state">Noch keine Wochen importiert.<br>Tippe oben auf „📥 Woche via PDF importieren" um zu starten.</div>'
-      ) : ''}
+      ${_wochenCache === null ? '<div class="empty-state">⏳ Lade Wochen…</div>' :
+        wochen.length === 0
+          ? '<div class="empty-state">Noch keine Wochen importiert.<br>Tippe oben auf „📥 Woche via PDF importieren" um zu starten.</div>'
+          : ''}
       <div class="card-list">
         ${wochen.map(w => {
           const bauernAnz = w.bauern ? Object.keys(w.bauern).length : 0;
           const startEnde = (w.startDatum || '') + (w.endeDatum ? ' – ' + w.endeDatum : '');
           return `
-            <div class="list-card" onclick="sennereiOeffneWoche('${w.id}')" style="cursor:pointer">
-              <div class="list-card-left"><div>
+            <div class="list-card">
+              <div class="list-card-left" onclick="sennereiOeffneWoche('${w.id}')" style="cursor:pointer;flex:1"><div>
                 <div class="list-card-title">Woche ${w.wocheNr || w.id}</div>
                 <div class="list-card-sub">${startEnde} · ${bauernAnz} Bauern</div>
               </div></div>
               <div class="list-card-right">
-                <span style="font-size:.7rem;color:var(--text3)">▸</span>
+                <button class="btn-xs-danger" onclick="sennereiLoescheWoche('${w.id}','${w.wocheNr||w.id}')">✕ Löschen</button>
               </div>
             </div>`;
         }).join('')}
@@ -311,9 +336,22 @@
     `;
   };
 
+  window.sennereiLoescheWoche = async function(id, wocheNr) {
+    if(!confirm('Woche ' + wocheNr + ' wirklich löschen?\n\nAlle Abholungs-Daten dieser Woche gehen verloren.')) return;
+    try {
+      const _retry = window.withAuthRetry || (async fn => await fn());
+      await _retry(() => firebase.database().ref('sennerei/wochen/' + id).remove());
+      window.sennereiInvalidateCache();
+      if(window.showSaveToast) window.showSaveToast('✓ Woche ' + wocheNr + ' gelöscht');
+      if(typeof render === 'function') render();
+    } catch(e) {
+      alert('Fehler beim Löschen: ' + (e.message||e));
+    }
+  };
+
   window.renderSennereiWoche = function() {
     const wid = window._sennereiAktiveWoche;
-    const woche = _wochenCache.find(w => w.id === wid);
+    const woche = (_wochenCache || []).find(w => w.id === wid);
     if(!woche) {
       return `
         <div class="page-header"><h2>🥛 Sennerei-Woche</h2><button class="btn-secondary" onclick="navigate('sennerei')">← Zurück</button></div>
@@ -321,6 +359,7 @@
       `;
     }
     const bauern = Object.entries(woche.bauern || {}).sort((a,b) => (a[1].name||'').localeCompare(b[1].name||''));
+    const abgeholtCount = bauern.filter(([,b]) => b.abgeholtAm).length;
     return `
       <div class="page-header">
         <h2>🥛 Woche ${woche.wocheNr}</h2>
@@ -328,7 +367,8 @@
       </div>
       <div style="background:var(--bg3);border:1px solid var(--border);border-radius:10px;padding:.6rem .8rem;margin-bottom:.8rem;font-size:.82rem;color:var(--text2)">
         ${woche.startDatum || ''} – ${woche.endeDatum || ''}<br>
-        Max. verkaufbar: <b>Käse ${woche.maxVerkaufbar?.kaese||0} kg</b> · <b>Butter ${woche.maxVerkaufbar?.butter||0} kg</b>
+        Max. verkaufbar: <b>Käse ${woche.maxVerkaufbar?.kaese||0} kg</b> · <b>Butter ${woche.maxVerkaufbar?.butter||0} kg</b><br>
+        <span style="color:var(--gold);font-weight:600">${abgeholtCount} / ${bauern.length} abgeholt</span>
       </div>
       <div class="section-title">Bauern (${bauern.length})</div>
       <div class="card-list">
@@ -337,20 +377,22 @@
           const matchIcon = matched ? '' : '<span style="color:#ff9632" title="Bauer nicht in App-Liste gefunden">⚠</span>';
           const kaeseZ = b.kaese?.zumAbholen || 0;
           const butterZ = b.butter?.zumAbholen || 0;
+          const isAbgeholt = !!b.abgeholtAm;
+          const statusHtml = isAbgeholt
+            ? '<span style="color:var(--green);font-weight:600">✓ abgeholt ' + new Date(b.abgeholtAm).toLocaleTimeString('de-AT',{hour:'2-digit',minute:'2-digit'}) + '</span>'
+            : '<span style="color:var(--gold);font-weight:600">⏳ offen</span>';
           return `
-            <div class="list-card" style="cursor:default">
+            <div class="list-card" onclick="sennereiOeffneBauer('${bid}')" style="cursor:pointer;border-left:3px solid ${isAbgeholt?'var(--green)':'var(--gold)'}">
               <div class="list-card-left"><div>
                 <div class="list-card-title">${b.name} ${matchIcon}</div>
                 <div class="list-card-sub">Käse: ${kaeseZ} kg · Butter: ${butterZ} kg</div>
+                <div style="font-size:.7rem;margin-top:.2rem">${statusHtml}</div>
               </div></div>
               <div class="list-card-right">
-                <span style="color:var(--text3);font-size:.75rem">Phase 2</span>
+                <span style="font-size:1.1rem;color:var(--text3)">▸</span>
               </div>
             </div>`;
         }).join('')}
-      </div>
-      <div class="empty-state" style="margin-top:1rem">
-        Die Abholungs-Erfassung (Phase 2) kommt im nächsten Update — dann tippst du hier auf einen Bauer und trägst Klötze, kg, Chargen + Unterschrift ein.
       </div>
     `;
   };
@@ -358,6 +400,266 @@
   window.sennereiOeffneWoche = function(id) {
     window._sennereiAktiveWoche = id;
     if(typeof navigate === 'function') navigate('sennerei_woche');
+  };
+
+  window.sennereiOeffneBauer = function(bid) {
+    window._sennereiAktiverBauer = bid;
+    if(typeof navigate === 'function') navigate('sennerei_bauer');
+  };
+
+  // ══════════════════════════════════════════════════════════════════════════════
+  // BAUER-DETAIL / ABHOLUNGS-FORMULAR
+  // ══════════════════════════════════════════════════════════════════════════════
+  window.renderSennereiBauer = function() {
+    const wid = window._sennereiAktiveWoche;
+    const bid = window._sennereiAktiverBauer;
+    const woche = (_wochenCache || []).find(w => w.id === wid);
+    if(!woche || !woche.bauern || !woche.bauern[bid]) {
+      return `
+        <div class="page-header"><h2>🥛 Bauer</h2><button class="btn-secondary" onclick="navigate('sennerei_woche')">← Zurück</button></div>
+        <div class="empty-state">Bauer nicht gefunden. <a onclick="navigate('sennerei_woche')" style="color:var(--gold);cursor:pointer">Zurück zur Woche</a></div>
+      `;
+    }
+    const b = woche.bauern[bid];
+    const k = b.kaese || {};
+    const bt = b.butter || {};
+    const isAbgeholt = !!b.abgeholtAm;
+    const chargenStr = (k.chargen || []).join(', ');
+
+    return `
+      <div class="page-header">
+        <h2>🥛 ${b.name}</h2>
+        <button class="btn-secondary" onclick="navigate('sennerei_woche')">← Zurück</button>
+      </div>
+      <div style="background:var(--bg3);border:1px solid var(--border);border-radius:10px;padding:.6rem .8rem;margin-bottom:.8rem;font-size:.82rem;color:var(--text2)">
+        Woche ${woche.wocheNr} · ${woche.startDatum || ''} – ${woche.endeDatum || ''}
+        ${isAbgeholt ? '<br><span style="color:var(--green);font-weight:600">✓ Bereits abgeholt am ' + new Date(b.abgeholtAm).toLocaleString('de-AT') + '</span>' : ''}
+      </div>
+
+      <!-- KÄSE -->
+      <div class="section-title">🧀 Käse</div>
+      <div class="card-section" style="padding:.7rem .8rem;margin-bottom:.8rem">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:.4rem;font-size:.85rem;margin-bottom:.6rem">
+          <div style="color:var(--text3)">Verk%: <b style="color:var(--text)">${k.verkProzent||0}%</b></div>
+          <div style="color:var(--text3)">Zum Abholen: <b style="color:var(--gold)">${k.zumAbholen||0} kg</b></div>
+          <div style="color:var(--text3)">Soll: <b style="color:var(--text)">${k.soll||0} kg</b></div>
+          <div style="color:var(--text3)">Guthaben Vorwoche: <b style="color:var(--text)">${k.guthabenVorwoche||0} kg</b></div>
+          ${k.naturalrAnspruch ? '<div style="color:var(--text3);grid-column:1/-1">Naturalr.-Anspruch: <b style="color:#ff9632">' + k.naturalrAnspruch + ' kg</b></div>' : ''}
+        </div>
+        <label class="inp-label">Klötze (Stück)</label>
+        <input id="sb-k-klotze" class="inp" type="number" step="1" min="0" inputmode="numeric" value="${k.klotze||''}" style="margin-bottom:.4rem" />
+        <label class="inp-label">Abgeholt (kg)</label>
+        <input id="sb-k-abgeholt" class="inp" type="number" step="0.1" min="0" inputmode="decimal" value="${k.abgeholt||''}" style="margin-bottom:.4rem" />
+        ${k.naturalrAnspruch ? '<label class="inp-label">Naturalrabatt abgeholt (kg)</label><input id="sb-k-natabg" class="inp" type="number" step="0.1" min="0" inputmode="decimal" value="' + (k.naturalrAbgeholt||'') + '" style="margin-bottom:.4rem" />' : '<input type="hidden" id="sb-k-natabg" value="0" />'}
+        <label class="inp-label">Chargen (kommagetrennt: z.B. 28, 32, 15)</label>
+        <input id="sb-k-chargen" class="inp" type="text" placeholder="z.B. 28, 32" value="${chargenStr}" />
+      </div>
+
+      <!-- BUTTER -->
+      <div class="section-title">🧈 Butter</div>
+      <div class="card-section" style="padding:.7rem .8rem;margin-bottom:.8rem">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:.4rem;font-size:.85rem;margin-bottom:.6rem">
+          <div style="color:var(--text3)">Verk%: <b style="color:var(--text)">${bt.verkProzent||0}%</b></div>
+          <div style="color:var(--text3)">Zum Abholen: <b style="color:var(--gold)">${bt.zumAbholen||0} kg</b></div>
+          <div style="color:var(--text3)">Soll: <b style="color:var(--text)">${bt.soll||0} kg</b></div>
+          <div style="color:var(--text3)">Guthaben Vorwoche: <b style="color:var(--text)">${bt.guthabenVorwoche||0} kg</b></div>
+          ${bt.naturalrAnspruch ? '<div style="color:var(--text3);grid-column:1/-1">Naturalr.-Anspruch: <b style="color:#ff9632">' + bt.naturalrAnspruch + ' kg</b></div>' : ''}
+        </div>
+        <label class="inp-label">Klötze / Stück</label>
+        <input id="sb-b-klotze" class="inp" type="number" step="1" min="0" inputmode="numeric" value="${bt.klotze||''}" style="margin-bottom:.4rem" />
+        <label class="inp-label">Abgeholt (kg)</label>
+        <input id="sb-b-abgeholt" class="inp" type="number" step="0.1" min="0" inputmode="decimal" value="${bt.abgeholt||''}" style="margin-bottom:.4rem" />
+        ${bt.naturalrAnspruch ? '<label class="inp-label">Naturalrabatt abgeholt (kg)</label><input id="sb-b-natabg" class="inp" type="number" step="0.1" min="0" inputmode="decimal" value="' + (bt.naturalrAbgeholt||'') + '" style="margin-bottom:.4rem" />' : '<input type="hidden" id="sb-b-natabg" value="0" />'}
+      </div>
+
+      <!-- UNTERSCHRIFT -->
+      <div class="section-title">✍ Unterschrift ${b.name}</div>
+      <div class="card-section" style="padding:.7rem .8rem;margin-bottom:.8rem">
+        <div style="background:#ffffff;border:2px dashed #d4a84b;border-radius:10px;position:relative;height:180px;touch-action:none;overflow:hidden">
+          <canvas id="sb-signatur-canvas" style="display:block;width:100%;height:100%;cursor:crosshair;touch-action:none"></canvas>
+          ${b.unterschriftPng ? '<img id="sb-signatur-existing" src="' + b.unterschriftPng + '" style="position:absolute;top:0;left:0;width:100%;height:100%;object-fit:contain;pointer-events:none;opacity:.7" />' : ''}
+        </div>
+        <div style="display:flex;gap:.4rem;margin-top:.4rem">
+          <button class="btn-secondary" style="flex:1" onclick="sennereiSignaturLoeschen()">🗑 Löschen</button>
+          <span style="flex:1;text-align:center;color:var(--text3);font-size:.75rem;align-self:center">Mit Finger unterschreiben</span>
+        </div>
+      </div>
+
+      <div class="form-actions" style="position:sticky;bottom:0;background:linear-gradient(180deg,transparent,var(--bg) 30%);padding-top:1rem">
+        <button class="btn-secondary" style="flex:1" onclick="navigate('sennerei_woche')">Abbrechen</button>
+        <button class="btn-primary" style="flex:1" onclick="sennereiSpeichereAbholung()">${isAbgeholt ? '💾 Änderung speichern' : '✓ Abholung speichern'}</button>
+      </div>
+    `;
+  };
+
+  // ══════════════════════════════════════════════════════════════════════════════
+  // TOUCH-SIGNATUR (Canvas)
+  // ══════════════════════════════════════════════════════════════════════════════
+  function _initSignatur() {
+    const canvas = document.getElementById('sb-signatur-canvas');
+    if(!canvas || canvas.dataset._init === '1') return;
+    canvas.dataset._init = '1';
+    const ctx = canvas.getContext('2d');
+    // Canvas-Auflösung an DPR anpassen
+    const rect = canvas.getBoundingClientRect();
+    const dpr = window.devicePixelRatio || 1;
+    canvas.width = rect.width * dpr;
+    canvas.height = rect.height * dpr;
+    ctx.scale(dpr, dpr);
+    ctx.lineJoin = 'round';
+    ctx.lineCap = 'round';
+    ctx.lineWidth = 2.5;
+    ctx.strokeStyle = '#0a1a04';
+    let drawing = false;
+    let lastX = 0, lastY = 0;
+
+    const getPos = (e) => {
+      const r = canvas.getBoundingClientRect();
+      const p = (e.touches && e.touches[0]) || e;
+      return { x: p.clientX - r.left, y: p.clientY - r.top };
+    };
+    const start = (e) => {
+      e.preventDefault();
+      drawing = true;
+      window._sennereiSignaturDirty = true;
+      // Existing signature image ausblenden sobald neu gezeichnet wird
+      const img = document.getElementById('sb-signatur-existing');
+      if(img) img.style.display = 'none';
+      const pos = getPos(e);
+      lastX = pos.x; lastY = pos.y;
+      ctx.beginPath();
+      ctx.moveTo(lastX, lastY);
+    };
+    const move = (e) => {
+      if(!drawing) return;
+      e.preventDefault();
+      const pos = getPos(e);
+      ctx.lineTo(pos.x, pos.y);
+      ctx.stroke();
+      lastX = pos.x; lastY = pos.y;
+    };
+    const end = (e) => {
+      e.preventDefault();
+      drawing = false;
+    };
+    canvas.addEventListener('mousedown', start);
+    canvas.addEventListener('mousemove', move);
+    canvas.addEventListener('mouseup', end);
+    canvas.addEventListener('mouseleave', end);
+    canvas.addEventListener('touchstart', start, { passive: false });
+    canvas.addEventListener('touchmove', move, { passive: false });
+    canvas.addEventListener('touchend', end, { passive: false });
+  }
+
+  window.sennereiSignaturLoeschen = function() {
+    const canvas = document.getElementById('sb-signatur-canvas');
+    if(!canvas) return;
+    const ctx = canvas.getContext('2d');
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    const img = document.getElementById('sb-signatur-existing');
+    if(img) { img.style.display = 'none'; img.remove(); }
+    window._sennereiSignaturDirty = true;
+  };
+
+  // Auto-Init des Canvas nach Render — via MutationObserver / Timer
+  setInterval(() => {
+    if(window.currentView === 'sennerei_bauer' && document.getElementById('sb-signatur-canvas')) {
+      _initSignatur();
+    }
+  }, 300);
+
+  // ══════════════════════════════════════════════════════════════════════════════
+  // SPEICHERN: Abholung + Signatur → Firebase
+  // ══════════════════════════════════════════════════════════════════════════════
+  window.sennereiSpeichereAbholung = async function() {
+    const wid = window._sennereiAktiveWoche;
+    const bid = window._sennereiAktiverBauer;
+    if(!wid || !bid) return;
+    const woche = (_wochenCache || []).find(w => w.id === wid);
+    if(!woche || !woche.bauern[bid]) { alert('Bauer nicht gefunden'); return; }
+
+    const btn = document.querySelector('button.btn-primary[onclick*="sennereiSpeichereAbholung"]');
+    if(btn) { btn.disabled = true; btn.textContent = '⏳ Speichere…'; }
+
+    try {
+      // Werte lesen
+      const parseNum = (id) => {
+        const v = document.getElementById(id)?.value;
+        const n = parseFloat(String(v||'').replace(',','.'));
+        return isNaN(n) ? 0 : n;
+      };
+      const parseInt2 = (id) => parseInt(document.getElementById(id)?.value) || 0;
+      const chargenText = document.getElementById('sb-k-chargen')?.value || '';
+      const chargen = chargenText.split(/[,;]/).map(s => s.trim()).filter(Boolean);
+
+      // Signatur als PNG (base64) — nur wenn was gezeichnet wurde
+      let signaturPng = woche.bauern[bid].unterschriftPng || null;
+      const canvas = document.getElementById('sb-signatur-canvas');
+      if(canvas && window._sennereiSignaturDirty) {
+        // Prüfen ob Canvas komplett leer ist (nichts gezeichnet)
+        const ctx = canvas.getContext('2d');
+        const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        let hasContent = false;
+        for(let i = 3; i < imgData.data.length; i += 4) {
+          if(imgData.data[i] > 0) { hasContent = true; break; }
+        }
+        if(hasContent) {
+          signaturPng = canvas.toDataURL('image/png');
+        } else {
+          signaturPng = null;
+        }
+      }
+
+      if(!signaturPng) {
+        if(!confirm('Keine Unterschrift vorhanden. Trotzdem speichern?')) {
+          if(btn) { btn.disabled = false; btn.textContent = '✓ Abholung speichern'; }
+          return;
+        }
+      }
+
+      // Payload aufbauen
+      const kaeseUpdate = {
+        klotze: parseInt2('sb-k-klotze'),
+        abgeholt: parseNum('sb-k-abgeholt'),
+        naturalrAbgeholt: parseNum('sb-k-natabg'),
+        chargen: chargen
+      };
+      const butterUpdate = {
+        klotze: parseInt2('sb-b-klotze'),
+        abgeholt: parseNum('sb-b-abgeholt'),
+        naturalrAbgeholt: parseNum('sb-b-natabg')
+      };
+
+      const path = 'sennerei/wochen/' + wid + '/bauern/' + bid;
+      const uid = firebase.auth && firebase.auth().currentUser && firebase.auth().currentUser.uid;
+      const _retry = window.withAuthRetry || (async fn => await fn());
+
+      // Nur die Abholungs-Felder updaten (Anspruch etc. unverändert)
+      await _retry(() => firebase.database().ref(path + '/kaese').update(kaeseUpdate));
+      await _retry(() => firebase.database().ref(path + '/butter').update(butterUpdate));
+      await _retry(() => firebase.database().ref(path).update({
+        unterschriftPng: signaturPng,
+        abgeholtAm: Date.now(),
+        abgeholtVon: uid || null
+      }));
+
+      // Lokal auch updaten
+      Object.assign(woche.bauern[bid].kaese || {}, kaeseUpdate);
+      Object.assign(woche.bauern[bid].butter || {}, butterUpdate);
+      woche.bauern[bid].unterschriftPng = signaturPng;
+      woche.bauern[bid].abgeholtAm = Date.now();
+      woche.bauern[bid].abgeholtVon = uid;
+      window._sennereiSignaturDirty = false;
+
+      if(window.showSaveToast) window.showSaveToast('✓ Abholung für ' + woche.bauern[bid].name + ' gespeichert');
+      if(navigator.vibrate) navigator.vibrate([30,10,30]);
+      // Zurück zur Wochenliste
+      if(typeof navigate === 'function') navigate('sennerei_woche');
+    } catch(err) {
+      console.error('[Sennerei] Speichern fail:', err);
+      alert('Fehler beim Speichern:\n\n' + (err.message||err));
+      if(btn) { btn.disabled = false; btn.textContent = '✓ Abholung speichern'; }
+    }
   };
 
   // ══════════════════════════════════════════════════════════════════════════════
@@ -449,8 +751,7 @@
     if(btn) { btn.disabled = true; btn.textContent = '⏳ Speichere…'; }
     try {
       const id = await window.sennereiSpeichereWoche(parsed);
-      _wochenCache = []; // Cache leeren, wird beim nächsten Render neu geladen
-      _wochenLoading = false;
+      window.sennereiInvalidateCache();
       document.getElementById('sennerei-import-overlay')?.remove();
       window._sennereiImportPending = null;
       if(window.showSaveToast) window.showSaveToast('✓ Woche ' + parsed.wocheNr + ' gespeichert (' + parsed.bauern.length + ' Bauern)');
