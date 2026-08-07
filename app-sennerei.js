@@ -6,7 +6,7 @@
 //  Phase B (später): Abholung + Touch-Signatur + PDF-Export
 // ══════════════════════════════════════════════════════════════════════════════
 (function() {
-  const VERSION = '4.0';
+  const VERSION = '4.2';
   window.SENNEREI_VERSION = VERSION;
 
   // ── Utilities ──
@@ -98,19 +98,29 @@
 
     // 4) Für jedes Paar: Name + Werte extrahieren
     const bauern = [];
-    let prevButterY = 0;
     // Noise-Words (Header/Footer die niemals als Bauer-Name gelten dürfen)
-    const NOISE_WORDS = /^(Bauer|Produkt|Verk%|Soll|Guthaben|Vorwoche|Zum|Abholen|Klötze|Abgeholt|Naturalr\.?|Anspruch|abgeholt|Chargen|Abholung|Gesamt|Unterschrift|Neu|Max\.?|verkaufbar|Wochenabholung|Woche|Nassereinalm|Sommer|Engineering|by|LN|Machinery|Erstellt:|K:|B:|kg|\|)$/i;
+    const NOISE_WORDS = /^(Bauer|Produkt|Verk%|Soll|Guthaben|Vorwoche|Zum|Abholen|Klötze|Abgeholt|Naturalr\.?|Anspruch|abgeholt|Chargen|Abholung|Gesamt|Unterschrift|Neu|Max\.?|verkaufbar|Wochenabholung|Woche|Abholungsliste|Sennerei|Nasserein|Nassereinalm|Sommer|Engineering|by|LN|Machinery|Erstellt:?|K:|B:|kg|\|)$/i;
 
-    paare.forEach(paar => {
-      // Name-Items: x < produktX (links vom Produkt) UND y > prevButterY UND y <= paar.butter.y + 3
+    paare.forEach((paar, idx) => {
+      // ENGES Y-Fenster für Namen: max 22pt ÜBER Käse-Zeile (für 2-zeilige Namen wie "Achenrainer\nSimon")
+      // Nicht ins vorige Bauer-Fenster hineingreifen
+      const yLower = Math.max(
+        paar.kaese.y - 22,
+        idx > 0 ? paare[idx-1].butter.y + 1 : 0
+      );
+      const yUpper = paar.butter.y + 5;
+
       const nameItems = allItems.filter(item => {
         if(item.x >= produktX - 3) return false;
-        if(item.y <= prevButterY) return false;
-        if(item.y > paar.butter.y + 5) return false;
+        if(item.y < yLower) return false;
+        if(item.y > yUpper) return false;
         if(/^(Käse|Butter)$/i.test(item.str)) return false;
-        if(NOISE_WORDS.test(item.str.trim())) return false;
-        if(/^\d+([,.]\d+)?%?$/.test(item.str.trim())) return false;
+        const t = item.str.trim();
+        if(NOISE_WORDS.test(t)) return false;
+        // Reine Zahlen / Prozente / Datums-Bestandteile
+        if(/^\d+([,.]\d+)?%?$/.test(t)) return false;
+        if(/^\(?\d{2}\.\d{2}\.?\d{0,4}[\)]?$/.test(t)) return false;
+        if(/^[\(\)\-–]+$/.test(t)) return false;
         return true;
       });
       nameItems.sort((a,b) => a.y - b.y || a.x - b.x);
@@ -130,7 +140,6 @@
         kaese: extractProduktZeile(kaeseVals),
         butter: extractProduktZeile(butterVals)
       });
-      prevButterY = paar.butter.y;
     });
 
     return {
@@ -357,7 +366,7 @@
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:.4rem">
           <div>🧀 <b>Käse abgeholt:</b> ${fmt(sumKaese)} kg</div>
           <div>🧈 <b>Butter abgeholt:</b> ${fmt(sumButter)} kg</div>
-          <div style="color:var(--text3)">Klötze Käse: ${sumKaeseKlotze}</div>
+          <div style="color:var(--text3)">Laibe Käse: ${sumKaeseKlotze}</div>
           <div style="color:var(--text3)">Klötze Butter: ${sumButterKlotze}</div>
           ${sumKaeseNatur > 0 || sumButterNatur > 0 ? `
             <div style="color:#ff9632">Naturalr. Käse: ${fmt(sumKaeseNatur)} kg</div>
@@ -667,7 +676,7 @@
           <div style="color:var(--text3)">Verkauf%: <b style="color:var(--text)">${k.verkProzent||0}%</b></div>
           <div style="color:var(--text3)">Zum Abholen: <b style="color:var(--gold)">${k.zumAbholen||0} kg</b></div>
         </div>
-        <label class="inp-label">Klötze (Stück)</label>
+        <label class="inp-label">Laib (Stück)</label>
         <input id="sb-k-klotze" class="inp" type="number" step="1" min="0" inputmode="numeric" value="${d.klotze || ''}" style="margin-bottom:.5rem" />
         <label class="inp-label">Tatsächlich abgeholt (kg)</label>
         <input id="sb-k-abgeholt" class="inp" type="number" step="0.1" min="0" inputmode="decimal" value="${d.abgeholt || ''}" style="margin-bottom:.5rem" />
@@ -696,7 +705,7 @@
         </div>
         <div style="font-weight:700;color:var(--gold);margin:.7rem 0 .3rem">🧀 Käse</div>
         <div style="font-size:.9rem;padding-left:.5rem">
-          Klötze: <b>${k.klotze||0}</b><br>
+          Laib: <b>${k.klotze||0}</b><br>
           Abgeholt: <b>${k.abgeholt||0} kg</b><br>
           ${k.naturalrAbgeholt ? 'Naturalrückgabe: <b>' + k.naturalrAbgeholt + ' kg</b><br>' : ''}
           ${chargenK ? 'Chargen: ' + chargenK + '<br>' : ''}
@@ -742,7 +751,7 @@
         </div>
         <div style="font-weight:700;margin-bottom:.2rem">🧀 Käse</div>
         <div style="font-size:.9rem;padding-left:.5rem;margin-bottom:.5rem">
-          Klötze: <b>${k.klotze||0}</b> · Abgeholt: <b>${k.abgeholt||0} kg</b>${k.naturalrAbgeholt ? ' · Naturalr.: <b>' + k.naturalrAbgeholt + ' kg</b>' : ''}${k.chargen ? '<br>Chargen: ' + k.chargen : ''}
+          Laib: <b>${k.klotze||0}</b> · Abgeholt: <b>${k.abgeholt||0} kg</b>${k.naturalrAbgeholt ? ' · Naturalr.: <b>' + k.naturalrAbgeholt + ' kg</b>' : ''}${k.chargen ? '<br>Chargen: ' + k.chargen : ''}
         </div>
       </div>
       <div class="section-title">✍ Unterschrift</div>
@@ -1193,7 +1202,7 @@
       <th class="num">Soll</th>
       <th class="num">Guthaben<br>Vorwoche</th>
       <th class="num">Zum<br>Abholen</th>
-      <th class="num">Klötze</th>
+      <th class="num">Laib/<br>Klötze</th>
       <th class="num">Abgeholt</th>
       <th class="num">Naturalr.<br>Anspruch</th>
       <th class="num">Naturalr.<br>abgeholt</th>
