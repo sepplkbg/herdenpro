@@ -6,7 +6,7 @@
 //  Phase B (später): Abholung + Touch-Signatur + PDF-Export
 // ══════════════════════════════════════════════════════════════════════════════
 (function() {
-  const VERSION = '4.2';
+  const VERSION = '4.3';
   window.SENNEREI_VERSION = VERSION;
 
   // ── Utilities ──
@@ -723,14 +723,14 @@
     const existing = data.signaturPng;
     return `
       <div class="section-title">✍ Unterschrift ${b.name}</div>
-      <div class="card-section" style="padding:.7rem .8rem;margin-bottom:.8rem">
-        <div style="background:#ffffff;border:2px dashed #d4a84b;border-radius:10px;position:relative;height:220px;touch-action:none;overflow:hidden">
+      <div class="card-section" style="padding:.5rem;margin-bottom:.8rem">
+        <div style="background:#ffffff;border:2px dashed #d4a84b;border-radius:10px;position:relative;height:min(60vh,500px);touch-action:none;overflow:hidden">
           <canvas id="sb-signatur-canvas" style="display:block;width:100%;height:100%;cursor:crosshair;touch-action:none"></canvas>
-          ${existing ? '<img id="sb-signatur-existing" src="' + existing + '" style="position:absolute;top:0;left:0;width:100%;height:100%;object-fit:contain;pointer-events:none;opacity:.7" />' : ''}
+          ${existing ? '<img id="sb-signatur-existing" src="' + existing + '" style="position:absolute;top:0;left:0;width:100%;height:100%;object-fit:contain;pointer-events:none;opacity:.6" />' : ''}
         </div>
-        <div style="display:flex;gap:.4rem;margin-top:.4rem">
-          <button class="btn-secondary" style="flex:1" onclick="sennereiSignaturLoeschen()">🗑 Löschen</button>
-          <span style="flex:2;text-align:center;color:var(--text3);font-size:.75rem;align-self:center">Mit Finger unterschreiben</span>
+        <div style="display:flex;gap:.4rem;margin-top:.5rem">
+          <button class="btn-secondary" style="flex:1;padding:.6rem" onclick="sennereiSignaturLoeschen()">🗑 Löschen</button>
+          <span style="flex:2;text-align:center;color:var(--text3);font-size:.8rem;align-self:center">Mit Finger unterschreiben</span>
         </div>
       </div>
     `;
