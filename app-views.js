@@ -1718,11 +1718,39 @@ window.filterZaehlung=function(q){
 };
 
 function renderBehandlung() {
-  const aktive=Object.entries(behandlungen).filter(([,b])=>b.aktiv).sort((a,b)=>b[1].datum-a[1].datum);
-  const archiv=Object.entries(behandlungen).filter(([,b])=>!b.aktiv).sort((a,b)=>b[1].datum-a[1].datum).slice(0,30);
+  // Alle unterschiedlichen Medikamente sammeln (case-insensitive)
+  const medMap = {};
+  Object.values(behandlungen).forEach(b => {
+    const m = String(b.medikament || '').trim();
+    if(m) {
+      const key = m.toLowerCase();
+      if(!medMap[key]) medMap[key] = { name: m, count: 0 };
+      medMap[key].count++;
+    }
+  });
+  const medListe = Object.values(medMap).sort((a,b) => b.count - a.count);
+  const aktivMed = window._behMedFilter || '';
+
+  // Filter anwenden
+  const filterMed = (b) => !aktivMed || String(b.medikament || '').toLowerCase() === aktivMed.toLowerCase();
+  const aktive=Object.entries(behandlungen).filter(([,b])=>b.aktiv && filterMed(b)).sort((a,b)=>b[1].datum-a[1].datum);
+  const archiv=Object.entries(behandlungen).filter(([,b])=>!b.aktiv && filterMed(b)).sort((a,b)=>b[1].datum-a[1].datum).slice(0,30);
+
   return `
     <div class="page-header"><h2>⚕ Behandlungen</h2><button class="btn-primary" onclick="showBehandlungForm(null)">+ Neu</button></div>
-    
+
+    <!-- Medikament-Filter Dropdown -->
+    ${medListe.length ? `
+    <div style="display:flex;gap:.4rem;align-items:center;margin-bottom:.6rem;flex-wrap:wrap">
+      <span style="font-size:.75rem;color:var(--text3)">💊 Medikament:</span>
+      <select class="inp" style="flex:1;min-width:180px;max-width:320px;padding:.3rem .5rem;font-size:.85rem" onchange="window._behMedFilter=this.value;render()">
+        <option value="">Alle (${Object.keys(behandlungen).length})</option>
+        ${medListe.map(m => `<option value="${m.name.replace(/"/g,'&quot;')}" ${aktivMed.toLowerCase()===m.name.toLowerCase()?'selected':''}>${m.name} (${m.count})</option>`).join('')}
+      </select>
+      ${aktivMed ? '<button class="btn-xs" onclick="window._behMedFilter=&quot;&quot;;render()">✕ Filter aus</button>' : ''}
+    </div>
+    ` : ''}
+
     <!-- Filter Tabs -->
     <div style="display:flex;gap:.4rem;margin-bottom:.8rem">
       <button class="filter-chip active" id="beh-filter-alle" onclick="filterBehandlung('alle',this)">Alle (${aktive.length+archiv.length})</button>
@@ -2430,7 +2458,29 @@ window.kp_onDrop = function(ev, toIdx) {
   }
 };
 window.deleteBehandlung=async id=>{if(confirm('Löschen?'))await remove(ref(db,'behandlungen/'+id));};
-window.wartezeitAbschliessen=async id=>{await update(ref(db,'behandlungen/'+id),{warteAbgeschlossen:true,aktiv:false});};
+window.wartezeitAbschliessen=async function(id){
+  try {
+    const _retry = window.withAuthRetry || (async fn => await fn());
+    await _retry(() => update(ref(db,'behandlungen/'+id),{warteAbgeschlossen:true,aktiv:false,updatedAt:Date.now()}));
+    // Lokal sofort updaten damit UI sofort refresht (nicht auf Firebase-Listener warten)
+    try {
+      if(window.behandlungen?.[id]) {
+        window.behandlungen[id].warteAbgeschlossen = true;
+        window.behandlungen[id].aktiv = false;
+        window.behandlungen[id].updatedAt = Date.now();
+      }
+      if(typeof behandlungen !== 'undefined' && behandlungen[id]) {
+        behandlungen[id].warteAbgeschlossen = true;
+        behandlungen[id].aktiv = false;
+      }
+    } catch(x) {}
+    window.showSaveToast && showSaveToast('✓ Wartezeit abgeschlossen');
+    setTimeout(() => { try { if(typeof render === 'function') render(); } catch(e){} }, 50);
+  } catch(err) {
+    console.error('[wartezeitAbschliessen] FEHLER:', err);
+    alert('Fehler beim Abschließen: ' + (err.message || err));
+  }
+};
 window.showBesamungForm=function(kuhId, editBsId, editData){
   // editBsId=true means "2. Versuch" (new entry, same cow, keep techniker)
   const zweitversuch = editBsId === true;
