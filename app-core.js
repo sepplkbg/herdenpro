@@ -260,6 +260,70 @@ window._hpSaveCache = _hpSaveCache;
 window._hpLoadCache = _hpLoadCache;
 
 // ══════════════════════════════════════════════════════════════════════════════
+//  CARRY-FORWARD GESAMTMILCH-BERECHNUNG
+// ══════════════════════════════════════════════════════════════════════════════
+// Berechnet die Gesamtmilch mit Carry-Forward-Logik:
+//   Jeder gemessene Morgens/Abends-Wert wird bis zum nächsten neuen Messwert
+//   dieser Kuh weiterverwendet. Ergibt realistische Saison-Gesamtmenge auch
+//   wenn nicht jeden Tag gemessen wird.
+// kueheIdsFilter: null/undefined = alle Kühe, sonst Set/Array von IDs
+// Returns: { gesamt, morgen, abend, tage } — jeweils gerundete Zahlen
+window.computeCarryForwardGesamt = function(kueheIdsFilter) {
+  const _mW = window.milchWert || function(v){ return typeof v === 'number' ? v : (v && v.wert != null ? parseFloat(v.wert) || 0 : parseFloat(v) || 0); };
+  const kuehe = window.kuehe || {};
+  const ids = kueheIdsFilter
+    ? (kueheIdsFilter instanceof Set ? [...kueheIdsFilter] : [...kueheIdsFilter])
+    : Object.keys(kuehe);
+  const eintraege = Object.values(window.milchEintraege || {})
+    .filter(e => e && e.datum && e.prokuh);
+  if(!ids.length || !eintraege.length) return { gesamt: 0, morgen: 0, abend: 0, tage: 0 };
+
+  const heute = new Date(); heute.setHours(23,59,59,999);
+  const heuteTs = heute.getTime();
+  let sumMorgen = 0, sumAbend = 0, tageMitDaten = 0;
+  const tageSet = new Set();
+
+  ids.forEach(kid => {
+    // Alle Messwerte dieser Kuh sammeln, nach Zeit trennen + sortieren
+    const morgens = [], abends = [];
+    eintraege.forEach(e => {
+      const val = _mW(e.prokuh[kid]);
+      if(val <= 0) return;
+      if((e.zeit || 'morgen') === 'abend') abends.push({ ts: e.datum, wert: val });
+      else morgens.push({ ts: e.datum, wert: val });
+    });
+    if(morgens.length === 0 && abends.length === 0) return;
+    morgens.sort((a,b) => a.ts - b.ts);
+    abends.sort((a,b) => a.ts - b.ts);
+
+    // First-Ts = erste Messung dieser Kuh (nicht früher rechnen)
+    const firstKuhTs = Math.min(
+      morgens.length ? morgens[0].ts : Infinity,
+      abends.length ? abends[0].ts : Infinity
+    );
+    const iter = new Date(firstKuhTs); iter.setHours(0,0,0,0);
+    let mIdx = 0, aIdx = 0;
+    let lastM = 0, lastA = 0;
+    while(iter.getTime() <= heuteTs) {
+      const dayEnd = new Date(iter); dayEnd.setHours(23,59,59,999);
+      const dayTs = dayEnd.getTime();
+      while(mIdx < morgens.length && morgens[mIdx].ts <= dayTs) { lastM = morgens[mIdx].wert; mIdx++; }
+      while(aIdx < abends.length && abends[aIdx].ts <= dayTs) { lastA = abends[aIdx].wert; aIdx++; }
+      if(lastM > 0) { sumMorgen += lastM; tageSet.add(iter.toISOString().slice(0,10) + '_m'); }
+      if(lastA > 0) { sumAbend += lastA; tageSet.add(iter.toISOString().slice(0,10) + '_a'); }
+      iter.setDate(iter.getDate() + 1);
+    }
+  });
+
+  return {
+    gesamt: Math.round(sumMorgen + sumAbend),
+    morgen: Math.round(sumMorgen),
+    abend: Math.round(sumAbend),
+    tage: tageSet.size
+  };
+};
+
+// ══════════════════════════════════════════════════════════════════════════════
 //  REALISTISCHE MILCH-PROGNOSE (Laktationskurve-basiert)
 // ══════════════════════════════════════════════════════════════════════════════
 // Reine lineare Regression ist bei fallenden Kurven katastrophal (führt zu 0L).
