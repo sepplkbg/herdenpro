@@ -7861,6 +7861,53 @@ function renderBauerDetail() {
   });
   bauerMilchGesamt = Math.round(bauerMilchGesamt);
 
+  // ═══════════════════════════════════════════════════════════════════════
+  // TAGESMILCH-VERLAUF pro Tag: für alle Kühe des Bauern gepaart Abend + nächster Morgen
+  // ═══════════════════════════════════════════════════════════════════════
+  const morgensProTag = {}, abendsProTag = {};
+  Object.values(milchEintraege||{}).forEach(e => {
+    if(!e || !e.prokuh || !e.datum) return;
+    let summe = 0;
+    kueheIds.forEach(kid => { if(e.prokuh[kid] != null) summe += _mW(e.prokuh[kid]); });
+    if(summe <= 0) return;
+    const iso = new Date(e.datum).toISOString().slice(0,10);
+    if((e.zeit || 'morgen') === 'abend') abendsProTag[iso] = (abendsProTag[iso] || 0) + summe;
+    else morgensProTag[iso] = (morgensProTag[iso] || 0) + summe;
+  });
+  // Paare: für jeden Abendtag den zeitlich NÄCHSTEN Morgentag (max 5 Tage Diff)
+  const abendTage = Object.keys(abendsProTag).sort();
+  const morgenTage = Object.keys(morgensProTag).sort();
+  const usedMorgen = new Set();
+  const tagesmilchPaare = [];  // {abendTag, morgenTag, gesamt, ts}
+  abendTage.forEach(aT => {
+    let bestM = null, bestDist = Infinity;
+    const aTs = new Date(aT + 'T18:00').getTime();
+    morgenTage.forEach(mT => {
+      if(usedMorgen.has(mT)) return;
+      const mTs = new Date(mT + 'T06:00').getTime();
+      const diff = Math.abs(mTs - aTs);
+      if(diff < bestDist) { bestDist = diff; bestM = mT; }
+    });
+    if(bestM && bestDist < 5 * 86400000) {
+      usedMorgen.add(bestM);
+      tagesmilchPaare.push({
+        abendTag: aT,
+        morgenTag: bestM,
+        gesamt: Math.round((abendsProTag[aT] + morgensProTag[bestM]) * 10) / 10,
+        ts: Math.max(new Date(aT + 'T18:00').getTime(), new Date(bestM + 'T06:00').getTime())
+      });
+    }
+  });
+  tagesmilchPaare.sort((a,b) => a.ts - b.ts);
+  const tagesmilchGesamt = Math.round(tagesmilchPaare.reduce((s,p) => s + p.gesamt, 0));
+  const tagesmilchAvg = tagesmilchPaare.length ? Math.round(tagesmilchGesamt / tagesmilchPaare.length) : 0;
+  const chartJsonBd = JSON.stringify(tagesmilchPaare.map(p => ({
+    d: new Date(p.abendTag + 'T18:00').getTime(),
+    l: p.gesamt,
+    mo: p.morgenTag,
+    ab: p.abendTag
+  })));
+
   const heute = Date.now();
 
   return `
@@ -7891,6 +7938,80 @@ function renderBauerDetail() {
       <div class="stat-card ${aktivBehandlungen?'stat-warn':''}"><div class="stat-icon">⚕</div><div class="stat-num">${alleBList.length}</div><div class="stat-label">Behandlung${aktivBehandlungen?' <span style="color:var(--red);font-weight:700">·'+aktivBehandlungen+' aktiv</span>':''}</div></div>
       <div class="stat-card"><div class="stat-icon">🐮</div><div class="stat-num">${bsListe.length}</div><div class="stat-label">Trächtig</div></div>
     </div>
+
+    <!-- TAGESMILCH-VERLAUF (Bauer-Ebene, gepaart Abend + nächst folgender Morgen) -->
+    ${tagesmilchPaare.length >= 1 ? `
+    <div class="section-title">🥛 Tagesmilch-Verlauf (Saison)</div>
+    <div style="background:var(--bg3);border:1px solid rgba(212,168,75,.3);border-radius:14px;padding:.7rem .8rem .5rem;margin-bottom:.8rem">
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:.4rem;margin-bottom:.6rem">
+        <div style="text-align:center;padding:.3rem;background:var(--bg2);border-radius:8px">
+          <div style="font-size:1.1rem;font-weight:800;color:var(--gold)">${tagesmilchGesamt}L</div>
+          <div style="font-size:.6rem;color:var(--text3)">Gesamt Saison</div>
+        </div>
+        <div style="text-align:center;padding:.3rem;background:var(--bg2);border-radius:8px">
+          <div style="font-size:1.1rem;font-weight:800;color:var(--gold)">${tagesmilchAvg}L</div>
+          <div style="font-size:.6rem;color:var(--text3)">Ø / Tag</div>
+        </div>
+        <div style="text-align:center;padding:.3rem;background:var(--bg2);border-radius:8px">
+          <div style="font-size:1.1rem;font-weight:800;color:var(--gold)">${tagesmilchPaare.length}</div>
+          <div style="font-size:.6rem;color:var(--text3)">Melktage</div>
+        </div>
+      </div>
+      ${tagesmilchPaare.length >= 2 ? `
+      <canvas id="bd-tagesmilch-canvas" height="120" style="width:100%;display:block;border-radius:6px"></canvas>
+      <div style="display:flex;justify-content:space-between;font-size:.6rem;color:var(--text3);margin-top:.3rem;padding:0 2px">
+        <span>${new Date(tagesmilchPaare[0].abendTag+'T12:00').toLocaleDateString('de-AT',{day:'numeric',month:'short'})}</span>
+        <span style="color:var(--gold)">letzte: ${tagesmilchPaare[tagesmilchPaare.length-1].gesamt}L</span>
+        <span>${new Date(tagesmilchPaare[tagesmilchPaare.length-1].abendTag+'T12:00').toLocaleDateString('de-AT',{day:'numeric',month:'short'})}</span>
+      </div>
+      <script>
+        (function(){
+          try {
+            var data = ${chartJsonBd};
+            var cv = document.getElementById('bd-tagesmilch-canvas');
+            if(!cv || !data.length) return;
+            var w = cv.offsetWidth || 400, h = 120;
+            var dpr = window.devicePixelRatio || 1;
+            cv.width = w*dpr; cv.height = h*dpr;
+            var ctx = cv.getContext('2d'); ctx.scale(dpr,dpr);
+            var pad = {t:6,r:6,b:6,l:32};
+            var gw = w - pad.l - pad.r, gh = h - pad.t - pad.b;
+            var maxV = Math.max.apply(null, data.map(function(d){return d.l;}));
+            var minV = 0; var range = maxV - minV || 1;
+            // Gitter
+            [0.33, 0.66, 1].forEach(function(f){
+              var y = pad.t + gh*(1-f);
+              ctx.strokeStyle = 'rgba(255,255,255,.05)'; ctx.lineWidth = 1;
+              ctx.beginPath(); ctx.moveTo(pad.l, y); ctx.lineTo(pad.l+gw, y); ctx.stroke();
+              ctx.fillStyle = 'var(--text3)';
+              ctx.font = '9px sans-serif';
+              ctx.fillStyle = '#8a8a70';
+              ctx.fillText(Math.round(maxV*f) + 'L', 2, y+3);
+            });
+            // Linie
+            ctx.strokeStyle = '#d4a84b'; ctx.lineWidth = 2;
+            ctx.beginPath();
+            data.forEach(function(d,i){
+              var x = pad.l + i*(gw/(data.length-1||1));
+              var y = pad.t + gh - ((d.l-minV)/range)*gh;
+              if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+            });
+            ctx.stroke();
+            // Punkte
+            ctx.fillStyle = '#d4a84b';
+            data.forEach(function(d,i){
+              var x = pad.l + i*(gw/(data.length-1||1));
+              var y = pad.t + gh - ((d.l-minV)/range)*gh;
+              ctx.beginPath(); ctx.arc(x, y, 2.5, 0, Math.PI*2); ctx.fill();
+            });
+          } catch(e){ console.warn('bd-chart:', e); }
+        })();
+      </script>
+      ` : '<div style="text-align:center;color:var(--text3);font-size:.75rem;padding:.4rem">Mindestens 2 Melktage-Paare nötig für Chart.</div>'}
+    </div>` : `
+    <div class="card-section" style="padding:.6rem;margin-bottom:.8rem;color:var(--text3);font-size:.85rem;text-align:center">
+      🥛 Noch keine Tagesmilch-Paare (Abend + folgender Morgen) für diesen Bauer erfasst
+    </div>`}
 
     <!-- Kühe mit Detail-Infos -->
     <div class="section-title">Kühe (${kueheList.length})</div>
