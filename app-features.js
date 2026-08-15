@@ -5511,14 +5511,14 @@ window.saveAbtrieb=async function(){
   Object.keys(kuehe).filter(id=>kuehe[id].almStatus==='oben').forEach(id=>{u[`kuehe/${id}/almStatus`]='unten';});
   if(Object.keys(u).length)await update(ref(db),u);
   const aktJahr=saisonInfo?.jahr||new Date().getFullYear();
-  const milchGesamt=Object.values(milchEintraege).reduce((s,m)=>s+(m.gesamt||0),0);
+  // Carry-Forward für Gesamt (analog Blatt Milch)
+  const _cfAT = typeof window.computeCarryForwardGesamt === 'function' ? window.computeCarryForwardGesamt() : {gesamt:0, tage:0};
+  const milchGesamt = _cfAT.gesamt;
   const alpungTage=saisonInfo?.auftriebDatum?Math.floor((abtriebtTs-saisonInfo.auftriebDatum)/86400000)+1:0;
-  const tagesMilch={};
-  Object.values(milchEintraege).forEach(m=>{const tag=m.datum?new Date(m.datum).toISOString().slice(0,10):null;if(tag)tagesMilch[tag]=(tagesMilch[tag]||0)+(m.gesamt||0);});
-  const tagWerte=Object.values(tagesMilch);
+  const schnittMilch = _cfAT.tage > 0 ? Math.round(milchGesamt / _cfAT.tage * 2) : 0;
   await set(ref(db,'saisonArchiv/'+aktJahr),{
-    jahr:aktJahr,milchGesamt:Math.round(milchGesamt),
-    schnittMilch:tagWerte.length?Math.round(milchGesamt/tagWerte.length):0,
+    jahr:aktJahr,milchGesamt:milchGesamt,
+    schnittMilch:schnittMilch,
     alpungTage,kueheAnzahl:Object.keys(kuehe).length,
     behandlungenAnzahl:Object.keys(behandlungen).length,
     besamungenAnzahl:Object.keys(besamungen).length,

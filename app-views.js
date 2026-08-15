@@ -3713,12 +3713,17 @@ function renderStatistik() {
     });
   });
   
-  // Milchstatistik
+  // Milchstatistik — GESAMT/MORGENS/ABENDS via Carry-Forward (analog Blatt Milch)
   const milchListe = Object.values(milchEintraege).sort((a,b)=>a.datum-b.datum);
-  const milchGesamt = milchListe.reduce((s,m)=>s+(m.gesamt||0),0);
-  const milchMorgen = milchListe.filter(m=>m.zeit==='morgen').reduce((s,m)=>s+(m.gesamt||0),0);
-  const milchAbend = milchListe.filter(m=>m.zeit==='abend').reduce((s,m)=>s+(m.gesamt||0),0);
+  const cf = typeof window.computeCarryForwardGesamt === 'function' ? window.computeCarryForwardGesamt() : {gesamt:0,morgen:0,abend:0};
+  const milchGesamt = cf.gesamt;
+  const milchMorgen = cf.morgen;
+  const milchAbend = cf.abend;
   const milchMolkerei = milchListe.filter(m=>m.molkerei).reduce((s,m)=>s+(m.gesamt||0),0);
+  // Morgens/Abends-Prozent
+  const gesamtForPct = milchMorgen + milchAbend;
+  const pctMorgen = gesamtForPct > 0 ? Math.round(milchMorgen / gesamtForPct * 100) : 0;
+  const pctAbend = gesamtForPct > 0 ? 100 - pctMorgen : 0;
   
   const maxTage = Math.max(...Object.values(proWeide).map(w=>w.tage), 1);
 
@@ -3778,12 +3783,12 @@ function renderStatistik() {
     </div>
 
     ${aktivTab === 'milch' ? `
-    <div class="section-title">Milch Saison</div>
+    <div class="section-title">Milch Saison <span style="font-size:.65rem;color:var(--text3);font-weight:400">· Carry-Forward</span></div>
     <div class="stats-grid" style="grid-template-columns:1fr 1fr">
       <div class="stat-card"><div class="stat-icon">🥛</div><div class="stat-num"><span class="stat-count-up" data-target="${Math.round(milchGesamt)}">0</span>L</div><div class="stat-label">Gesamt</div></div>
       <div class="stat-card"><div class="stat-icon">🏭</div><div class="stat-num">${Math.round(milchMolkerei)}L</div><div class="stat-label">an Molkerei</div></div>
-      <div class="stat-card"><div class="stat-icon">🌅</div><div class="stat-num">${Math.round(milchMorgen)}L</div><div class="stat-label">Morgens</div></div>
-      <div class="stat-card"><div class="stat-icon">🌇</div><div class="stat-num">${Math.round(milchAbend)}L</div><div class="stat-label">Abends</div></div>
+      <div class="stat-card"><div class="stat-icon">🌅</div><div class="stat-num">${Math.round(milchMorgen)}L</div><div class="stat-label">Morgens · <span style="color:var(--gold)">${pctMorgen}%</span></div></div>
+      <div class="stat-card"><div class="stat-icon">🌇</div><div class="stat-num">${Math.round(milchAbend)}L</div><div class="stat-label">Abends · <span style="color:var(--gold)">${pctAbend}%</span></div></div>
     </div>
 
     ${kurvenDaten.length >= 2 ? `
@@ -6412,16 +6417,18 @@ function renderSaisonvergleich() {
   const aktJahr = saisonInfo?.jahr || new Date().getFullYear();
   const aktTab = window._svTab || 'uebersicht';
 
-  // ── Aktuelle Saison berechnen ──
+  // ── Aktuelle Saison berechnen (Carry-Forward für Gesamt) ──
   const milchListe = Object.values(milchEintraege);
-  const milchGesamt = milchListe.reduce((s,m)=>s+(m.gesamt||0),0);
+  const _saisonCf = typeof window.computeCarryForwardGesamt === 'function' ? window.computeCarryForwardGesamt() : {gesamt:0, tage:0};
+  const milchGesamt = _saisonCf.gesamt;
   const kuhListe = Object.values(kuehe);
   const alpungTage = saisonInfo?.auftriebDatum
     ? Math.floor((heute - saisonInfo.auftriebDatum)/86400000)+1 : 0;
+  // Ø-Berechnung: Gesamt / gerechnete Tage (Carry-Forward-Basis)
+  const schnittMilch = _saisonCf.tage > 0 ? Math.round(milchGesamt / _saisonCf.tage * 2) : 0; // *2 weil tage morgens+abends getrennt zählt
   const tagesMilch = {};
   milchListe.forEach(m=>{const t=m.datum?new Date(m.datum).toISOString().slice(0,10):null;if(t)tagesMilch[t]=(tagesMilch[t]||0)+(m.gesamt||0);});
   const tagWerte = Object.values(tagesMilch);
-  const schnittMilch = tagWerte.length ? Math.round(milchGesamt/tagWerte.length) : 0;
   const bsGesamt = Object.values(besamungen).length;
   const bsErfolg = Object.values(besamungen).filter(b=>b.status==='tragend').length;
   const bsRate = bsGesamt ? Math.round(bsErfolg/bsGesamt*100) : 0;
@@ -6640,15 +6647,11 @@ window.saisonArchivieren = function() {
 window.saveSaisonArchiv = async function() {
   const heute = Date.now();
   const aktJahr = saisonInfo?.jahr || new Date().getFullYear();
-  const milchGesamt = Object.values(milchEintraege).reduce((s,m)=>s+(m.gesamt||0),0);
+  // Carry-Forward für Gesamt (analog Blatt Milch)
+  const _cfSA = typeof window.computeCarryForwardGesamt === 'function' ? window.computeCarryForwardGesamt() : {gesamt:0, tage:0};
+  const milchGesamt = _cfSA.gesamt;
   const alpungTage = saisonInfo?.auftriebDatum ? Math.floor((heute - saisonInfo.auftriebDatum) / 86400000)+1 : 0;
-  const tagesMilch = {};
-  Object.values(milchEintraege).forEach(m => {
-    const tag = m.datum ? new Date(m.datum).toISOString().slice(0,10) : null;
-    if(tag) tagesMilch[tag] = (tagesMilch[tag]||0) + (m.gesamt||0);
-  });
-  const tagWerte = Object.values(tagesMilch);
-  const schnittMilch = tagWerte.length ? Math.round(milchGesamt/tagWerte.length) : 0;
+  const schnittMilch = _cfSA.tage > 0 ? Math.round(milchGesamt / _cfSA.tage * 2) : 0;
   const bsGesamt = Object.values(besamungen).length;
   const bsErfolg = Object.values(besamungen).filter(b=>b.status==='tragend').length;
   const weideNutzung = {};
@@ -7852,14 +7855,10 @@ function renderBauerDetail() {
   const bsListe = Object.entries(besamungen).filter(([,bs])=>kueheIds.has(bs.kuhId)&&bs.status==='tragend');
   const aktivBehandlungen = alleBList.filter(([,beh])=>beh.aktiv).length;
 
-  // Milch-Summe für diesen Bauern über die Saison (aus prokuh, nur Werte für seine Kühe)
+  // Milch-Summe für diesen Bauern via Carry-Forward (analog Blatt Milch)
   const _mW = window.milchWert || function(v){ return typeof v === 'number' ? v : (v && v.wert != null ? parseFloat(v.wert) || 0 : parseFloat(v) || 0); };
-  let bauerMilchGesamt = 0;
-  Object.values(milchEintraege||{}).forEach(e=>{
-    if(!e || !e.prokuh) return;
-    kueheIds.forEach(kid => { if(e.prokuh[kid]!=null) bauerMilchGesamt += _mW(e.prokuh[kid]); });
-  });
-  bauerMilchGesamt = Math.round(bauerMilchGesamt);
+  const bauerCf = typeof window.computeCarryForwardGesamt === 'function' ? window.computeCarryForwardGesamt(kueheIds) : {gesamt:0};
+  const bauerMilchGesamt = bauerCf.gesamt;
 
   // ═══════════════════════════════════════════════════════════════════════
   // TAGESMILCH-VERLAUF pro Tag: für alle Kühe des Bauern gepaart Abend + nächster Morgen
@@ -7958,56 +7957,35 @@ function renderBauerDetail() {
         </div>
       </div>
       ${tagesmilchPaare.length >= 2 ? `
-      <canvas id="bd-tagesmilch-canvas" height="120" style="width:100%;display:block;border-radius:6px"></canvas>
+      <canvas id="bd-tagesmilch-canvas" height="120" style="width:100%;display:block;border-radius:6px" data-chartjson='${chartJsonBd.replace(/'/g,'&apos;')}'></canvas>
       <div style="display:flex;justify-content:space-between;font-size:.6rem;color:var(--text3);margin-top:.3rem;padding:0 2px">
         <span>${new Date(tagesmilchPaare[0].abendTag+'T12:00').toLocaleDateString('de-AT',{day:'numeric',month:'short'})}</span>
         <span style="color:var(--gold)">letzte: ${tagesmilchPaare[tagesmilchPaare.length-1].gesamt}L</span>
         <span>${new Date(tagesmilchPaare[tagesmilchPaare.length-1].abendTag+'T12:00').toLocaleDateString('de-AT',{day:'numeric',month:'short'})}</span>
       </div>
-      <script>
-        (function(){
-          try {
-            var data = ${chartJsonBd};
-            var cv = document.getElementById('bd-tagesmilch-canvas');
-            if(!cv || !data.length) return;
-            var w = cv.offsetWidth || 400, h = 120;
-            var dpr = window.devicePixelRatio || 1;
-            cv.width = w*dpr; cv.height = h*dpr;
-            var ctx = cv.getContext('2d'); ctx.scale(dpr,dpr);
-            var pad = {t:6,r:6,b:6,l:32};
-            var gw = w - pad.l - pad.r, gh = h - pad.t - pad.b;
-            var maxV = Math.max.apply(null, data.map(function(d){return d.l;}));
-            var minV = 0; var range = maxV - minV || 1;
-            // Gitter
-            [0.33, 0.66, 1].forEach(function(f){
-              var y = pad.t + gh*(1-f);
-              ctx.strokeStyle = 'rgba(255,255,255,.05)'; ctx.lineWidth = 1;
-              ctx.beginPath(); ctx.moveTo(pad.l, y); ctx.lineTo(pad.l+gw, y); ctx.stroke();
-              ctx.fillStyle = 'var(--text3)';
-              ctx.font = '9px sans-serif';
-              ctx.fillStyle = '#8a8a70';
-              ctx.fillText(Math.round(maxV*f) + 'L', 2, y+3);
-            });
-            // Linie
-            ctx.strokeStyle = '#d4a84b'; ctx.lineWidth = 2;
-            ctx.beginPath();
-            data.forEach(function(d,i){
-              var x = pad.l + i*(gw/(data.length-1||1));
-              var y = pad.t + gh - ((d.l-minV)/range)*gh;
-              if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
-            });
-            ctx.stroke();
-            // Punkte
-            ctx.fillStyle = '#d4a84b';
-            data.forEach(function(d,i){
-              var x = pad.l + i*(gw/(data.length-1||1));
-              var y = pad.t + gh - ((d.l-minV)/range)*gh;
-              ctx.beginPath(); ctx.arc(x, y, 2.5, 0, Math.PI*2); ctx.fill();
-            });
-          } catch(e){ console.warn('bd-chart:', e); }
-        })();
-      </script>
       ` : '<div style="text-align:center;color:var(--text3);font-size:.75rem;padding:.4rem">Mindestens 2 Melktage-Paare nötig für Chart.</div>'}
+    </div>
+
+    <!-- Liste ALLER Tagesmilch-Einträge (neueste zuerst) -->
+    <div class="section-title" style="display:flex;justify-content:space-between;align-items:center">
+      <span>Tagesmilch-Liste (${tagesmilchPaare.length})</span>
+      <span style="font-size:.65rem;color:var(--text3);font-weight:400">Ab. + folg. Mo.</span>
+    </div>
+    <div class="card-section" style="padding:.3rem;margin-bottom:.8rem;max-height:400px;overflow-y:auto">
+      ${[...tagesmilchPaare].reverse().map(p => {
+        const abendStr = new Date(p.abendTag + 'T12:00').toLocaleDateString('de-AT',{day:'2-digit',month:'2-digit'});
+        const morgenStr = new Date(p.morgenTag + 'T12:00').toLocaleDateString('de-AT',{day:'2-digit',month:'2-digit'});
+        const abL = Math.round((abendsProTag[p.abendTag]||0)*10)/10;
+        const moL = Math.round((morgensProTag[p.morgenTag]||0)*10)/10;
+        const sameDay = p.abendTag === p.morgenTag;
+        return `<div style="display:flex;justify-content:space-between;align-items:center;padding:.4rem .5rem;border-bottom:1px solid var(--border);font-size:.85rem">
+          <div>
+            <div style="color:var(--text)">${abendStr}${sameDay?'':' → '+morgenStr}</div>
+            <div style="font-size:.7rem;color:var(--text3);margin-top:.1rem">🌇 ${abL}L + 🌅 ${moL}L</div>
+          </div>
+          <div style="font-weight:800;color:var(--gold);font-size:1rem">${p.gesamt}L</div>
+        </div>`;
+      }).join('')}
     </div>` : `
     <div class="card-section" style="padding:.6rem;margin-bottom:.8rem;color:var(--text3);font-size:.85rem;text-align:center">
       🥛 Noch keine Tagesmilch-Paare (Abend + folgender Morgen) für diesen Bauer erfasst
@@ -8175,6 +8153,68 @@ function renderBauerDetail() {
     </div>
   `;
 }
+
+// ── Bauer-Detail Tagesmilch-Chart zeichnen ──
+window._bdDrawTagesmilchChart = function() {
+  const cv = document.getElementById('bd-tagesmilch-canvas');
+  if(!cv || cv.dataset._drawn === '1') return;
+  const raw = cv.getAttribute('data-chartjson') || '';
+  if(!raw) return;
+  let data;
+  try { data = JSON.parse(raw.replace(/&apos;/g, "'")); } catch(e) { return; }
+  if(!data.length) return;
+  cv.dataset._drawn = '1';
+  const w = cv.offsetWidth || 400, h = 120;
+  const dpr = window.devicePixelRatio || 1;
+  cv.width = w * dpr; cv.height = h * dpr;
+  const ctx = cv.getContext('2d'); ctx.scale(dpr, dpr);
+  const pad = {t:6, r:6, b:6, l:36};
+  const gw = w - pad.l - pad.r, gh = h - pad.t - pad.b;
+  const maxV = Math.max.apply(null, data.map(d => d.l));
+  const minV = 0; const range = maxV - minV || 1;
+  // Gitter + Y-Labels
+  [0.33, 0.66, 1].forEach(f => {
+    const y = pad.t + gh * (1 - f);
+    ctx.strokeStyle = 'rgba(255,255,255,.06)'; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(pad.l, y); ctx.lineTo(pad.l + gw, y); ctx.stroke();
+    ctx.fillStyle = '#8a8a70'; ctx.font = '9px sans-serif';
+    ctx.fillText(Math.round(maxV * f) + 'L', 2, y + 3);
+  });
+  // Area
+  ctx.fillStyle = 'rgba(212,168,75,.15)';
+  ctx.beginPath();
+  ctx.moveTo(pad.l, pad.t + gh);
+  data.forEach((d, i) => {
+    const x = pad.l + i * (gw / Math.max(1, data.length - 1));
+    const y = pad.t + gh - ((d.l - minV) / range) * gh;
+    ctx.lineTo(x, y);
+  });
+  ctx.lineTo(pad.l + gw, pad.t + gh);
+  ctx.closePath();
+  ctx.fill();
+  // Linie
+  ctx.strokeStyle = '#d4a84b'; ctx.lineWidth = 2;
+  ctx.beginPath();
+  data.forEach((d, i) => {
+    const x = pad.l + i * (gw / Math.max(1, data.length - 1));
+    const y = pad.t + gh - ((d.l - minV) / range) * gh;
+    if(i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+  });
+  ctx.stroke();
+  // Punkte
+  ctx.fillStyle = '#d4a84b';
+  data.forEach((d, i) => {
+    const x = pad.l + i * (gw / Math.max(1, data.length - 1));
+    const y = pad.t + gh - ((d.l - minV) / range) * gh;
+    ctx.beginPath(); ctx.arc(x, y, 2.5, 0, Math.PI * 2); ctx.fill();
+  });
+};
+// Auto-Trigger: bei jedem Render prüfen ob Canvas vorhanden ist und noch nicht gezeichnet
+setInterval(() => {
+  if(window.currentView === 'bauer_detail') {
+    try { window._bdDrawTagesmilchChart(); } catch(e) {}
+  }
+}, 400);
 
 window.editBauer = function(id) {
   const b = bauern[id];
