@@ -35,17 +35,42 @@ window.saveVorzeitigAbtrieb = async function(kuhId) {
   const datum = document.getElementById('vz-datum')?.value;
   const grund = document.getElementById('vz-grund')?.value;
   const notiz = document.getElementById('vz-notiz')?.value.trim();
-  await update(ref(db,'kuehe/'+kuhId), {
-    almStatus: 'unten',
-    vorzeitigAbtrieb: {datum: new Date(datum).getTime(), grund, notiz},
-    updatedAt: Date.now()
-  });
-  closePopup();
-  // Show confirmation
-  setTimeout(()=>{
-    const k=kuehe[kuhId];
-    alert(`✓ ${k?.name||'Kuh'} #${k?.nr||kuhId} wurde abgetrieben.`);
-  }, 300);
+  const _retry = window.withAuthRetry || (async fn => await fn());
+  try {
+    // 1) Kuh-Status auf abgetrieben, gruppe-Feld leeren
+    await _retry(() => update(ref(db,'kuehe/'+kuhId), {
+      almStatus: 'vorzeitig',
+      gruppe: '',  // aus allen Gruppen entfernen (Komma-Liste)
+      vorzeitigAbtrieb: {datum: new Date(datum).getTime(), grund, notiz},
+      updatedAt: Date.now()
+    }));
+    // 2) Kuh aus allen gruppen/*/mitglieder entfernen
+    if(window.gruppen) {
+      for(const [gid, g] of Object.entries(window.gruppen)) {
+        if(g && g.mitglieder && g.mitglieder[kuhId]) {
+          const newMitglieder = { ...g.mitglieder };
+          delete newMitglieder[kuhId];
+          await _retry(() => update(ref(db,'gruppen/'+gid), { mitglieder: newMitglieder }));
+          try { window.gruppen[gid].mitglieder = newMitglieder; } catch(x) {}
+        }
+      }
+    }
+    // 3) Lokal auch updaten
+    try {
+      if(window.kuehe && window.kuehe[kuhId]) {
+        window.kuehe[kuhId].almStatus = 'vorzeitig';
+        window.kuehe[kuhId].gruppe = '';
+        window.kuehe[kuhId].vorzeitigAbtrieb = {datum: new Date(datum).getTime(), grund, notiz};
+      }
+    } catch(x) {}
+    closePopup();
+    const k = kuehe[kuhId];
+    if(window.showSaveToast) window.showSaveToast('✓ ' + (k?.name||'Kuh') + ' abgetrieben + aus Gruppen entfernt');
+    setTimeout(() => { try { if(typeof render === 'function') render(); } catch(e){} }, 50);
+  } catch(err) {
+    console.error('[saveVorzeitigAbtrieb] FEHLER:', err);
+    alert('Fehler beim Abtreiben: ' + (err.message||err));
+  }
 };
 
 // ── Edit helper functions ──
@@ -2451,14 +2476,16 @@ function renderMilch() {
   const gesamtSaisonCarry = Object.values(proMonatDetail).reduce((s,d) => s + (d.gerechnet||0), 0);
   const tageSaisonBerechnet = Object.values(proMonatDetail).reduce((s,d) => s + (d.tageBerechnet||0), 0);
   const avgProTagSaison = tageSaisonBerechnet > 0 ? Math.round(gesamtSaisonCarry / tageSaisonBerechnet) : 0;
-  // Melkkühe-Filter: standardmäßig NICHT-trockene Kühe. User kann per Toggle alle zeigen.
-  const alleKueheSorted = Object.entries(kuehe).sort((a,b) => {
-    const nA = parseInt(a[1].nr)||0, nB = parseInt(b[1].nr)||0; return nA - nB;
-  });
+  // Melkkühe-Filter: nur Kühe die AKTUELL auf der Alm sind ('oben').
+  // Abgetriebene Kühe ('vorzeitig' oder 'unten') tauchen in der Milch-Erfassung nicht auf.
+  const alleKueheSorted = Object.entries(kuehe)
+    .filter(([id, k]) => k?.almStatus === 'oben')
+    .sort((a,b) => {
+      const nA = parseInt(a[1].nr)||0, nB = parseInt(b[1].nr)||0; return nA - nB;
+    });
   const zeigeAlleKuehe = window._milchZeigeAlle === true;
   const nurMelkkuehe = alleKueheSorted.filter(([id, k]) => {
     const l = String(k?.laktation || '').toLowerCase();
-    // Explizit trocken → NICHT anzeigen
     if(l === 'trocken' || l === 'trockengestellt') return false;
     return true;
   });
@@ -3724,10 +3751,12 @@ window.setAlpTab = function(tab, btn) {
 
 // Neue View: Milch erfassen als richtige Seite (kein Popup)
 window.renderMilchErfassen = function() {
-  // Nur Melkkühe (nicht trocken) im Formular anzeigen
-  const alleKueheSorted = Object.entries(kuehe).sort((a,b) => {
-    const nA = parseInt(a[1].nr)||0, nB = parseInt(b[1].nr)||0; return nA - nB;
-  });
+  // Nur Kühe die aktuell AUF DER ALM sind (almStatus='oben'). Abgetriebene ausschließen.
+  const alleKueheSorted = Object.entries(kuehe)
+    .filter(([id, k]) => k?.almStatus === 'oben')
+    .sort((a,b) => {
+      const nA = parseInt(a[1].nr)||0, nB = parseInt(b[1].nr)||0; return nA - nB;
+    });
   const zeigeAlleKuehe = window._milchZeigeAlle === true;
   const nurMelkkuehe = alleKueheSorted.filter(([id, k]) => {
     const l = String(k?.laktation || '').toLowerCase();
