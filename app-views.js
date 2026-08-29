@@ -3713,13 +3713,13 @@ function renderStatistik() {
     });
   });
   
-  // Milchstatistik — GESAMT/MORGENS/ABENDS via Carry-Forward (analog Blatt Milch)
+  // Milchstatistik — GESAMT/MORGENS/ABENDS/MOLKEREI via Carry-Forward (identisch mit Blatt Milch)
   const milchListe = Object.values(milchEintraege).sort((a,b)=>a.datum-b.datum);
-  const cf = typeof window.computeCarryForwardGesamt === 'function' ? window.computeCarryForwardGesamt() : {gesamt:0,morgen:0,abend:0};
+  const cf = typeof window.computeCarryForwardGesamt === 'function' ? window.computeCarryForwardGesamt() : {gesamt:0,morgen:0,abend:0,molkerei:0};
   const milchGesamt = cf.gesamt;
   const milchMorgen = cf.morgen;
   const milchAbend = cf.abend;
-  const milchMolkerei = milchListe.filter(m=>m.molkerei).reduce((s,m)=>s+(m.gesamt||0),0);
+  const milchMolkerei = cf.molkerei;
   // Morgens/Abends-Prozent
   const gesamtForPct = milchMorgen + milchAbend;
   const pctMorgen = gesamtForPct > 0 ? Math.round(milchMorgen / gesamtForPct * 100) : 0;

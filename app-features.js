@@ -2468,14 +2468,16 @@ function renderMilch() {
     d.gerechnet = Math.round(gerechnet);
     d.tageBerechnet = tageMitWert;
   });
-  gesamtMolkerei = Math.round(gesamtMolkerei);
-  gesamtSennerei = Math.round(gesamtSennerei);
-  // Saison-Kennzahlen mit Carry-Forward (analog Monatsübersicht):
-  //   gesamtSaisonCarry = Summe aller Monats-Hochrechnungen
-  //   tageSaisonBerechnet = Summe der Tage die berechnet wurden
-  const gesamtSaisonCarry = Object.values(proMonatDetail).reduce((s,d) => s + (d.gerechnet||0), 0);
-  const tageSaisonBerechnet = Object.values(proMonatDetail).reduce((s,d) => s + (d.tageBerechnet||0), 0);
-  const avgProTagSaison = tageSaisonBerechnet > 0 ? Math.round(gesamtSaisonCarry / tageSaisonBerechnet) : 0;
+  // Saison-Kennzahlen — via zentralen Helper `computeCarryForwardGesamt`
+  // damit Milch-Blatt und Statistik IDENTISCHE Zahlen zeigen.
+  const _cfSaison = typeof window.computeCarryForwardGesamt === 'function' ? window.computeCarryForwardGesamt() : { gesamt: 0, morgen: 0, abend: 0, molkerei: 0, sennerei: 0, tage: 0 };
+  const gesamtSaisonCarry = _cfSaison.gesamt;
+  // Molkerei/Sennerei aus Helper (statt eigener Berechnung → Konsistenz)
+  gesamtMolkerei = _cfSaison.molkerei;
+  gesamtSennerei = _cfSaison.sennerei;
+  const tageSaisonBerechnet = _cfSaison.tage;
+  // Ø/Tag: gesamt / halbe tage-Zahl (weil tage morgens+abends getrennt zählt)
+  const avgProTagSaison = tageSaisonBerechnet > 0 ? Math.round(gesamtSaisonCarry / tageSaisonBerechnet * 2) : 0;
   // Melkkühe-Filter: nur Kühe die AKTUELL auf der Alm sind ('oben').
   // Abgetriebene Kühe ('vorzeitig' oder 'unten') tauchen in der Milch-Erfassung nicht auf.
   const alleKueheSorted = Object.entries(kuehe)
