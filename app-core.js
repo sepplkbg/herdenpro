@@ -267,7 +267,8 @@ window._hpLoadCache = _hpLoadCache;
 //   dieser Kuh weiterverwendet. Ergibt realistische Saison-Gesamtmenge auch
 //   wenn nicht jeden Tag gemessen wird.
 // kueheIdsFilter: null/undefined = alle Kühe, sonst Set/Array von IDs
-// Returns: { gesamt, morgen, abend, tage } — jeweils gerundete Zahlen
+// Returns: { gesamt, morgen, abend, tage, molkerei, sennerei } — gerundete Zahlen
+// molkerei/sennerei: nur bei Aufruf OHNE Kuh-Filter berechnet (aggregiert per Termin).
 window.computeCarryForwardGesamt = function(kueheIdsFilter) {
   const _mW = window.milchWert || function(v){ return typeof v === 'number' ? v : (v && v.wert != null ? parseFloat(v.wert) || 0 : parseFloat(v) || 0); };
   const kuehe = window.kuehe || {};
@@ -276,15 +277,25 @@ window.computeCarryForwardGesamt = function(kueheIdsFilter) {
     : Object.keys(kuehe);
   const eintraege = Object.values(window.milchEintraege || {})
     .filter(e => e && e.datum && e.prokuh);
-  if(!ids.length || !eintraege.length) return { gesamt: 0, morgen: 0, abend: 0, tage: 0 };
+  if(!ids.length || !eintraege.length) return { gesamt: 0, morgen: 0, abend: 0, tage: 0, molkerei: 0, sennerei: 0 };
 
   const heute = new Date(); heute.setHours(23,59,59,999);
   const heuteTs = heute.getTime();
-  let sumMorgen = 0, sumAbend = 0, tageMitDaten = 0;
+  let sumMorgen = 0, sumAbend = 0;
+  let sumMolkerei = 0, sumSennerei = 0;
   const tageSet = new Set();
 
+  // Molkerei-Flag pro Termin (aggregiert): wenn IRGENDEIN Eintrag an dem Tag/Zeit
+  // Molkerei-Flag hat → gilt für diesen ganzen Termin als Molkerei.
+  const molkereiProTermin = {};  // { 'YYYY-MM-DD_zeit': true/false }
+  eintraege.forEach(e => {
+    const iso = new Date(e.datum).toISOString().slice(0,10);
+    const key = iso + '_' + (e.zeit || 'morgen');
+    if(!(key in molkereiProTermin)) molkereiProTermin[key] = false;
+    if(e.molkerei) molkereiProTermin[key] = true;
+  });
+
   ids.forEach(kid => {
-    // Alle Messwerte dieser Kuh sammeln, nach Zeit trennen + sortieren
     const morgens = [], abends = [];
     eintraege.forEach(e => {
       const val = _mW(e.prokuh[kid]);
@@ -296,7 +307,6 @@ window.computeCarryForwardGesamt = function(kueheIdsFilter) {
     morgens.sort((a,b) => a.ts - b.ts);
     abends.sort((a,b) => a.ts - b.ts);
 
-    // First-Ts = erste Messung dieser Kuh (nicht früher rechnen)
     const firstKuhTs = Math.min(
       morgens.length ? morgens[0].ts : Infinity,
       abends.length ? abends[0].ts : Infinity
@@ -304,13 +314,32 @@ window.computeCarryForwardGesamt = function(kueheIdsFilter) {
     const iter = new Date(firstKuhTs); iter.setHours(0,0,0,0);
     let mIdx = 0, aIdx = 0;
     let lastM = 0, lastA = 0;
+    let lastMolkM = false, lastMolkA = false;
     while(iter.getTime() <= heuteTs) {
       const dayEnd = new Date(iter); dayEnd.setHours(23,59,59,999);
       const dayTs = dayEnd.getTime();
-      while(mIdx < morgens.length && morgens[mIdx].ts <= dayTs) { lastM = morgens[mIdx].wert; mIdx++; }
-      while(aIdx < abends.length && abends[aIdx].ts <= dayTs) { lastA = abends[aIdx].wert; aIdx++; }
-      if(lastM > 0) { sumMorgen += lastM; tageSet.add(iter.toISOString().slice(0,10) + '_m'); }
-      if(lastA > 0) { sumAbend += lastA; tageSet.add(iter.toISOString().slice(0,10) + '_a'); }
+      while(mIdx < morgens.length && morgens[mIdx].ts <= dayTs) {
+        lastM = morgens[mIdx].wert;
+        const iso = new Date(morgens[mIdx].ts).toISOString().slice(0,10);
+        lastMolkM = !!molkereiProTermin[iso + '_morgen'];
+        mIdx++;
+      }
+      while(aIdx < abends.length && abends[aIdx].ts <= dayTs) {
+        lastA = abends[aIdx].wert;
+        const iso = new Date(abends[aIdx].ts).toISOString().slice(0,10);
+        lastMolkA = !!molkereiProTermin[iso + '_abend'];
+        aIdx++;
+      }
+      if(lastM > 0) {
+        sumMorgen += lastM;
+        tageSet.add(iter.toISOString().slice(0,10) + '_m');
+        if(lastMolkM) sumMolkerei += lastM; else sumSennerei += lastM;
+      }
+      if(lastA > 0) {
+        sumAbend += lastA;
+        tageSet.add(iter.toISOString().slice(0,10) + '_a');
+        if(lastMolkA) sumMolkerei += lastA; else sumSennerei += lastA;
+      }
       iter.setDate(iter.getDate() + 1);
     }
   });
@@ -319,6 +348,8 @@ window.computeCarryForwardGesamt = function(kueheIdsFilter) {
     gesamt: Math.round(sumMorgen + sumAbend),
     morgen: Math.round(sumMorgen),
     abend: Math.round(sumAbend),
+    molkerei: Math.round(sumMolkerei),
+    sennerei: Math.round(sumSennerei),
     tage: tageSet.size
   };
 };
