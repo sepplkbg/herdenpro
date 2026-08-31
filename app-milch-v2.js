@@ -1003,8 +1003,10 @@ window.updateSyncBanner = function() {
   if(window._milchSyncError && n > 0) {
     stateClass = 'milch-sync-error';
     iconEmoji = '❌';
-    msg = 'Sync-Fehler: ' + window._milchSyncError.msg.slice(0, 60);
-    actionBtn = '<button class="milch-sync-action" onclick="milchSmartRetry()">Retry</button>';
+    msg = 'Sync-Fehler · ' + n + ' Wert' + (n > 1 ? 'e' : '') + ' offen · ' + window._milchSyncError.msg.slice(0, 40);
+    // ZWEI Buttons: Retry + direkt Neu-Anmelden (User muss nicht rumraten was zu tun ist)
+    actionBtn = '<button class="milch-sync-action" onclick="milchSmartRetry()">🔄 Retry</button>' +
+                '<button class="milch-sync-action" style="background:#e05a5a;color:#fff;font-weight:700" onclick="milchNeuAnmelden()">🔑 Neu anmelden</button>';
   } else if(konfl > 0) {
     stateClass = 'milch-sync-error';
     iconEmoji = '⚠';
@@ -1022,7 +1024,17 @@ window.updateSyncBanner = function() {
     stateClass = 'milch-sync-pending';
     iconEmoji = '📤';
     msg = n + ' Wert' + (n > 1 ? 'e' : '') + ' werden übertragen…';
-    actionBtn = '<button class="milch-sync-action" onclick="milchSmartRetry()">Jetzt versuchen</button>';
+    // Wenn ältester Pending-Wert > 60 s alt: Neu-Anmelden-Button zusätzlich anzeigen (hilfreich bei stillem Auth-Verlust)
+    const p = getPending();
+    let aeltester = Date.now();
+    Object.values(p).forEach(cows => Object.values(cows).forEach(pl => { if(pl.ts && pl.ts < aeltester) aeltester = pl.ts; }));
+    const alter = (Date.now() - aeltester) / 1000;
+    if(alter > 60) {
+      actionBtn = '<button class="milch-sync-action" onclick="milchSmartRetry()">🔄 Retry</button>' +
+                  '<button class="milch-sync-action" style="background:#e05a5a;color:#fff;font-weight:700" onclick="milchNeuAnmelden()">🔑 Neu anmelden</button>';
+    } else {
+      actionBtn = '<button class="milch-sync-action" onclick="milchSmartRetry()">Jetzt versuchen</button>';
+    }
   } else {
     stateClass = 'milch-sync-ok';
     iconEmoji = '✓';
@@ -1429,9 +1441,31 @@ window.saveMilch = async function() {
     } catch(e) { console.warn('[saveMilch] Final-Verify:', e); }
   }
 
-  // Nach Final-Verify: wenn IMMER NOCH pending → echter Fehler
+  // Nach Final-Verify: wenn IMMER NOCH pending → Fehler-Meldung ANZEIGEN, aber
+  // Email + Bericht + Navigate TROTZDEM durchführen (Werte sind lokal sicher,
+  // Sync läuft im Hintergrund weiter, Banner zeigt Retry-Buttons).
   if(countPending() > 0) {
     restoreBtn();
+    const stillPending = countPending();
+    console.warn('[saveMilch] ' + stillPending + ' Werte noch pending nach 40s — UI-Flow trotzdem fortführen');
+    // Toast dass es noch nicht bestätigt ist
+    if(window.showSaveToast) window.showSaveToast('⚠ ' + stillPending + ' Werte lokal gesichert · Sync läuft weiter…');
+
+    // Email + Bericht trotzdem triggern — user hat auf Fertig geklickt, will das
+    const berDatumTs = new Date(datum + 'T12:00').getTime();
+    try { if(typeof window.scheduleMilchEmail === 'function') window.scheduleMilchEmail(berDatumTs); }
+    catch(e) { console.warn('[Milch-Email] schedule:', e); }
+    setTimeout(() => {
+      if(window.showMilchBericht) { try { window.showMilchBericht(berDatumTs, zeit); } catch(e) { console.warn('showMilchBericht:', e); } }
+    }, 800);
+    // Zurück zur Milch-Übersicht (Banner mit Retry+Neu-Anmelden-Buttons bleibt sichtbar)
+    setTimeout(() => { if(typeof navigate === 'function') navigate('milch'); }, 300);
+    return;
+  }
+
+  // Alte Fehler-Meldung nicht mehr erreicht — nur als Kommentar:
+  // (Ersetzt durch obigen Block der Email+Bericht+Navigate trotzdem macht)
+  if(false) {
     const stillPending = countPending();
     const p = getPending();
     let details = [];
