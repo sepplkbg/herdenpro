@@ -1,101 +1,82 @@
 // ══════════════════════════════════════════════════════════════════════════════
-//  SAISON-ABSCHLUSS-SLIDESHOW
-//  Vollbild-Slideshow mit Statistiken + sentimentalen Sprüchen.
-//  Nur "Vorschau"-Modus verändert keine Daten. Regulärer Modus archiviert die
-//  Saison + setzt Cleanup-Aktionen.
+//  SAISON-ABSCHLUSS — Cinematic Slideshow
+//  Vollbild-Farbverläufe die morphen · Ken-Burns-Effekt · Serif-Typografie
+//  Zahlen die live hochzählen · Piano-Ambient statt Drones
 // ══════════════════════════════════════════════════════════════════════════════
 (function() {
-  const VERSION = '1.1';
+  const VERSION = '2.0';
   window.SAISON_ABSCHLUSS_VERSION = VERSION;
 
-  // Sentimentale Sprüche — mit Platzhaltern für dynamische Werte
-  // Werden mit data-Werten interpoliert ({kuh}, {weide}, {melker}, {alm}, {jahr}, {tage}, {rekordkuh}, {medikament})
-  const SPRUECHE_TEMPLATES = [
-    // Bergsprüche (klassisch sentimental)
-    'Der Sommer geht — die Erinnerungen bleiben.',
-    'Am Ende zählen nicht die Liter, sondern die Momente.',
-    'Wer die Alm einmal erlebt hat, trägt sie für immer im Herzen.',
-    'Die Kühe wissen den Weg — wir folgen nur.',
-    'Zwischen Wiesen, Wolken und Wolldecken — hier bist du zuhause.',
-    'Der Bergwind trägt, was wir nicht sagen.',
-    'Was wir hier oben lernen, tragen wir für immer.',
+  // ── Sprüche: kürzer, ehrlicher, weniger Klischee ──────────────────────────
+  // Werden mit Daten interpoliert. {alm} {rekordkuh} {weide} {melker} {milch} {tage} {kuehe} {behandlungen}
+  const SPRUECHE = [
+    // Direkt & kurz
+    'Fertig.',
+    'Ein Sommer weniger. Ein Sommer mehr.',
+    'Heute ist der letzte Tag. Morgen der erste.',
+    'Manche Orte gehen nicht mehr weg.',
+    'Der Berg ändert sich nicht. Wir schon.',
+    'Nichts vergeht ohne Grund.',
 
-    // Mit Alm-Name
-    'Die {alm} ist mehr als ein Ort — sie ist eine Lebensart.',
-    'Auf der {alm} vergeht die Zeit anders. Langsamer. Ehrlicher.',
-    'Wenn die letzte Kuh die {alm} verlässt, bleibt eine Stille die nur wir verstehen.',
-    'Die {alm} vergisst niemanden, der ihr Herz gegeben hat.',
+    // Faktenbasiert-poetisch
+    '{milch} Liter Milch. Aus Gras. Aus Sonne. Aus Zeit.',
+    '{tage} Tage. Kein einziger war umsonst.',
+    '{kuehe} Kühe. Jede kennt jeden Stein.',
+    '{behandlungen} mal habt ihr geholfen. Keinmal weggeschaut.',
 
-    // Mit Kuh-Namen (Top-Kuh)
-    'Wenn ich an {rekordkuh} denke, weiß ich wieder warum wir das tun.',
-    '{rekordkuh} hat uns gezeigt was eine Kuh sein kann. Danke, alte Freundin.',
-    'Sie hat einen Namen, ein Gesicht, eine Geschichte. {rekordkuh} — bis nächstes Jahr.',
-    'Manche Kühe geben Milch. {rekordkuh} hat Geschichten geschenkt.',
+    // Persönlich
+    'An {rekordkuh} werden wir uns erinnern.',
+    'Wenn du an diesen Sommer denkst, denkst du an {rekordkuh}.',
+    'Wenn {weide} nächstes Frühjahr grün wird — dann wisst ihr, warum.',
+    'Die Wiese auf {weide} vergisst euch nicht.',
+    '{melker} war jeden Morgen da. Kein Wort. Nur Arbeit.',
+    'Ohne {melker} wäre es nicht das gleiche gewesen.',
 
-    // Mit Weide-Name
-    'Die Wiese auf {weide} wartet schon auf das nächste Jahr — und auf euch.',
-    'Auf {weide} wächst das Gras noch, wenn wir längst wieder im Tal sind.',
-    'Wenn im Frühling die {weide} wieder grünt, ruft sie leise unseren Namen.',
+    // Zeit & Wandel
+    'Im Juni war alles neu. Jetzt ist alles anders.',
+    'Der erste Auftrieb war lang. Der Abtrieb wird kurz sein.',
+    'Was hier passiert ist, bleibt hier. Und bleibt in euch.',
 
-    // Mit Zahlen
-    '{kuehe} Kühe. {tage} Tage. Ein Herz. Das ist die Alm.',
-    '{tage} Sonnenaufgänge. {tage} Sonnenuntergänge. Kein einziger vergeudet.',
-    '{kuehe} Herzen schlagen für die Alm. Deins schlägt am lautesten.',
-    'Millionen Grashalme. {tage} Tage. Eine Familie.',
+    // Trost & Zuversicht
+    'Der Winter ist kurz. Der nächste Sommer wartet schon.',
+    'Es kommt ein neues Jahr. Und mit ihm ein neuer Sommer.',
+    'Bis nächstes Jahr, {alm}.',
 
-    // Melker-Namen
-    'Ohne dich wäre die Alm nur ein Berg. Danke, {melker}.',
-    '{melker}, du hast der Alm ihre Stimme gegeben — jeden Morgen, jeden Abend.',
-
-    // Trost & Zuversicht (Lust auf nächste Saison)
-    'Der Winter kommt. Aber der nächste Sommer auch. Und er wird noch schöner.',
-    'Die Alm schläft nur. Sie wartet auf uns. Wie jedes Jahr.',
-    'Jedes Kalb ist ein Versprechen für morgen. Wir sehen uns nächstes Jahr.',
-    'Nimm ein Stück von uns mit ins Tal. Der Rest wartet hier auf dich.',
-    'Der Duft der Bergblumen bleibt bis zum nächsten Frühling.',
-
-    // Stolz & Anerkennung
-    'Ihr habt {milch} Liter Milch gegeben. Jeder Tropfen ein Stück Alm.',
-    '{behandlungen} mal habt ihr geholfen wo Hilfe nötig war. Das ist wahre Alpwirtschaft.',
-    'Kein einziges Tier hier oben war je alleine. Das ist euer Verdienst.',
-    'Es gibt Sommer, die vergisst man nicht. Dieser wird einer davon sein.',
-    'Ihr seid die Hüter dieser Berge. Und die Berge wissen es.',
-
-    // Ganz weich, ganz zart
-    'Und dann kommt der Tag, an dem die Kuhglocken verstummen. Bis zum nächsten Jahr.',
-    'Der letzte Melkgang. Der letzte Sonnenuntergang. Der erste Schritt Richtung Winter.',
-    'Die Bergkette bleibt. Die Erinnerung auch. Und wir kommen wieder.'
+    // Ganz still
+    'Danke.'
   ];
 
-  function _renderSpruch(template, data) {
-    return template
-      .replace(/\{alm\}/g, data.almName || 'Alm')
-      .replace(/\{jahr\}/g, data.saisonJahr || '')
-      .replace(/\{tage\}/g, data.alpungTage || '')
-      .replace(/\{kuehe\}/g, data.kueheAlle || '')
-      .replace(/\{milch\}/g, (data.milchGesamt || 0).toLocaleString('de-AT'))
-      .replace(/\{behandlungen\}/g, data.behAnzahl || 0)
-      .replace(/\{rekordkuh\}/g, data.top3Kuehe[0]?.kuh?.name || 'die Beste')
-      .replace(/\{weide\}/g, data.topWeide?.[0] || 'der Alm')
-      .replace(/\{melker\}/g, data.fleissigsterMelker?.[0] || 'ihr alle')
-      .replace(/\{medikament\}/g, data.topDiagnosen[0]?.[0] || 'die Medikamente');
+  function _renderSpruch(t, d) {
+    return t
+      .replace(/\{alm\}/g, d.almName || 'Alm')
+      .replace(/\{tage\}/g, d.alpungTage || '')
+      .replace(/\{kuehe\}/g, d.kueheAlle || '')
+      .replace(/\{milch\}/g, (d.milchGesamt || 0).toLocaleString('de-AT'))
+      .replace(/\{behandlungen\}/g, d.behAnzahl || 0)
+      .replace(/\{rekordkuh\}/g, d.top3Kuehe[0]?.kuh?.name || 'die Beste')
+      .replace(/\{weide\}/g, d.topWeide?.[0] || 'der Alm')
+      .replace(/\{melker\}/g, d.fleissigsterMelker?.[0] || 'ihr alle');
   }
 
-  // Zufällige Auswahl von N Sprüchen, mit ersten den generischen bevorzugt
-  function _selectSprueche(n, data) {
-    const rendered = SPRUECHE_TEMPLATES
-      .map(t => _renderSpruch(t, data))
-      .filter(s => !s.includes('{'));  // Nur die wo Interpolation erfolgreich
-    // Mische
-    for(let i = rendered.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [rendered[i], rendered[j]] = [rendered[j], rendered[i]];
-    }
-    return rendered.slice(0, n);
+  function _shuffled(arr) {
+    const a = arr.slice();
+    for(let i = a.length-1; i > 0; i--) { const j = Math.floor(Math.random()*(i+1)); [a[i],a[j]] = [a[j],a[i]]; }
+    return a;
   }
 
-  // ── Daten für die Slides berechnen ──
-  function _computeSaisonData() {
+  // ── Farbverläufe (7 Stimmungen, morphed per slide) ─────────────────────────
+  const GRADIENTS = [
+    'linear-gradient(160deg, #0a1a04 0%, #1a3a0a 100%)',         // Nachtwald tief
+    'linear-gradient(160deg, #1a2a0a 0%, #3a4a1a 100%)',         // Almwiese Dämmerung
+    'linear-gradient(160deg, #2a1a0a 0%, #4a2a1a 100%)',         // Erdverbunden warm
+    'linear-gradient(160deg, #0a2a3a 0%, #1a4a5a 100%)',         // Bergsee Blau
+    'linear-gradient(160deg, #3a2a1a 0%, #6a4a2a 100%)',         // Sonnenuntergang Herbst
+    'linear-gradient(160deg, #1a0a1a 0%, #3a1a2a 100%)',         // Berg-Purpur Sturm
+    'linear-gradient(160deg, #0a1a1a 0%, #1a3a3a 100%)'          // Nebel-Grün still
+  ];
+
+  // ── Daten berechnen ────────────────────────────────────────────────────────
+  function _data() {
     const heute = Date.now();
     const kuehe = window.kuehe || {};
     const behandlungen = window.behandlungen || {};
@@ -105,27 +86,19 @@
     const weideTage = window.weideTage || {};
     const weiden = window.weiden || {};
     const saisonInfo = window.saisonInfo || {};
-
     const _mW = window.milchWert || function(v){ return typeof v === 'number' ? v : (v && v.wert != null ? parseFloat(v.wert)||0 : parseFloat(v)||0); };
 
-    // Alpungstage
     const alpungTage = saisonInfo?.auftriebDatum
       ? Math.floor((heute - saisonInfo.auftriebDatum)/86400000) + 1
       : Object.keys(milchEintraege).length > 0
         ? Math.floor((heute - Math.min(...Object.values(milchEintraege).map(m => m.datum || heute)))/86400000) + 1
         : 0;
-
-    // Kühe / Bauern
     const kueheOben = Object.values(kuehe).filter(k => k.almStatus === 'oben').length;
     const kueheAlle = Object.keys(kuehe).length;
     const bauernAnzahl = Object.keys(bauern).length;
+    const cfMilch = typeof window.computeCarryForwardGesamt === 'function' ? window.computeCarryForwardGesamt() : {gesamt:0,morgen:0,abend:0,molkerei:0,sennerei:0,tage:0};
 
-    // Milch — via Carry-Forward Helper
-    const cfMilch = typeof window.computeCarryForwardGesamt === 'function'
-      ? window.computeCarryForwardGesamt()
-      : { gesamt: 0, morgen: 0, abend: 0, molkerei: 0, sennerei: 0, tage: 0 };
-
-    // Rekord-Tagesmilch (höchster einzelner Tagestotal)
+    // Rekord-Tagesmilch
     const tagesSum = {};
     Object.values(milchEintraege).forEach(m => {
       if(!m || !m.datum) return;
@@ -138,58 +111,40 @@
     let rekordTag = null, rekordL = 0;
     Object.entries(tagesSum).forEach(([iso, v]) => { if(v > rekordL) { rekordL = v; rekordTag = iso; } });
 
-    // Top-3 Kühe (nach Gesamt-Milch aus prokuh)
+    // Top-3 Kühe
     const kuhSum = {};
     Object.values(milchEintraege).forEach(m => {
-      if(m.prokuh) Object.entries(m.prokuh).forEach(([kid, v]) => {
-        kuhSum[kid] = (kuhSum[kid] || 0) + _mW(v);
-      });
+      if(m.prokuh) Object.entries(m.prokuh).forEach(([kid, v]) => { kuhSum[kid] = (kuhSum[kid] || 0) + _mW(v); });
     });
-    const top3Kuehe = Object.entries(kuhSum)
-      .sort((a,b) => b[1] - a[1]).slice(0, 3)
-      .map(([kid, l]) => ({ kuh: kuehe[kid], liter: Math.round(l) }));
+    const top3Kuehe = Object.entries(kuhSum).sort((a,b) => b[1]-a[1]).slice(0,3).map(([kid,l]) => ({kuh:kuehe[kid], liter:Math.round(l)}));
 
-    // Top-3 Bauern (nach Gesamt-Milch ihrer Kühe)
+    // Top-3 Bauern
     const bauerSum = {};
     Object.entries(kuhSum).forEach(([kid, l]) => {
       const bauer = kuehe[kid]?.bauer || '–';
       bauerSum[bauer] = (bauerSum[bauer] || 0) + l;
     });
-    const top3Bauern = Object.entries(bauerSum)
-      .filter(([b]) => b && b !== '–')
-      .sort((a,b) => b[1] - a[1]).slice(0, 3)
-      .map(([name, l]) => ({ name, liter: Math.round(l) }));
+    const top3Bauern = Object.entries(bauerSum).filter(([b]) => b && b !== '–').sort((a,b) => b[1]-a[1]).slice(0,3).map(([name,l]) => ({name, liter:Math.round(l)}));
 
-    // Fleißigster Melker (Anzahl unique Milchmessungen)
+    // Fleißigster Melker
     const melkerZahl = {};
     Object.values(milchEintraege).forEach(m => {
       if(!m.meta) return;
-      Object.values(m.meta).forEach(mt => {
-        const name = mt?.userName || '?';
-        if(name && name !== '?') melkerZahl[name] = (melkerZahl[name] || 0) + 1;
-      });
+      Object.values(m.meta).forEach(mt => { const name = mt?.userName || '?'; if(name && name !== '?') melkerZahl[name] = (melkerZahl[name] || 0) + 1; });
     });
-    const fleissigsterMelker = Object.entries(melkerZahl).sort((a,b) => b[1] - a[1])[0];
+    const fleissigsterMelker = Object.entries(melkerZahl).sort((a,b) => b[1]-a[1])[0];
 
     // Behandlungen
     const behListe = Object.values(behandlungen);
     const behAnzahl = behListe.length;
     const behDiagnosen = {};
-    behListe.forEach(b => {
-      const d = String(b.diagnose || 'Unbekannt').trim();
-      behDiagnosen[d] = (behDiagnosen[d] || 0) + 1;
-    });
-    const topDiagnosen = Object.entries(behDiagnosen)
-      .sort((a,b) => b[1] - a[1]).slice(0, 5);
-
-    // Trockenstellungen (Behandlungen mit Diagnose "Trockenstellen")
-    const trockenAnzahl = behListe.filter(b => /trockenstell|trocken stell|trockenlegen/i.test(b.diagnose || '')).length;
+    behListe.forEach(b => { const d = String(b.diagnose||'Unbekannt').trim(); behDiagnosen[d] = (behDiagnosen[d]||0) + 1; });
+    const topDiagnosen = Object.entries(behDiagnosen).sort((a,b) => b[1]-a[1]).slice(0,5);
+    const trockenAnzahl = behListe.filter(b => /trockenstell|trocken stell|trockenlegen/i.test(b.diagnose||'')).length;
 
     // Kälber
-    const bsListe = Object.values(besamungen);
-    const kaelber = bsListe.filter(bs => bs.status === 'kalbung').length;
-    const traechtig = bsListe.filter(bs => bs.status === 'tragend').length;
-    const besamungAnzahl = bsListe.length;
+    const kaelber = Object.values(besamungen).filter(bs => bs.status === 'kalbung').length;
+    const traechtig = Object.values(besamungen).filter(bs => bs.status === 'tragend').length;
 
     // Weide
     const wtListe = Object.values(weideTage);
@@ -200,516 +155,472 @@
       const name = wid === '__text__' ? (w.weideText || 'Freitext') : (weiden[wid]?.name || '?');
       proWeide[name] = (proWeide[name] || 0) + 1;
     });
-    const topWeide = Object.entries(proWeide).sort((a,b) => b[1] - a[1])[0];
-
-    // Klauenpflege
+    const topWeide = Object.entries(proWeide).sort((a,b) => b[1]-a[1])[0];
     const klauenAnzahl = Object.keys(window.klauenpflege || {}).length;
 
-    // Sennerei (letzte Woche)
-    const sennereiWochen = window._sennereiWochenCache || [];  // fallback wenn nicht geladen
-
     return {
-      alpungTage,
-      kueheOben, kueheAlle, bauernAnzahl,
-      milchGesamt: cfMilch.gesamt,
-      milchMorgen: cfMilch.morgen,
-      milchAbend: cfMilch.abend,
-      milchMolkerei: cfMilch.molkerei,
-      milchSennerei: cfMilch.sennerei,
+      alpungTage, kueheOben, kueheAlle, bauernAnzahl,
+      milchGesamt: cfMilch.gesamt, milchMorgen: cfMilch.morgen, milchAbend: cfMilch.abend,
+      milchMolkerei: cfMilch.molkerei, milchSennerei: cfMilch.sennerei,
       rekordTag, rekordL: Math.round(rekordL),
-      top3Kuehe, top3Bauern,
-      fleissigsterMelker,
+      top3Kuehe, top3Bauern, fleissigsterMelker,
       behAnzahl, topDiagnosen, trockenAnzahl,
-      kaelber, traechtig, besamungAnzahl,
-      wechselAnzahl, topWeide, klauenAnzahl,
+      kaelber, traechtig, wechselAnzahl, topWeide, klauenAnzahl,
       saisonJahr: saisonInfo?.jahr || new Date().getFullYear(),
       almName: saisonInfo?.alm || 'Alm'
     };
   }
 
-  // ── Slide-Definitionen ──
-  function _buildSlides(data, isTest) {
-    const s = [];
-    // Slide 1: Titelbild
-    s.push({
-      type: 'title',
-      icon: '🏔',
-      title: 'Saison ' + data.saisonJahr,
-      subtitle: data.almName,
-      big: 'Ein Sommer geht zu Ende.'
+  // ── Slide-Definitionen (cinematic, wenig text pro slide) ───────────────────
+  function _slides(d, isTest) {
+    const sprueche = _shuffled(SPRUECHE.map(t => _renderSpruch(t, d)).filter(s => !s.includes('{')));
+    let spruchIdx = 0;
+    const spruch = () => sprueche[spruchIdx++ % sprueche.length];
+    const arr = [];
+
+    // 1. Cinematic Titel
+    arr.push({ type:'hero', kicker: 'SAISON ' + d.saisonJahr, title: d.almName, subtitle: 'Eine Rückschau.' });
+
+    // 2. Erste Zahl — Tage
+    arr.push({ type:'stat', kicker:'Tage auf der Alm', value: d.alpungTage, unit:'', note: d.alpungTage > 100 ? 'ein ganzer Sommer' : 'jeder einzelne wichtig' });
+
+    // 3. Spruch
+    arr.push({ type:'quote', text: spruch() });
+
+    // 4. Kühe
+    arr.push({ type:'stat', kicker:'Kühe waren oben', value: d.kueheAlle, unit:'', note: d.kueheOben > 0 ? d.kueheOben + ' warten noch auf den Abtrieb' : 'alle sind wieder heim' });
+
+    // 5. Bauern
+    if(d.bauernAnzahl > 0) arr.push({ type:'stat', kicker:'Bauern', value: d.bauernAnzahl, unit:'', note: 'haben euch ihre Tiere anvertraut' });
+
+    // 6. Spruch
+    arr.push({ type:'quote', text: spruch() });
+
+    // 7. Milch — Hero-Stat
+    arr.push({ type:'hero-stat', kicker:'Milch', value: d.milchGesamt, unit:'Liter', note: 'in dieser Saison' });
+
+    // 8. Morgens/Abends
+    arr.push({ type:'dual-stat',
+      links: {label:'Morgens', value: d.milchMorgen, unit:'L'},
+      rechts: {label:'Abends', value: d.milchAbend, unit:'L'}
     });
-    // Spruch
-    s.push({ type: 'spruch', text: '__PICK__' });
-    // Alpungstage
-    s.push({
-      type: 'zahl', icon: '📅', label: 'Tage auf der Alm',
-      zahl: data.alpungTage, einheit: 'Tage',
-      subtitle: 'von Auftrieb bis heute'
-    });
-    // Kühe
-    s.push({
-      type: 'zahl', icon: '🐄', label: 'Kühe',
-      zahl: data.kueheAlle, einheit: 'Tiere',
-      subtitle: (data.kueheOben > 0 ? data.kueheOben + ' aktuell noch oben' : 'alle bereits abgetrieben')
-    });
-    // Bauern
-    s.push({
-      type: 'zahl', icon: '👥', label: 'Bauern',
-      zahl: data.bauernAnzahl, einheit: 'Betriebe',
-      subtitle: 'die dir ihre Tiere anvertraut haben'
-    });
-    // Spruch
-    s.push({ type: 'spruch', text: '__PICK__' });
-    // Milch total (Highlight)
-    s.push({
-      type: 'zahl-big', icon: '🥛', label: 'Milch gesamt',
-      zahl: data.milchGesamt, einheit: 'Liter',
-      subtitle: 'in dieser Saison',
-      farbe: 'var(--gold)'
-    });
-    // Milch morgen/abend
-    s.push({
-      type: 'zwei-zahlen', icon: '🌅🌇', label: 'Milchmengen',
-      links: { label: 'Morgens', wert: data.milchMorgen + ' L' },
-      rechts: { label: 'Abends', wert: data.milchAbend + ' L' }
-    });
-    // Rekord-Tag
-    if(data.rekordTag) {
-      s.push({
-        type: 'rekord', icon: '🏆', label: 'Rekord-Tag',
-        big: data.rekordL + ' L',
-        subtitle: 'am ' + new Date(data.rekordTag + 'T12:00').toLocaleDateString('de-AT', {weekday:'long', day:'numeric', month:'long'})
+
+    // 9. Rekord-Tag
+    if(d.rekordTag && d.rekordL > 0) {
+      arr.push({ type:'record',
+        kicker: 'Der beste Tag',
+        big: d.rekordL + ' L',
+        note: new Date(d.rekordTag + 'T12:00').toLocaleDateString('de-AT', {weekday:'long', day:'numeric', month:'long'})
       });
     }
-    // Spruch
-    s.push({ type: 'spruch', text: '__PICK__' });
-    // Top-3 Kühe
-    if(data.top3Kuehe.length > 0) {
-      s.push({
-        type: 'top3', icon: '👑', label: 'Top 3 Milch-Königinnen',
-        items: data.top3Kuehe.map(k => ({
-          name: '#' + (k.kuh?.nr||'?') + ' ' + (k.kuh?.name||''),
-          wert: k.liter + ' L'
-        }))
+
+    // 10. Spruch
+    arr.push({ type:'quote', text: spruch() });
+
+    // 11. Top-3 Kühe (visuell)
+    if(d.top3Kuehe.length > 0) {
+      arr.push({ type:'podium',
+        kicker: 'Milch-Königinnen',
+        items: d.top3Kuehe.map(k => ({name: (k.kuh?.name||'?') + ' · #' + (k.kuh?.nr||'?'), value: k.liter + ' L'}))
       });
     }
-    // Top-3 Bauern
-    if(data.top3Bauern.length > 0) {
-      s.push({
-        type: 'top3', icon: '🏅', label: 'Top 3 Bauern nach Milch',
-        items: data.top3Bauern.map(b => ({ name: b.name, wert: b.liter + ' L' }))
+
+    // 12. Top-3 Bauern
+    if(d.top3Bauern.length > 0) {
+      arr.push({ type:'podium', kicker:'Top-Bauern', items: d.top3Bauern.map(b => ({name: b.name, value: b.liter + ' L'})) });
+    }
+
+    // 13. Fleißigster Melker
+    if(d.fleissigsterMelker) {
+      arr.push({ type:'record', kicker:'Der fleißigste Melker', big: d.fleissigsterMelker[0], note: d.fleissigsterMelker[1] + ' Melkgänge' });
+    }
+
+    // 14. Spruch
+    arr.push({ type:'quote', text: spruch() });
+
+    // 15. Behandlungen
+    if(d.behAnzahl > 0) {
+      arr.push({ type:'stat', kicker:'Behandlungen', value: d.behAnzahl, unit:'', note: d.trockenAnzahl > 0 ? d.trockenAnzahl + ' Kühe wurden trockengestellt' : 'jedes Tier war versorgt' });
+    }
+
+    // 16. Klauen
+    if(d.klauenAnzahl > 0) arr.push({ type:'stat', kicker:'Klauen gepflegt', value: d.klauenAnzahl, unit:'', note: 'für jeden Schritt' });
+
+    // 17. Kälber
+    if(d.kaelber > 0) arr.push({ type:'stat', kicker:'Neue Leben', value: d.kaelber, unit:'', note: 'im Sommer geboren' });
+    if(d.traechtig > 0) arr.push({ type:'stat', kicker:'Trächtige Kühe', value: d.traechtig, unit:'', note: 'tragen den nächsten Frühling' });
+
+    // 18. Spruch
+    arr.push({ type:'quote', text: spruch() });
+
+    // 19. Weide
+    if(d.wechselAnzahl > 0) {
+      arr.push({ type:'stat', kicker:'Weidewechsel', value: d.wechselAnzahl, unit:'', note: d.topWeide ? 'am meisten: ' + d.topWeide[0] : '' });
+    }
+
+    // 20. Sennerei
+    if(d.milchMolkerei > 0 || d.milchSennerei > 0) {
+      arr.push({ type:'dual-stat',
+        links: {label:'An Molkerei', value: d.milchMolkerei, unit:'L'},
+        rechts: {label:'An Sennerei', value: d.milchSennerei, unit:'L'}
       });
     }
-    // Fleißigster Melker
-    if(data.fleissigsterMelker) {
-      s.push({
-        type: 'rekord', icon: '💪', label: 'Fleißigster Melker',
-        big: data.fleissigsterMelker[0],
-        subtitle: data.fleissigsterMelker[1] + ' Milchmessungen'
-      });
-    }
-    // Spruch
-    s.push({ type: 'spruch', text: '__PICK__' });
-    // Behandlungen
-    s.push({
-      type: 'zahl', icon: '⚕', label: 'Behandlungen',
-      zahl: data.behAnzahl, einheit: '',
-      subtitle: data.trockenAnzahl > 0 ? 'davon ' + data.trockenAnzahl + ' Trockenstellungen' : 'keine Trockenstellungen'
-    });
-    // Top-Diagnosen
-    if(data.topDiagnosen.length > 0) {
-      s.push({
-        type: 'liste', icon: '🩺', label: 'Häufigste Diagnosen',
-        items: data.topDiagnosen.map(([diag, n]) => ({ name: diag, wert: n + '×' }))
-      });
-    }
-    // Klauen
-    if(data.klauenAnzahl > 0) {
-      s.push({
-        type: 'zahl', icon: '🐾', label: 'Klauenpflegen',
-        zahl: data.klauenAnzahl, einheit: '',
-        subtitle: 'für gesunde Kuhklauen'
-      });
-    }
-    // Spruch
-    s.push({ type: 'spruch', text: '__PICK__' });
-    // Kälber
-    if(data.kaelber > 0) {
-      s.push({
-        type: 'zahl', icon: '🐮', label: 'Neue Leben',
-        zahl: data.kaelber, einheit: 'Kälber',
-        subtitle: 'im Sommer geboren'
-      });
-    }
-    // Trächtige
-    if(data.traechtig > 0) {
-      s.push({
-        type: 'zahl', icon: '🌱', label: 'Trächtige Kühe',
-        zahl: data.traechtig, einheit: '',
-        subtitle: 'tragen den Frühling in sich'
-      });
-    }
-    // Spruch
-    s.push({ type: 'spruch', text: '__PICK__' });
-    // Weidewechsel
-    if(data.wechselAnzahl > 0) {
-      s.push({
-        type: 'zahl', icon: '🌿', label: 'Weidewechsel',
-        zahl: data.wechselAnzahl, einheit: '',
-        subtitle: data.topWeide ? 'Am meisten: ' + data.topWeide[0] : ''
-      });
-    }
-    // Sennerei
-    if(data.milchMolkerei > 0 || data.milchSennerei > 0) {
-      s.push({
-        type: 'zwei-zahlen', icon: '🏭🧀', label: 'Verwendung der Milch',
-        links: { label: 'An Molkerei', wert: data.milchMolkerei + ' L' },
-        rechts: { label: 'An Sennerei', wert: data.milchSennerei + ' L' }
-      });
-    }
-    // Spruch
-    s.push({ type: 'spruch', text: '__PICK__' });
-    // Danke
-    s.push({
-      type: 'title', icon: '💚',
-      title: 'Danke, ' + (window._currentUser?.email?.split('@')[0] || 'Bauer'),
-      subtitle: 'für die vielen fleißigen Stunden',
-      big: 'Ohne dich wäre die Alm nur ein Berg.'
-    });
-    // Spruch
-    s.push({ type: 'spruch', text: '__PICK__' });
-    // Cleanup-Warnung wenn pending
-    const pending = typeof window.getMilchPendingCount === 'function' ? window.getMilchPendingCount() : 0;
-    if(pending > 0) {
-      s.push({
-        type: 'warnung', icon: '⚠', label: 'Achtung!',
-        text: pending + ' Milchwerte sind noch nicht am Server bestätigt.\nBitte vor dem endgültigen Abschluss synchronisieren.'
-      });
-    }
-    // Abschluss
-    s.push({
-      type: 'final', icon: '🏔',
-      title: isTest ? 'Ende der Vorschau' : 'Bereit für den Abschluss?',
-      subtitle: isTest ? 'Die Saison bleibt aktiv.' : 'Klicke unten um die Saison offiziell zu archivieren.',
-      isTest: isTest
-    });
-    // __PICK__-Platzhalter durch zufällige gerenderte Sprüche ersetzen
-    const spruchAnzahl = s.filter(sl => sl.type === 'spruch' && sl.text === '__PICK__').length;
-    const gewaehlt = _selectSprueche(spruchAnzahl, data);
-    let pickIdx = 0;
-    s.forEach(sl => {
-      if(sl.type === 'spruch' && sl.text === '__PICK__') {
-        sl.text = gewaehlt[pickIdx++] || 'Die Alm dankt dir.';
-      }
-    });
-    return s;
+
+    // 21. Spruch
+    arr.push({ type:'quote', text: spruch() });
+
+    // 22. Danke
+    arr.push({ type:'hero', kicker: 'Und jetzt?', title: 'Danke.', subtitle: 'für alles was ihr getan habt.' });
+
+    // 23. Letzter Spruch
+    arr.push({ type:'quote', text: spruch() });
+
+    // 24. Finale
+    arr.push({ type:'final', isTest });
+
+    return arr;
   }
 
-  // ══════════════════════════════════════════════════════════════════════════
-  // AMBIENT-MUSIK via Web Audio API
-  // Sanfte Drone-Töne + zufällige Kuhglocken für sentimentale Atmosphäre
-  // Auto-Play erlaubt nach User-Klick (Vorschau-Button gilt als Interaktion)
-  // ══════════════════════════════════════════════════════════════════════════
-  let _audioCtx = null;
-  let _audioNodes = [];
-  let _audioActive = false;
-
-  function _startAmbient() {
-    if(_audioActive) return;
-    try {
-      _audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-      _audioActive = true;
-
-      // Master gain für sanften Fade-In
-      const master = _audioCtx.createGain();
-      master.gain.setValueAtTime(0, _audioCtx.currentTime);
-      master.gain.linearRampToValueAtTime(0.15, _audioCtx.currentTime + 3); // 3s Fade-In
-      master.connect(_audioCtx.destination);
-
-      // Reverb via ConvolverNode-Simulation mit LowPass + Delay
-      const filter = _audioCtx.createBiquadFilter();
-      filter.type = 'lowpass';
-      filter.frequency.value = 800;
-      filter.Q.value = 1;
-      filter.connect(master);
-
-      // Grundton-Drones (Dur-Terz-Quinte in tiefen Oktaven — sehr warm)
-      const grundToene = [110, 138.6, 164.8]; // A2, C#3, E3 (A-Dur, warm)
-      grundToene.forEach((freq, i) => {
-        const osc = _audioCtx.createOscillator();
-        osc.type = 'sine';
-        osc.frequency.value = freq;
-        const g = _audioCtx.createGain();
-        g.gain.value = 0.3;
-        osc.connect(g);
-        g.connect(filter);
-        osc.start();
-        _audioNodes.push({osc, g});
-      });
-
-      // Höhere Textur-Töne die sanft ein-/ausblenden
-      const luftFreq = [440, 554.4, 659.3]; // A4, C#5, E5
-      luftFreq.forEach((freq, i) => {
-        const osc = _audioCtx.createOscillator();
-        osc.type = 'sine';
-        osc.frequency.value = freq;
-        const g = _audioCtx.createGain();
-        g.gain.value = 0;
-        // Sinus-artige Modulation für "atmende" Lautstärke
-        const lfo = _audioCtx.createOscillator();
-        lfo.frequency.value = 0.05 + i * 0.03;
-        const lfoGain = _audioCtx.createGain();
-        lfoGain.gain.value = 0.08;
-        lfo.connect(lfoGain);
-        lfoGain.connect(g.gain);
-        osc.connect(g);
-        g.connect(filter);
-        osc.start(); lfo.start();
-        _audioNodes.push({osc, g, lfo, lfoGain});
-      });
-
-      // Gelegentliche Kuhglocken (alle 8-15 Sekunden)
-      const glocke = () => {
-        if(!_audioActive) return;
-        const t = _audioCtx.currentTime;
-        // Glockenton — kurze abklingende hohe Frequenz mit Obertönen
-        [880, 1320, 1760].forEach((f, i) => {
-          const o = _audioCtx.createOscillator();
-          o.type = 'triangle';
-          o.frequency.value = f + (Math.random() * 20 - 10);
-          const gg = _audioCtx.createGain();
-          gg.gain.setValueAtTime(0, t);
-          gg.gain.linearRampToValueAtTime(0.05 / (i+1), t + 0.02);
-          gg.gain.exponentialRampToValueAtTime(0.0001, t + 2 + i * 0.5);
-          o.connect(gg);
-          gg.connect(filter);
-          o.start(t);
-          o.stop(t + 3);
-        });
-        setTimeout(glocke, 8000 + Math.random() * 7000);
-      };
-      setTimeout(glocke, 3000);
-
-      console.log('[SaisonAbschluss] Ambient-Musik läuft');
-    } catch(e) {
-      console.warn('[SaisonAbschluss] Web Audio nicht verfügbar:', e);
+  // ── Number Count-Up-Animation ──────────────────────────────────────────────
+  function _startCountUp(el, target, duration) {
+    if(!el) return;
+    target = Number(target) || 0;
+    duration = duration || 1400;
+    const start = performance.now();
+    const ease = t => 1 - Math.pow(1 - t, 3);
+    function step(now) {
+      const t = Math.min(1, (now - start) / duration);
+      const v = Math.floor(target * ease(t));
+      el.textContent = v.toLocaleString('de-AT');
+      if(t < 1) requestAnimationFrame(step);
+      else el.textContent = target.toLocaleString('de-AT');
     }
+    requestAnimationFrame(step);
   }
 
-  function _stopAmbient() {
-    if(!_audioActive || !_audioCtx) return;
-    try {
-      const t = _audioCtx.currentTime;
-      _audioNodes.forEach(n => {
-        try {
-          if(n.g && n.g.gain) {
-            n.g.gain.cancelScheduledValues(t);
-            n.g.gain.linearRampToValueAtTime(0, t + 1);
-          }
-          if(n.osc) n.osc.stop(t + 1.2);
-          if(n.lfo) n.lfo.stop(t + 1.2);
-        } catch(e) {}
-      });
-      setTimeout(() => { try { _audioCtx.close(); } catch(e) {} _audioCtx = null; _audioNodes = []; _audioActive = false; }, 1500);
-    } catch(e) { _audioActive = false; }
-  }
-  window._saisonAbschlussStartAudio = _startAmbient;
-  window._saisonAbschlussStopAudio = _stopAmbient;
-  window._saisonAbschlussToggleMusik = function() {
-    if(_audioActive) _stopAmbient();
-    else _startAmbient();
-  };
-
-  // ── Rendering ──
-  function _renderSlide(slide, isTest, current, total) {
-    const testBadge = isTest ? '<div style="position:absolute;top:1rem;left:50%;transform:translateX(-50%);background:#c8003c;color:#fff;padding:.3rem .8rem;border-radius:20px;font-size:.7rem;font-weight:700;letter-spacing:.05em;z-index:20">🎬 VORSCHAU · NICHTS WIRD GESPEICHERT</div>' : '';
+  // ── Slide-Rendering ────────────────────────────────────────────────────────
+  function _renderSlide(sl, i, total, isTest) {
+    const bg = GRADIENTS[i % GRADIENTS.length];
     let body = '';
-    switch(slide.type) {
-      case 'title':
+    switch(sl.type) {
+      case 'hero':
         body = `
-          <div style="font-size:5rem;margin-bottom:1rem;animation:sa-pop .6s ease-out">${slide.icon||''}</div>
-          <div style="font-size:2.5rem;font-weight:700;color:var(--gold);margin-bottom:.5rem;animation:sa-fade .8s ease-out">${slide.title||''}</div>
-          ${slide.subtitle ? '<div style="font-size:1.2rem;color:var(--text2);margin-bottom:1.5rem;animation:sa-fade 1.2s ease-out">' + slide.subtitle + '</div>' : ''}
-          ${slide.big ? '<div style="font-size:1.4rem;color:var(--gold);font-style:italic;line-height:1.5;max-width:600px;margin:0 auto;animation:sa-fade 1.6s ease-out">' + slide.big + '</div>' : ''}
+          <div class="sa-kicker">${sl.kicker||''}</div>
+          <h1 class="sa-hero-title">${sl.title||''}</h1>
+          ${sl.subtitle ? '<div class="sa-subtitle">' + sl.subtitle + '</div>' : ''}
         `;
         break;
-      case 'spruch':
+      case 'quote':
+        body = `<div class="sa-quote">${sl.text}</div>`;
+        break;
+      case 'stat':
         body = `
-          <div style="font-size:2.5rem;color:var(--gold);opacity:.4;margin-bottom:1.5rem;animation:sa-fade 1s">"</div>
-          <div style="font-size:1.6rem;color:#f5e6b8;font-style:italic;line-height:1.5;max-width:700px;margin:0 auto;letter-spacing:.02em;animation:sa-fade 1.5s">${slide.text}</div>
-          <div style="font-size:2.5rem;color:var(--gold);opacity:.4;margin-top:1.5rem;transform:rotate(180deg);animation:sa-fade 2s">"</div>
+          <div class="sa-kicker">${sl.kicker}</div>
+          <div class="sa-stat"><span class="sa-count" data-target="${sl.value}">0</span>${sl.unit ? ' <span class="sa-unit">'+sl.unit+'</span>' : ''}</div>
+          ${sl.note ? '<div class="sa-note">' + sl.note + '</div>' : ''}
         `;
         break;
-      case 'zahl':
+      case 'hero-stat':
         body = `
-          <div style="font-size:4rem;margin-bottom:.5rem;animation:sa-pop .6s">${slide.icon||''}</div>
-          <div style="font-size:.9rem;color:var(--text3);letter-spacing:.15em;text-transform:uppercase;margin-bottom:.5rem;animation:sa-fade 1s">${slide.label}</div>
-          <div style="font-size:6rem;font-weight:800;color:var(--gold);line-height:1;margin-bottom:.5rem;animation:sa-pop 1s cubic-bezier(.16,1,.3,1)">${slide.zahl}${slide.einheit ? '<span style="font-size:2rem;color:var(--text2);margin-left:.3rem">' + slide.einheit + '</span>' : ''}</div>
-          ${slide.subtitle ? '<div style="font-size:1rem;color:var(--text2);animation:sa-fade 1.4s">' + slide.subtitle + '</div>' : ''}
+          <div class="sa-kicker">${sl.kicker}</div>
+          <div class="sa-hero-stat"><span class="sa-count" data-target="${sl.value}">0</span> <span class="sa-hero-unit">${sl.unit||''}</span></div>
+          ${sl.note ? '<div class="sa-note">' + sl.note + '</div>' : ''}
         `;
         break;
-      case 'zahl-big':
+      case 'dual-stat':
         body = `
-          <div style="font-size:5rem;margin-bottom:.5rem;animation:sa-pop .6s">${slide.icon||''}</div>
-          <div style="font-size:.9rem;color:var(--text3);letter-spacing:.15em;text-transform:uppercase;margin-bottom:.5rem;animation:sa-fade 1s">${slide.label}</div>
-          <div style="font-size:8rem;font-weight:800;color:${slide.farbe||'var(--gold)'};line-height:1;margin-bottom:.5rem;text-shadow:0 0 40px rgba(212,168,75,.5);animation:sa-pop 1s cubic-bezier(.16,1,.3,1)">${slide.zahl}<span style="font-size:2.5rem;color:var(--text2);margin-left:.4rem">${slide.einheit||''}</span></div>
-          ${slide.subtitle ? '<div style="font-size:1.1rem;color:var(--text2);animation:sa-fade 1.4s">' + slide.subtitle + '</div>' : ''}
-        `;
-        break;
-      case 'zwei-zahlen':
-        body = `
-          <div style="font-size:3.5rem;margin-bottom:.5rem;animation:sa-pop .6s">${slide.icon||''}</div>
-          <div style="font-size:.9rem;color:var(--text3);letter-spacing:.15em;text-transform:uppercase;margin-bottom:1rem;animation:sa-fade 1s">${slide.label}</div>
-          <div style="display:flex;justify-content:center;gap:3rem;animation:sa-fade 1.2s">
-            <div>
-              <div style="font-size:3rem;font-weight:800;color:var(--gold)">${slide.links.wert}</div>
-              <div style="color:var(--text3);margin-top:.3rem">${slide.links.label}</div>
+          <div class="sa-dual">
+            <div class="sa-dual-half">
+              <div class="sa-dual-label">${sl.links.label}</div>
+              <div class="sa-dual-value"><span class="sa-count" data-target="${sl.links.value}">0</span> ${sl.links.unit||''}</div>
             </div>
-            <div style="width:1px;background:var(--border)"></div>
-            <div>
-              <div style="font-size:3rem;font-weight:800;color:var(--gold)">${slide.rechts.wert}</div>
-              <div style="color:var(--text3);margin-top:.3rem">${slide.rechts.label}</div>
+            <div class="sa-dual-line"></div>
+            <div class="sa-dual-half">
+              <div class="sa-dual-label">${sl.rechts.label}</div>
+              <div class="sa-dual-value"><span class="sa-count" data-target="${sl.rechts.value}">0</span> ${sl.rechts.unit||''}</div>
             </div>
           </div>
         `;
         break;
-      case 'rekord':
+      case 'record':
         body = `
-          <div style="font-size:4rem;margin-bottom:.5rem;animation:sa-pop .6s">${slide.icon||''}</div>
-          <div style="font-size:.9rem;color:var(--text3);letter-spacing:.15em;text-transform:uppercase;margin-bottom:.5rem;animation:sa-fade 1s">${slide.label}</div>
-          <div style="font-size:4rem;font-weight:800;color:var(--gold);line-height:1.1;margin-bottom:.5rem;animation:sa-pop 1s">${slide.big}</div>
-          ${slide.subtitle ? '<div style="font-size:1.1rem;color:var(--text2);animation:sa-fade 1.4s">' + slide.subtitle + '</div>' : ''}
+          <div class="sa-kicker">${sl.kicker}</div>
+          <div class="sa-record">${sl.big}</div>
+          ${sl.note ? '<div class="sa-note">' + sl.note + '</div>' : ''}
         `;
         break;
-      case 'top3':
+      case 'podium':
         body = `
-          <div style="font-size:3.5rem;margin-bottom:.5rem;animation:sa-pop .6s">${slide.icon||''}</div>
-          <div style="font-size:.9rem;color:var(--text3);letter-spacing:.15em;text-transform:uppercase;margin-bottom:1.2rem;animation:sa-fade 1s">${slide.label}</div>
-          <div style="max-width:500px;margin:0 auto">
-            ${slide.items.map((it,i) => {
-              const medaille = ['🥇','🥈','🥉'][i] || '';
-              const delay = 1 + i * 0.3;
-              return '<div style="display:flex;justify-content:space-between;align-items:center;padding:.7rem 1rem;background:rgba(212,168,75,.08);border:1px solid rgba(212,168,75,.25);border-radius:12px;margin-bottom:.4rem;animation:sa-slidein '+delay+'s ease-out both">' +
-                '<span style="font-size:1.5rem">'+medaille+'</span>' +
-                '<span style="flex:1;text-align:left;padding-left:.8rem;font-size:1.05rem;color:var(--text)">'+it.name+'</span>' +
-                '<span style="font-size:1.1rem;font-weight:700;color:var(--gold)">'+it.wert+'</span>' +
+          <div class="sa-kicker">${sl.kicker}</div>
+          <div class="sa-podium">
+            ${sl.items.map((it, idx) => {
+              const medals = ['🥇', '🥈', '🥉'];
+              return '<div class="sa-podium-item" style="animation-delay:' + (0.3 + idx * 0.25) + 's">' +
+                '<span class="sa-podium-medal">' + medals[idx] + '</span>' +
+                '<span class="sa-podium-name">' + it.name + '</span>' +
+                '<span class="sa-podium-value">' + it.value + '</span>' +
               '</div>';
             }).join('')}
           </div>
         `;
         break;
-      case 'liste':
-        body = `
-          <div style="font-size:3.5rem;margin-bottom:.5rem;animation:sa-pop .6s">${slide.icon||''}</div>
-          <div style="font-size:.9rem;color:var(--text3);letter-spacing:.15em;text-transform:uppercase;margin-bottom:1.2rem;animation:sa-fade 1s">${slide.label}</div>
-          <div style="max-width:500px;margin:0 auto">
-            ${slide.items.map((it,i) => '<div style="display:flex;justify-content:space-between;padding:.5rem .8rem;border-bottom:1px solid var(--border);font-size:1rem;animation:sa-fade '+(1+i*0.15)+'s">' +
-              '<span style="color:var(--text)">'+it.name+'</span>' +
-              '<span style="color:var(--gold);font-weight:600">'+it.wert+'</span>' +
-            '</div>').join('')}
-          </div>
-        `;
-        break;
-      case 'warnung':
-        body = `
-          <div style="font-size:5rem;margin-bottom:.5rem;color:#ff9632;animation:sa-pop .6s">${slide.icon||''}</div>
-          <div style="font-size:1.5rem;font-weight:700;color:#ff9632;margin-bottom:1rem;animation:sa-fade 1s">${slide.label}</div>
-          <div style="font-size:1.1rem;color:var(--text);max-width:500px;margin:0 auto;line-height:1.5;white-space:pre-wrap;animation:sa-fade 1.4s">${slide.text}</div>
-        `;
-        break;
       case 'final':
         body = `
-          <div style="font-size:5rem;margin-bottom:1rem;animation:sa-pop .6s">${slide.icon||''}</div>
-          <div style="font-size:2rem;font-weight:700;color:var(--gold);margin-bottom:.5rem;animation:sa-fade 1s">${slide.title}</div>
-          <div style="font-size:1.1rem;color:var(--text2);margin-bottom:2rem;animation:sa-fade 1.4s">${slide.subtitle||''}</div>
-          ${!slide.isTest ? '<button onclick="saisonAbschlussEndgueltig()" style="background:var(--gold);color:#0a0800;border:none;padding:1rem 2rem;border-radius:14px;font-size:1.1rem;font-weight:700;cursor:pointer;box-shadow:0 4px 20px rgba(212,168,75,.4);animation:sa-pop 1.8s">🏔 Saison offiziell abschließen</button>' : '<div style="color:var(--text3);font-style:italic">Dies ist nur eine Vorschau.</div>'}
+          <div class="sa-kicker">${sl.isTest ? 'Ende der Vorschau' : 'Bereit für den Abschluss'}</div>
+          <div class="sa-final-icon">🏔</div>
+          ${sl.isTest
+            ? '<div class="sa-note">Die Saison bleibt aktiv. Nichts wurde geändert.</div>'
+            : '<button onclick="saisonAbschlussEndgueltig()" class="sa-final-btn">Saison offiziell abschließen</button>'
+          }
         `;
         break;
     }
     return `
-      <div style="position:relative;width:100%;height:100%;display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center;padding:2rem;box-sizing:border-box">
-        ${testBadge}
-        <div style="max-width:800px;width:100%">${body}</div>
+      <div class="sa-bg" style="background: ${bg}"></div>
+      <div class="sa-content-outer">
+        <div class="sa-content-inner">${body}</div>
       </div>
     `;
   }
 
-  // ── Hauptfunktion ──
+  // ══════════════════════════════════════════════════════════════════════════
+  // AMBIENT: piano-artige Klänge mit ADSR + langem Reverb-Tail
+  // ══════════════════════════════════════════════════════════════════════════
+  let _audio = null;
+  let _audioTimer = null;
+  let _audioOn = false;
+
+  function _startAudio() {
+    if(_audioOn) return;
+    try {
+      const ctx = new (window.AudioContext || window.webkitAudioContext)();
+      _audio = { ctx };
+      _audioOn = true;
+
+      // Master + Kompressor
+      const master = ctx.createGain();
+      master.gain.setValueAtTime(0, ctx.currentTime);
+      master.gain.linearRampToValueAtTime(0.2, ctx.currentTime + 4);
+      const comp = ctx.createDynamicsCompressor();
+      comp.threshold.value = -18; comp.ratio.value = 4;
+      master.connect(comp); comp.connect(ctx.destination);
+
+      // "Reverb"-Emulation via mehrere Delays
+      const delay1 = ctx.createDelay(2); delay1.delayTime.value = 0.28;
+      const delay2 = ctx.createDelay(2); delay2.delayTime.value = 0.53;
+      const delay3 = ctx.createDelay(2); delay3.delayTime.value = 0.87;
+      const feedback = ctx.createGain(); feedback.gain.value = 0.35;
+      const filter = ctx.createBiquadFilter();
+      filter.type = 'lowpass'; filter.frequency.value = 1200;
+      delay1.connect(delay2); delay2.connect(delay3);
+      delay3.connect(filter); filter.connect(feedback); feedback.connect(delay1);
+      delay1.connect(master); delay2.connect(master); delay3.connect(master);
+
+      _audio.master = master;
+      _audio.reverbIn = delay1;
+
+      // Piano-artige Note spielen (ADSR envelope, mehrere Sinusoide für Obertöne)
+      function playNote(freq, duration, volume) {
+        const t = ctx.currentTime;
+        volume = volume || 0.3;
+        [1, 2, 3].forEach((harmonic, i) => {
+          const osc = ctx.createOscillator();
+          osc.type = i === 0 ? 'triangle' : 'sine';
+          osc.frequency.value = freq * harmonic;
+          const g = ctx.createGain();
+          g.gain.setValueAtTime(0, t);
+          g.gain.linearRampToValueAtTime(volume / (harmonic * 1.5), t + 0.02);  // attack
+          g.gain.exponentialRampToValueAtTime(volume / (harmonic * 3), t + 0.3); // decay
+          g.gain.exponentialRampToValueAtTime(0.0001, t + duration);              // release
+          osc.connect(g);
+          g.connect(master);
+          g.connect(_audio.reverbIn);  // Reverb-Sends
+          osc.start(t);
+          osc.stop(t + duration + 0.1);
+        });
+      }
+
+      // Sanfte Ambient-Progression (langsam, in A-Dur, kein Rhythmus, meditativ)
+      const noten = {
+        A2: 110, A3: 220, C4: 261.6, D4: 293.7, E4: 329.6, A4: 440, C5: 523.3, E5: 659.3, A5: 880
+      };
+      // Chord-Progressionen: Am, F, C, G — klassisch melancholisch
+      const progressionen = [
+        [noten.A2, noten.E4, noten.A4, noten.C5],  // Am
+        [noten.A2, noten.C4, noten.E4, noten.A4],
+        [noten.A2, noten.D4, noten.E4, noten.A4],
+        [noten.A2, noten.E4, noten.C5, noten.E5]
+      ];
+      let progIdx = 0;
+
+      function spielSchleife() {
+        if(!_audioOn) return;
+        const chord = progressionen[progIdx % progressionen.length];
+        // Bassnote (lange)
+        playNote(chord[0], 8, 0.22);
+        // Akkord-Noten leicht versetzt spielen (arpeggio)
+        chord.slice(1).forEach((n, i) => {
+          setTimeout(() => { if(_audioOn) playNote(n, 5, 0.14); }, 400 + i * 800);
+        });
+        // Zufällige hohe Melodie-Note (nur manchmal)
+        if(Math.random() > 0.4) {
+          setTimeout(() => {
+            if(!_audioOn) return;
+            const melody = [noten.A4, noten.C5, noten.E5, noten.A5];
+            playNote(melody[Math.floor(Math.random() * melody.length)], 3, 0.1);
+          }, 2500 + Math.random() * 2000);
+        }
+        progIdx++;
+        _audioTimer = setTimeout(spielSchleife, 6000);
+      }
+      spielSchleife();
+      console.log('[SA] Piano-Ambient läuft');
+    } catch(e) { console.warn('[SA] Web Audio fail:', e); }
+  }
+
+  function _stopAudio() {
+    if(!_audioOn) return;
+    _audioOn = false;
+    if(_audioTimer) clearTimeout(_audioTimer);
+    if(_audio && _audio.ctx) {
+      try {
+        const t = _audio.ctx.currentTime;
+        if(_audio.master && _audio.master.gain) {
+          _audio.master.gain.cancelScheduledValues(t);
+          _audio.master.gain.linearRampToValueAtTime(0, t + 1.5);
+        }
+        setTimeout(() => { try { _audio.ctx.close(); } catch(e) {} _audio = null; }, 1800);
+      } catch(e) { _audio = null; }
+    }
+  }
+
+  window._saTogAudio = () => { if(_audioOn) _stopAudio(); else _startAudio(); };
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // Overlay + Navigation
+  // ══════════════════════════════════════════════════════════════════════════
   window.zeigeSaisonAbschluss = function(isTest) {
     isTest = !!isTest;
-    // Alte Instanz löschen
-    const alt = document.getElementById('saison-abschluss-overlay');
-    if(alt) alt.remove();
-    _stopAmbient(); // falls schon läuft
+    document.getElementById('sa-overlay')?.remove();
+    _stopAudio();
 
-    const data = _computeSaisonData();
-    const slides = _buildSlides(data, isTest);
+    const data = _data();
+    const slides = _slides(data, isTest);
     let current = 0;
 
-    // Ambient-Musik starten (User-Klick auf Vorschau-Button zählt als Interaktion → autoplay OK)
-    setTimeout(_startAmbient, 300);
+    // Style einmalig injizieren
+    if(!document.getElementById('sa-styles')) {
+      const st = document.createElement('style');
+      st.id = 'sa-styles';
+      st.textContent = `
+        #sa-overlay { position:fixed; inset:0; z-index:9999; overflow:hidden; font-family:Georgia,'Times New Roman',serif; color:#fff; }
+        #sa-overlay .sa-bg { position:absolute; inset:0; opacity:0; transition:opacity 1.2s ease; z-index:1; will-change:opacity; }
+        #sa-overlay .sa-bg.sa-active { opacity:1; }
+        #sa-overlay .sa-content-outer { position:absolute; inset:0; z-index:2; display:flex; align-items:center; justify-content:center; padding:2rem; box-sizing:border-box; }
+        #sa-overlay .sa-content-inner { max-width:800px; width:100%; text-align:center; opacity:0; transform:scale(1); transition:opacity .8s ease .2s, transform 6s ease; will-change:opacity,transform; }
+        #sa-overlay .sa-content-inner.sa-active { opacity:1; transform:scale(1.04); }
+        #sa-overlay .sa-testbadge { position:absolute; top:1.4rem; left:50%; transform:translateX(-50%); background:rgba(200,0,60,.9); color:#fff; padding:.35rem 1rem; border-radius:20px; font-size:.7rem; font-weight:700; letter-spacing:.1em; font-family:sans-serif; z-index:10; text-transform:uppercase; }
+        #sa-overlay .sa-topbar { position:absolute; top:1rem; right:1rem; display:flex; gap:.4rem; z-index:10; }
+        #sa-overlay .sa-topbtn { background:rgba(255,255,255,.12); backdrop-filter:blur(10px); color:#fff; border:none; width:42px; height:42px; border-radius:50%; font-size:1.1rem; cursor:pointer; display:flex; align-items:center; justify-content:center; transition:background .2s; }
+        #sa-overlay .sa-topbtn:hover { background:rgba(255,255,255,.22); }
+        #sa-overlay .sa-navbar { position:absolute; bottom:0; left:0; right:0; padding:1.2rem 1.5rem; background:linear-gradient(to top, rgba(0,0,0,.5), transparent); z-index:10; display:flex; align-items:center; gap:1rem; font-family:sans-serif; }
+        #sa-overlay .sa-progress { flex:1; height:3px; background:rgba(255,255,255,.15); border-radius:2px; overflow:hidden; }
+        #sa-overlay .sa-progress-fill { height:100%; background:#e8d9a8; transition:width .5s ease; }
+        #sa-overlay .sa-navbtn { background:rgba(255,255,255,.14); color:#fff; border:none; padding:.6rem 1.4rem; border-radius:24px; font-size:.9rem; cursor:pointer; font-family:sans-serif; font-weight:500; transition:background .2s; }
+        #sa-overlay .sa-navbtn:hover { background:rgba(255,255,255,.24); }
+        #sa-overlay .sa-navbtn:disabled { opacity:.3; cursor:default; }
+        #sa-overlay .sa-navcount { color:rgba(255,255,255,.6); font-size:.8rem; letter-spacing:.05em; }
+
+        /* Typographie */
+        #sa-overlay .sa-kicker { font-family:sans-serif; font-size:.75rem; letter-spacing:.3em; text-transform:uppercase; color:rgba(255,255,255,.55); margin-bottom:1.5rem; font-weight:500; }
+        #sa-overlay .sa-hero-title { font-size:clamp(3rem, 8vw, 5.5rem); font-weight:400; letter-spacing:-.02em; line-height:1; margin:0 0 1.2rem 0; color:#f5e6b8; text-shadow:0 4px 30px rgba(0,0,0,.4); }
+        #sa-overlay .sa-subtitle { font-size:clamp(1rem, 2vw, 1.4rem); color:rgba(255,255,255,.7); font-style:italic; }
+        #sa-overlay .sa-quote { font-size:clamp(1.5rem, 3.5vw, 2.5rem); line-height:1.4; color:#f5e6b8; font-style:italic; max-width:700px; margin:0 auto; letter-spacing:-.005em; text-shadow:0 2px 20px rgba(0,0,0,.4); }
+        #sa-overlay .sa-stat { font-size:clamp(4rem, 12vw, 8rem); font-weight:400; color:#f5e6b8; line-height:1; margin:.5rem 0; letter-spacing:-.03em; text-shadow:0 4px 40px rgba(0,0,0,.4); }
+        #sa-overlay .sa-hero-stat { font-size:clamp(5rem, 15vw, 10rem); font-weight:400; color:#f5e6b8; line-height:.9; margin:.5rem 0; letter-spacing:-.04em; text-shadow:0 4px 50px rgba(0,0,0,.5); }
+        #sa-overlay .sa-unit { font-size:.35em; color:rgba(255,255,255,.6); font-style:italic; }
+        #sa-overlay .sa-hero-unit { font-size:.3em; color:rgba(255,255,255,.6); font-style:italic; }
+        #sa-overlay .sa-note { font-size:clamp(.9rem, 1.8vw, 1.2rem); color:rgba(255,255,255,.7); font-style:italic; margin-top:1rem; }
+        #sa-overlay .sa-record { font-size:clamp(3rem, 8vw, 5rem); color:#f5e6b8; font-weight:400; line-height:1; margin:.5rem 0; letter-spacing:-.02em; text-shadow:0 4px 30px rgba(0,0,0,.4); }
+
+        #sa-overlay .sa-dual { display:flex; gap:2rem; align-items:center; justify-content:center; max-width:700px; margin:0 auto; }
+        #sa-overlay .sa-dual-half { flex:1; }
+        #sa-overlay .sa-dual-label { font-family:sans-serif; font-size:.7rem; letter-spacing:.2em; text-transform:uppercase; color:rgba(255,255,255,.55); margin-bottom:.6rem; }
+        #sa-overlay .sa-dual-value { font-size:clamp(2.5rem, 6vw, 4rem); color:#f5e6b8; font-weight:400; letter-spacing:-.02em; }
+        #sa-overlay .sa-dual-line { width:1px; height:60%; background:rgba(255,255,255,.15); }
+
+        #sa-overlay .sa-podium { display:flex; flex-direction:column; gap:.6rem; max-width:560px; margin:0 auto; }
+        #sa-overlay .sa-podium-item { display:flex; align-items:center; gap:.9rem; padding:.9rem 1.3rem; background:rgba(255,255,255,.06); backdrop-filter:blur(10px); border:1px solid rgba(255,255,255,.1); border-radius:14px; opacity:0; animation:sa-podium-in .8s ease forwards; font-family:Georgia,serif; }
+        #sa-overlay .sa-podium-medal { font-size:1.5rem; }
+        #sa-overlay .sa-podium-name { flex:1; text-align:left; font-size:1.1rem; color:#fff; }
+        #sa-overlay .sa-podium-value { font-size:1.15rem; color:#f5e6b8; font-weight:500; }
+
+        #sa-overlay .sa-final-icon { font-size:5rem; margin:1.5rem 0; }
+        #sa-overlay .sa-final-btn { background:linear-gradient(135deg,#e8d9a8,#c9b280); color:#0a0800; border:none; padding:1.1rem 2.4rem; border-radius:32px; font-size:1.1rem; font-weight:600; cursor:pointer; font-family:sans-serif; letter-spacing:.02em; box-shadow:0 8px 30px rgba(0,0,0,.4); transition:transform .2s; }
+        #sa-overlay .sa-final-btn:hover { transform:scale(1.03); }
+
+        @keyframes sa-podium-in { from{opacity:0;transform:translateX(-30px)} to{opacity:1;transform:translateX(0)} }
+      `;
+      document.head.appendChild(st);
+    }
 
     const ov = document.createElement('div');
-    ov.id = 'saison-abschluss-overlay';
-    ov.style.cssText = 'position:fixed;inset:0;z-index:9999;background:linear-gradient(160deg,#0a1a04 0%,#1a3a0a 50%,#0d2e03 100%);color:var(--text);display:flex;flex-direction:column;overflow:hidden';
-
-    // CSS für Animationen
-    const styleEl = document.createElement('style');
-    styleEl.textContent = `
-      @keyframes sa-pop { from{opacity:0;transform:scale(.8)} to{opacity:1;transform:scale(1)} }
-      @keyframes sa-fade { from{opacity:0} to{opacity:1} }
-      @keyframes sa-slidein { from{opacity:0;transform:translateX(-30px)} to{opacity:1;transform:translateX(0)} }
-      #sa-slide-content { animation: sa-fade .4s ease-out; }
-    `;
-    ov.appendChild(styleEl);
-
-    function drawFrame() {
-      ov.innerHTML =
-        styleEl.outerHTML +
-        // Close-Button
-        '<button onclick="_saisonAbschlussToggleMusik()" title="Musik an/aus" style="position:absolute;top:1rem;right:4rem;background:rgba(255,255,255,.1);color:#fff;border:none;width:40px;height:40px;border-radius:50%;font-size:1.1rem;cursor:pointer;z-index:20">🎵</button>' +
-        '<button onclick="_saisonAbschlussStopAudio();document.getElementById(\'saison-abschluss-overlay\').remove()" style="position:absolute;top:1rem;right:1rem;background:rgba(255,255,255,.1);color:#fff;border:none;width:40px;height:40px;border-radius:50%;font-size:1.3rem;cursor:pointer;z-index:20">✕</button>' +
-        // Slide-Content
-        '<div id="sa-slide-content" style="flex:1;overflow-y:auto">' + _renderSlide(slides[current], isTest, current, slides.length) + '</div>' +
-        // Fortschritts-Punkte
-        '<div style="display:flex;justify-content:center;gap:.3rem;padding:.5rem">' +
-          slides.map((_, i) => '<div style="width:8px;height:8px;border-radius:50%;background:' + (i === current ? 'var(--gold)' : 'rgba(255,255,255,.2)') + ';transition:all .3s' + (i === current ? ';transform:scale(1.4)' : '') + '"></div>').join('') +
-        '</div>' +
-        // Navigation
-        '<div style="display:flex;gap:.5rem;padding:1rem;background:rgba(0,0,0,.3)">' +
-          '<button onclick="_saisonAbschlussPrev()" style="flex:1;background:var(--bg3);color:var(--text);border:1px solid var(--border);padding:.8rem;border-radius:10px;font-size:1rem;cursor:pointer' + (current === 0 ? ';opacity:.3' : '') + '"' + (current === 0 ? ' disabled' : '') + '>◂ Zurück</button>' +
-          '<div style="flex:0 0 auto;padding:.8rem;color:var(--text3);font-size:.85rem;align-self:center">' + (current + 1) + ' / ' + slides.length + '</div>' +
-          '<button onclick="_saisonAbschlussNext()" style="flex:1;background:var(--gold);color:#0a0800;border:none;padding:.8rem;border-radius:10px;font-size:1rem;font-weight:700;cursor:pointer' + (current === slides.length - 1 ? ';opacity:.3' : '') + '"' + (current === slides.length - 1 ? ' disabled' : '') + '>Weiter ▸</button>' +
-        '</div>';
-      // Style-Element nach dem Rewrite neu appenden
-      const s = document.createElement('style');
-      s.textContent = styleEl.textContent;
-      ov.appendChild(s);
-    }
-
-    window._saisonAbschlussNext = function() {
-      if(current < slides.length - 1) { current++; drawFrame(); }
-    };
-    window._saisonAbschlussPrev = function() {
-      if(current > 0) { current--; drawFrame(); }
-    };
-
-    drawFrame();
+    ov.id = 'sa-overlay';
     document.body.appendChild(ov);
-  };
 
-  // Endgültiger Abschluss (nur wenn nicht im Test-Modus)
-  window.saisonAbschlussEndgueltig = function() {
-    if(!confirm('Saison wirklich abschließen?\n\nAlle Kühe werden auf almStatus „unten" gesetzt.\nDie Saison wird archiviert.\n\nDas kann nicht rückgängig gemacht werden.')) return;
-    if(typeof window.saveSaisonArchiv === 'function') {
-      window.saveSaisonArchiv();
-    } else if(typeof window.saveAbtrieb === 'function') {
-      window.saveAbtrieb();
-    } else {
-      alert('Archiv-Funktion nicht gefunden. Bitte manuell im Saison-Blatt abschließen.');
+    setTimeout(_startAudio, 400);
+
+    function draw() {
+      const slide = slides[current];
+      ov.innerHTML =
+        (isTest ? '<div class="sa-testbadge">🎬 Vorschau · nichts wird gespeichert</div>' : '') +
+        '<div class="sa-topbar">' +
+          '<button class="sa-topbtn" onclick="_saTogAudio()" title="Musik">🎵</button>' +
+          '<button class="sa-topbtn" onclick="_saCloseOverlay()" title="Schließen">✕</button>' +
+        '</div>' +
+        _renderSlide(slide, current, slides.length, isTest) +
+        '<div class="sa-navbar">' +
+          '<button class="sa-navbtn" onclick="_saPrev()"' + (current === 0 ? ' disabled' : '') + '>◂</button>' +
+          '<div class="sa-progress"><div class="sa-progress-fill" style="width:' + Math.round((current+1)/slides.length*100) + '%"></div></div>' +
+          '<div class="sa-navcount">' + (current+1) + ' / ' + slides.length + '</div>' +
+          '<button class="sa-navbtn" onclick="_saNext()"' + (current === slides.length-1 ? ' disabled' : '') + '>▸</button>' +
+        '</div>';
+
+      // Aktivieren nach reflow (für CSS-Transitions)
+      requestAnimationFrame(() => {
+        ov.querySelector('.sa-bg')?.classList.add('sa-active');
+        ov.querySelector('.sa-content-inner')?.classList.add('sa-active');
+      });
+      // Count-Up-Animationen starten
+      setTimeout(() => {
+        ov.querySelectorAll('.sa-count').forEach(el => _startCountUp(el, parseInt(el.dataset.target) || 0, 1400));
+      }, 400);
     }
-    document.getElementById('saison-abschluss-overlay')?.remove();
+
+    window._saNext = function() { if(current < slides.length-1) { current++; draw(); } };
+    window._saPrev = function() { if(current > 0) { current--; draw(); } };
+    window._saCloseOverlay = function() { _stopAudio(); ov.remove(); };
+
+    // Keyboard Navigation
+    ov.tabIndex = 0;
+    ov.addEventListener('keydown', e => {
+      if(e.key === 'ArrowRight' || e.key === ' ') { e.preventDefault(); window._saNext(); }
+      else if(e.key === 'ArrowLeft') { e.preventDefault(); window._saPrev(); }
+      else if(e.key === 'Escape') window._saCloseOverlay();
+    });
+    setTimeout(() => ov.focus(), 100);
+
+    draw();
   };
 
-  console.log('[Saison-Abschluss] Modul geladen v' + VERSION);
+  window.saisonAbschlussEndgueltig = function() {
+    if(!confirm('Saison wirklich abschließen?\n\nAlle Kühe werden auf „unten" gesetzt.\nDie Saison wird archiviert.\n\nDas kann nicht rückgängig gemacht werden.')) return;
+    if(typeof window.saveSaisonArchiv === 'function') window.saveSaisonArchiv();
+    else if(typeof window.saveAbtrieb === 'function') window.saveAbtrieb();
+    else alert('Archiv-Funktion nicht gefunden.');
+    document.getElementById('sa-overlay')?.remove();
+    _stopAudio();
+  };
+
+  console.log('[SaisonAbschluss] v' + VERSION + ' geladen');
 })();
