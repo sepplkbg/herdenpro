@@ -74,15 +74,26 @@ function renderDashboard() {
     }
   });
 
-  // Letzte Milch heute
+  // Letzte Milch heute — ISO-Vergleich für Timezone-Sicherheit
+  const heuteIso = new Date(heute).toISOString().slice(0,10);
   const heuteMilch = Object.values(milchEintraege).filter(m => {
-    const d = new Date(m.datum);
-    const h = new Date(heute);
-    return d.getDate()===h.getDate() && d.getMonth()===h.getMonth() && d.getFullYear()===h.getFullYear();
+    if(!m || !m.datum) return false;
+    return new Date(m.datum).toISOString().slice(0,10) === heuteIso;
   });
-  const heuteMilchL = heuteMilch.reduce((s,m)=>s+(m.gesamt||0),0);
-  const heuteMorgens = heuteMilch.filter(m=>m.zeit==='morgen').length > 0;
-  const heuteAbends = heuteMilch.filter(m=>m.zeit==='abend').length > 0;
+  // heuteMilchL: gesamt-Feld ODER prokuh-Summe (v2-Einträge haben oft kein gesamt-Feld!)
+  const _mWh = window.milchWert || function(v){ return typeof v === 'number' ? v : (v && v.wert != null ? parseFloat(v.wert)||0 : parseFloat(v)||0); };
+  const heuteMilchL = heuteMilch.reduce((s,m) => {
+    if(m.gesamt) return s + m.gesamt;
+    // Fallback: prokuh-Werte summieren
+    if(m.prokuh) {
+      let sum = 0;
+      Object.values(m.prokuh).forEach(v => sum += _mWh(v));
+      return s + sum;
+    }
+    return s;
+  }, 0);
+  const heuteMorgens = heuteMilch.filter(m => m.zeit === 'morgen' || !m.zeit).length > 0;
+  const heuteAbends = heuteMilch.filter(m => m.zeit === 'abend').length > 0;
 
   // Tränke: heute noch nicht kontrolliert (nur wenn Verlauf vorhanden)
   const traenkeHeute = Object.values(traenkeLog).some(t=>t.datum===new Date(heute).toISOString().slice(0,10));

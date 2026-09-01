@@ -659,6 +659,33 @@ function handleSyncError(err, op) {
     localStorage.setItem('milchSyncErrorLog', JSON.stringify(log));
   } catch(e) {}
   updateSyncBanner();
+
+  // ── STILLE AUTO-RECOVERY: bei JEDEM Fehler versucht die App im Hintergrund
+  // sich neu anzumelden. Wenn Auto-Login gespeichert ist und klappt →
+  // User merkt nichts, sync läuft automatisch weiter.
+  if(!window._milchSilentAutoRetryPending) {
+    window._milchSilentAutoRetryPending = true;
+    setTimeout(async () => {
+      try {
+        const stored = localStorage.getItem('hp_autoauth');
+        if(!stored) { window._milchSilentAutoRetryPending = false; return; }
+        // Wenn currentUser fehlt → Auto-Login
+        if(!(typeof firebase !== 'undefined' && firebase.auth && firebase.auth().currentUser)) {
+          try {
+            const decoded = JSON.parse(decodeURIComponent(escape(atob(stored))));
+            if(decoded && decoded.e && decoded.p) {
+              console.log('[Milch v2] Stille Auto-Recovery: Auto-Login versucht');
+              await firebase.auth().signInWithEmailAndPassword(decoded.e, decoded.p);
+              await new Promise(r => setTimeout(r, 1500));
+            }
+          } catch(e) { console.warn('[Milch v2] Silent Auto-Login:', e.code||e.message); }
+        }
+        // Token refresh + Smart Retry (deckt beide Cases ab: nur Token abgelaufen oder komplett neu angemeldet)
+        if(window.milchSmartRetry) await window.milchSmartRetry();
+      } catch(e) { console.warn('[Milch v2] Silent recovery:', e); }
+      finally { setTimeout(() => { window._milchSilentAutoRetryPending = false; }, 10000); }
+    }, 2000);
+  }
   // Toast (nur einmal pro Session, nicht spammen)
   if(!window._milchErrorToastShown && window.showSaveToast) {
     window._milchErrorToastShown = true;
@@ -2139,18 +2166,31 @@ window.addEventListener('load', () => {
   setTimeout(toggleSystemOfflineBanner, 500);
 });
 
-// Retry-Loop alle 30s: Smart Retry (READ-Confirm bevor neu geschrieben wird)
-setInterval(() => {
-  if(navigator.onLine && countPending() > 0) {
-    // Erst still confirmen (Werte die schon am Server sind → aus pending raus)
-    if(window._milchConfirmAllPendingSilent) {
-      window._milchConfirmAllPendingSilent().then(() => {
-        // Dann nur den Rest neu schreiben
-        if(countPending() > 0) syncMilchPending();
-      }).catch(() => { syncMilchPending(); });
-    } else {
-      syncMilchPending();
+// Retry-Loop alle 30s: bei Auth-Verlust auto-login, dann Smart Retry
+setInterval(async () => {
+  if(!navigator.onLine || countPending() === 0) return;
+  // Prüfen ob Auth OK — sonst still auto-login versuchen
+  const hasAuth = typeof firebase !== 'undefined' && firebase.auth && firebase.auth().currentUser;
+  if(!hasAuth) {
+    const stored = localStorage.getItem('hp_autoauth');
+    if(stored) {
+      try {
+        const decoded = JSON.parse(decodeURIComponent(escape(atob(stored))));
+        if(decoded && decoded.e && decoded.p) {
+          console.log('[Milch v2] 30s-Loop: Auto-Login (currentUser war null)');
+          await firebase.auth().signInWithEmailAndPassword(decoded.e, decoded.p);
+          await new Promise(r => setTimeout(r, 1500));
+        }
+      } catch(e) { console.warn('[Milch v2] 30s Auto-Login:', e.code||e.message); }
     }
+  }
+  // Confirm + Retry
+  if(window._milchConfirmAllPendingSilent) {
+    window._milchConfirmAllPendingSilent().then(() => {
+      if(countPending() > 0) syncMilchPending();
+    }).catch(() => { syncMilchPending(); });
+  } else {
+    syncMilchPending();
   }
 }, 30000);
 
