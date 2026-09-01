@@ -3098,7 +3098,9 @@ function renderSaison() {
     <div class="section-title">Saisonende</div>
     <div class="card-section" style="border-color:var(--red)">
       <p style="font-size:.8rem;color:var(--text2);margin-bottom:.6rem">Wenn alle Kühe abgetrieben wurden, hier den Abtrieb erfassen. Die Alpungstage werden dann berechnet.</p>
-      <button class="btn-primary" style="background:var(--red);border-color:var(--red);width:100%" onclick="showAbtriebbForm()">↓ Abtrieb erfassen &amp; Saison beenden</button>
+      <button class="btn-primary" style="background:var(--red);border-color:var(--red);width:100%;margin-bottom:.5rem" onclick="showAbtriebbForm()">↓ Abtrieb erfassen &amp; Saison beenden</button>
+      <!-- NEU: Saison-Abschluss-Slideshow (VORSCHAU) -->
+      <button class="btn-secondary" style="width:100%;background:linear-gradient(135deg,var(--gold),var(--gold2));color:#0a0800;border:none;font-weight:700" onclick="zeigeSaisonAbschluss(true)">🎬 Saison-Slideshow VORSCHAU (nichts wird geändert)</button>
     </div>
     `}
 
