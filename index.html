@@ -19,11 +19,11 @@
 ═══════════════════════════════════════════════════════════════════════════ -->
 <script>
 // Force clear cache if version changed
-if(localStorage.getItem('hp_version') !== 'v52.0') {
+if(localStorage.getItem('hp_version') !== 'v52.2') {
   localStorage.removeItem('mainNav');
   localStorage.removeItem('mehrOrder');
   localStorage.removeItem('mehrOrder');
-  localStorage.setItem('hp_version','v52.0');
+  localStorage.setItem('hp_version','v52.2');
   // Force SW update
   if('serviceWorker' in navigator) {
     navigator.serviceWorker.getRegistrations().then(function(regs) {
@@ -39,8 +39,8 @@ if(localStorage.getItem('hp_version') !== 'v52.0') {
       });
     }
     // Reload once after clearing
-    if(!sessionStorage.getItem('reloaded_v52_0')) {
-      sessionStorage.setItem('reloaded_v52_0','1');
+    if(!sessionStorage.getItem('reloaded_v52_2')) {
+      sessionStorage.setItem('reloaded_v52_2','1');
       window.location.reload(true);
     }
   }
@@ -391,6 +391,7 @@ window.FIREBASE_CONFIG = {
 <script src="app-auth-refresh.js"></script>
 <script src="app-sennerei.js"></script>
 <script src="app-saisonabschluss.js"></script>
+<script src="app-milestone.js"></script>
 <script>
 document.addEventListener('DOMContentLoaded', function() {
   var mb = document.getElementById('nav-mehr');

@@ -498,6 +498,56 @@ function initApp() {
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
+//  FORCE-REFRESH aller Firebase-Daten bei App-Öffnen / Vordergrund-Wechsel
+//  Nutzt goOffline()/goOnline() → alle onValue-Listener bekommen frische Server-Daten
+// ══════════════════════════════════════════════════════════════════════════════
+window._lastForceRefresh = 0;
+window.forceRefreshAllData = function(reason) {
+  const now = Date.now();
+  // Rate-Limit: max alle 10s (verhindert Ratter bei Tab-Wechsel-Bursts)
+  if(now - window._lastForceRefresh < 10000) return;
+  window._lastForceRefresh = now;
+
+  if(typeof firebase === 'undefined' || !firebase.database) return;
+  console.log('[App] Force-Refresh alle Daten (' + (reason||'?') + ')');
+  try {
+    // Firebase Socket-Reconnect → alle onValue-Listener re-fetchen vom Server
+    firebase.database().goOffline();
+    setTimeout(() => {
+      try { firebase.database().goOnline(); } catch(e) {}
+      // Extra: Milch-Poll (REST-basiert, bypasst SDK-Cache) für 100% Aktualität
+      setTimeout(() => {
+        try { if(window.milchPollNow) window.milchPollNow(); } catch(e) {}
+        try { if(window.sennereiInvalidateCache) window.sennereiInvalidateCache(); } catch(e) {}
+        try { if(typeof render === 'function') render(); } catch(e) {}
+      }, 1200);
+    }, 200);
+  } catch(e) { console.warn('[App] Force-Refresh:', e); }
+};
+
+// Trigger 1: App-Load (nach kurzer Wartezeit damit Auth ready)
+window.addEventListener('load', () => {
+  setTimeout(() => window.forceRefreshAllData('load'), 2500);
+});
+
+// Trigger 2: Vordergrund-Wechsel (aus Hintergrund zurück)
+document.addEventListener('visibilitychange', () => {
+  if(document.visibilityState === 'visible') {
+    window.forceRefreshAllData('foreground');
+  }
+});
+
+// Trigger 3: window focus (Tab-Wechsel im Browser)
+window.addEventListener('focus', () => {
+  window.forceRefreshAllData('focus');
+});
+
+// Trigger 4: Online-werden nach offline
+window.addEventListener('online', () => {
+  setTimeout(() => window.forceRefreshAllData('online'), 800);
+});
+
+// ══════════════════════════════════════════════════════════════════════════════
 //  NAVIGATION
 // ══════════════════════════════════════════════════════════════════════════════
 window.navigate = function(view) {
