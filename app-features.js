@@ -5568,7 +5568,18 @@ window.saveAbtrieb=async function(){
 //  MILCH
 // ══════════════════════════════════════════════════════════════════════════════
 
-window.showAbtriebbForm=function(){document.getElementById('abtrieb-overlay').style.display='flex';};
+window.showAbtriebbForm=function(){
+  // Nutze neuen Dialog (mit Datums-Auswahl, aus app-saisonabschluss.js)
+  if(typeof window.saisonAbschlussEndgueltig === 'function') {
+    // saisonAbschlussEndgueltig zeigt direkt den Datums-Dialog (schließt Slideshow-Overlay falls offen)
+    window.saisonAbschlussEndgueltig();
+    return;
+  }
+  // Fallback auf alten Overlay
+  const ov = document.getElementById('abtrieb-overlay');
+  if(ov) ov.style.display='flex';
+  else alert('Saisonende-Dialog nicht verfügbar. Bitte App neu laden.');
+};
 
 window.startSaison=async function(){const alm=document.getElementById('s-alm')?.value.trim();const datum=document.getElementById('s-datum')?.value;await set(ref(db,'saison'),{aktiv:true,alm,auftriebDatum:datum?new Date(datum).getTime():Date.now(),jahr:new Date().getFullYear()});};
 
