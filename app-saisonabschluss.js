@@ -614,12 +614,134 @@
   };
 
   window.saisonAbschlussEndgueltig = function() {
-    if(!confirm('Saison wirklich abschließen?\n\nAlle Kühe werden auf „unten" gesetzt.\nDie Saison wird archiviert.\n\nDas kann nicht rückgängig gemacht werden.')) return;
-    if(typeof window.saveSaisonArchiv === 'function') window.saveSaisonArchiv();
-    else if(typeof window.saveAbtrieb === 'function') window.saveAbtrieb();
-    else alert('Archiv-Funktion nicht gefunden.');
-    document.getElementById('sa-overlay')?.remove();
+    // Slideshow schließen und Datums-Dialog zeigen
     _stopAudio();
+    document.getElementById('sa-overlay')?.remove();
+    _zeigeSaisonEndeDialog();
+  };
+
+  function _zeigeSaisonEndeDialog() {
+    const alt = document.getElementById('sa-end-dialog');
+    if(alt) alt.remove();
+    const heute = new Date().toISOString().slice(0,10);
+
+    // Style falls noch nicht da
+    if(!document.getElementById('sa-end-style')) {
+      const st = document.createElement('style');
+      st.id = 'sa-end-style';
+      st.textContent = `
+        #sa-end-dialog { position:fixed; inset:0; z-index:99998; background:rgba(0,0,0,.75); backdrop-filter:blur(8px); display:flex; align-items:center; justify-content:center; padding:1rem; font-family:Georgia,serif; }
+        #sa-end-dialog .sa-end-card { background:linear-gradient(160deg,#1a2a10,#0a1a04); border:1px solid rgba(212,168,75,.4); border-radius:20px; max-width:520px; width:100%; padding:2rem; color:#fff; box-shadow:0 20px 80px rgba(0,0,0,.6); animation:sa-end-in .3s ease; }
+        @keyframes sa-end-in { from{opacity:0;transform:scale(.9)} to{opacity:1;transform:scale(1)} }
+        #sa-end-dialog h2 { font-size:1.5rem; color:#f5e6b8; margin:0 0 .5rem 0; font-weight:400; }
+        #sa-end-dialog .sa-end-sub { color:rgba(255,255,255,.75); font-style:italic; margin-bottom:1.5rem; font-size:.95rem; line-height:1.4; }
+        #sa-end-dialog label { display:block; font-size:.75rem; letter-spacing:.15em; text-transform:uppercase; color:rgba(255,255,255,.6); margin-bottom:.4rem; font-family:sans-serif; }
+        #sa-end-dialog input, #sa-end-dialog textarea { width:100%; background:rgba(255,255,255,.08); border:1px solid rgba(212,168,75,.3); color:#fff; padding:.7rem .9rem; border-radius:10px; font-size:1rem; font-family:Georgia,serif; box-sizing:border-box; }
+        #sa-end-dialog textarea { min-height:60px; resize:vertical; font-size:.9rem; }
+        #sa-end-dialog .sa-end-warn { background:rgba(200,60,60,.15); border-left:3px solid #e05a5a; padding:.6rem .8rem; border-radius:6px; margin:1rem 0; font-size:.85rem; color:rgba(255,255,255,.85); line-height:1.5; }
+        #sa-end-dialog .sa-end-btns { display:flex; gap:.6rem; margin-top:1.2rem; }
+        #sa-end-dialog .sa-end-btns button { flex:1; padding:.9rem; border-radius:12px; font-size:1rem; font-weight:600; cursor:pointer; border:none; font-family:sans-serif; }
+        #sa-end-dialog .sa-end-cancel { background:rgba(255,255,255,.1); color:#fff; }
+        #sa-end-dialog .sa-end-confirm { background:linear-gradient(135deg,#e8d9a8,#c9b280); color:#0a0800; }
+        #sa-end-dialog .sa-end-confirm:disabled { opacity:.5; cursor:not-allowed; }
+      `;
+      document.head.appendChild(st);
+    }
+
+    const almName = window.saisonInfo?.alm || 'Alm';
+    const dlg = document.createElement('div');
+    dlg.id = 'sa-end-dialog';
+    dlg.innerHTML =
+      '<div class="sa-end-card">' +
+        '<h2>🏔 Saisonende festlegen</h2>' +
+        '<div class="sa-end-sub">Bitte gib das Datum an, an dem die Saison auf ' + almName + ' offiziell endet. ' +
+          'Danach werden keine Milchwerte mehr in die Gesamtberechnung aufgenommen.</div>' +
+        '<label>Datum des Saisonendes</label>' +
+        '<input type="date" id="sa-end-datum" value="' + heute + '" max="' + heute + '" />' +
+        '<div style="height:.9rem"></div>' +
+        '<label>Notiz (optional)</label>' +
+        '<textarea id="sa-end-notiz" placeholder="z.B. Wetter, Zustand der Herde…"></textarea>' +
+        '<div class="sa-end-warn">' +
+          '⚠ <b>Nach dem Abschluss:</b><br>' +
+          '• Alle Kühe werden auf almStatus „unten" gesetzt<br>' +
+          '• Die Saison wird archiviert<br>' +
+          '• Milchwerte werden nur bis zum gewählten Datum gezählt<br>' +
+          '• Diese Aktion kann nicht rückgängig gemacht werden' +
+        '</div>' +
+        '<div class="sa-end-btns">' +
+          '<button class="sa-end-cancel" onclick="document.getElementById(\'sa-end-dialog\').remove()">Abbrechen</button>' +
+          '<button class="sa-end-confirm" onclick="_saEndConfirm()">Saison abschließen</button>' +
+        '</div>' +
+      '</div>';
+    document.body.appendChild(dlg);
+    setTimeout(() => { try { document.getElementById('sa-end-datum').focus(); } catch(e) {} }, 100);
+  }
+
+  window._saEndConfirm = async function() {
+    const datumStr = document.getElementById('sa-end-datum')?.value;
+    const notiz = document.getElementById('sa-end-notiz')?.value.trim() || '';
+    if(!datumStr) { alert('Bitte ein Datum wählen.'); return; }
+    const btn = document.querySelector('#sa-end-dialog .sa-end-confirm');
+    if(btn) { btn.disabled = true; btn.textContent = '⏳ Speichere…'; }
+    try {
+      const _retry = window.withAuthRetry || (async fn => await fn());
+      // 1. saisonEndeDatum in saisonInfo speichern (+ abtriebtDatum für Kompat)
+      const endeTs = new Date(datumStr + 'T23:59:59').getTime();
+      await _retry(() => firebase.database().ref('saison').update({
+        saisonEndeDatum: endeTs,
+        abtriebtDatum: endeTs,   // Kompat mit altem Feld
+        saisonEndeNotiz: notiz,
+        abtriebtNotiz: notiz,
+        aktiv: false,
+        abgeschlossenAm: Date.now(),
+        abgeschlossenVon: (firebase.auth && firebase.auth().currentUser && firebase.auth().currentUser.uid) || null
+      }));
+      // Lokal sofort spiegeln damit Carry-Forward gleich richtig rechnet
+      if(window.saisonInfo) {
+        window.saisonInfo.saisonEndeDatum = endeTs;
+        window.saisonInfo.abtriebtDatum = endeTs;
+        window.saisonInfo.aktiv = false;
+      }
+      // 2. Alle Kühe auf "unten" setzen (die noch "oben" sind)
+      const kuehe = window.kuehe || {};
+      const updates = {};
+      Object.entries(kuehe).forEach(([id, k]) => {
+        if(k.almStatus === 'oben') updates['kuehe/' + id + '/almStatus'] = 'unten';
+      });
+      if(Object.keys(updates).length > 0) {
+        await _retry(() => firebase.database().ref('/').update(updates));
+      }
+      // 3. Saison-Archiv schreiben (mit Carry-Forward Milch bis zum Ende-Datum)
+      try {
+        const aktJahr = (window.saisonInfo && window.saisonInfo.jahr) || new Date().getFullYear();
+        const cf = window.computeCarryForwardGesamt ? window.computeCarryForwardGesamt() : {gesamt:0, tage:0};
+        const alpungTage = window.saisonInfo?.auftriebDatum
+          ? Math.floor((endeTs - window.saisonInfo.auftriebDatum)/86400000) + 1
+          : 0;
+        const schnittMilch = cf.tage > 0 ? Math.round(cf.gesamt / cf.tage * 2) : 0;
+        await _retry(() => firebase.database().ref('saisonArchiv/' + aktJahr).set({
+          jahr: aktJahr,
+          milchGesamt: cf.gesamt,
+          schnittMilch,
+          alpungTage,
+          kueheAnzahl: Object.keys(window.kuehe || {}).length,
+          behandlungenAnzahl: Object.keys(window.behandlungen || {}).length,
+          besamungenAnzahl: Object.keys(window.besamungen || {}).length,
+          auftriebDatum: window.saisonInfo?.auftriebDatum || null,
+          abtriebtDatum: endeTs,
+          saisonEndeDatum: endeTs,
+          notiz,
+          archiviertAm: Date.now()
+        }));
+      } catch(e) { console.warn('[SA] Archiv-Save:', e); }
+      document.getElementById('sa-end-dialog').remove();
+      alert('✓ Saison offiziell abgeschlossen.\nEnde: ' + new Date(endeTs).toLocaleDateString('de-AT'));
+      if(typeof render === 'function') render();
+    } catch(err) {
+      console.error('[SA] Saisonende-Save:', err);
+      alert('Fehler beim Abschließen:\n\n' + (err.message||err));
+      if(btn) { btn.disabled = false; btn.textContent = 'Saison abschließen'; }
+    }
   };
 
   console.log('[SaisonAbschluss] v' + VERSION + ' geladen');

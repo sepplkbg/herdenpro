@@ -279,8 +279,10 @@ window.computeCarryForwardGesamt = function(kueheIdsFilter) {
     .filter(e => e && e.datum && e.prokuh);
   if(!ids.length || !eintraege.length) return { gesamt: 0, morgen: 0, abend: 0, tage: 0, molkerei: 0, sennerei: 0 };
 
+  // Wenn Saison offiziell abgeschlossen: nur bis Saisonende-Datum rechnen
+  const saisonEndeTs = (window.saisonInfo && window.saisonInfo.saisonEndeDatum) || null;
   const heute = new Date(); heute.setHours(23,59,59,999);
-  const heuteTs = heute.getTime();
+  const heuteTs = saisonEndeTs && saisonEndeTs < heute.getTime() ? saisonEndeTs : heute.getTime();
   let sumMorgen = 0, sumAbend = 0;
   let sumMolkerei = 0, sumSennerei = 0;
   const tageSet = new Set();
