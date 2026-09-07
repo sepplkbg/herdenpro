@@ -420,7 +420,7 @@ milchEintraege = _hpLoadCache('milchEintraege') || {};
 weideTage = _hpLoadCache('weideTage') || {};
 weiden = _hpLoadCache('weiden') || {};
 bauern = _hpLoadCache('bauern') || {};
-saisonInfo = _hpLoadCache('saisonInfo');
+saisonInfo = _hpLoadCache('saisonInfo'); window.saisonInfo = saisonInfo;
 gruppen = _hpLoadCache('gruppen') || {};
 kraftfutter = _hpLoadCache('kraftfutter') || {};
 schalmtest = _hpLoadCache('schalmtest') || {};
@@ -470,7 +470,7 @@ function initApp() {
   onValue(ref(db,'weideTage'),    s=>{ weideTage=s.val()||{};      _hpSaveCache('weideTage',weideTage); render(); });
   onValue(ref(db,'weiden'),       s=>{ weiden=s.val()||{};         _hpSaveCache('weiden',weiden); render(); });
   onValue(ref(db,'bauern'),       s=>{ bauern=s.val()||{}; window.bauern=bauern; _hpSaveCache('bauern',bauern); render(); });
-  onValue(ref(db,'saison'),       s=>{ saisonInfo=s.val();         _hpSaveCache('saisonInfo',saisonInfo); render(); });
+  onValue(ref(db,'saison'),       s=>{ saisonInfo=s.val(); window.saisonInfo=saisonInfo; _hpSaveCache('saisonInfo',saisonInfo); render(); });
   onValue(ref(db,'journal'),      s=>{ journal=s.val()||{};        render(); });
   onValue(ref(db,'kontakte'),     s=>{ kontakte=s.val()||{};       render(); });
   onValue(ref(db,'gruppen'),       s=>{ gruppen=s.val()||{}; window.gruppen=gruppen; _hpSaveCache('gruppen',gruppen); render(); });
