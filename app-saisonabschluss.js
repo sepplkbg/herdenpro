@@ -370,7 +370,9 @@
           <div class="sa-final-icon">🏔</div>
           ${sl.isTest
             ? '<div class="sa-note">Die Saison bleibt aktiv. Nichts wurde geändert.</div>'
-            : '<button onclick="saisonAbschlussEndgueltig()" class="sa-final-btn">Saison offiziell abschließen</button>'
+            : (window._saisonAbschlussFertig
+                ? '<div class="sa-note">Danke. Die Saison ist offiziell abgeschlossen.</div><button onclick="_saCloseFinal()" class="sa-final-btn">Schließen</button>'
+                : '<button onclick="saisonAbschlussEndgueltig()" class="sa-final-btn">Saison offiziell abschließen</button>')
           }
         `;
         break;
@@ -613,10 +615,18 @@
     draw();
   };
 
+  window._saCloseFinal = function() {
+    _stopAudio();
+    document.getElementById('sa-overlay')?.remove();
+    if(typeof render === 'function') render();
+  };
+
   window.saisonAbschlussEndgueltig = function() {
     // Slideshow schließen und Datums-Dialog zeigen
     _stopAudio();
+    const warSlideshow = !!document.getElementById('sa-overlay');
     document.getElementById('sa-overlay')?.remove();
+    window._saEndAusSlideshow = warSlideshow;
     _zeigeSaisonEndeDialog();
   };
 
@@ -735,8 +745,19 @@
         }));
       } catch(e) { console.warn('[SA] Archiv-Save:', e); }
       document.getElementById('sa-end-dialog').remove();
-      alert('✓ Saison offiziell abgeschlossen.\nEnde: ' + new Date(endeTs).toLocaleDateString('de-AT'));
-      if(typeof render === 'function') render();
+      window._saisonAbschlussFertig = true;
+      if(window._saEndAusSlideshow) {
+        // User kam aus der Slideshow → nicht nochmal abspielen, nur bestätigen
+        window._saEndAusSlideshow = false;
+        alert('✓ Saison offiziell abgeschlossen.\nEnde: ' + new Date(endeTs).toLocaleDateString('de-AT'));
+        if(typeof render === 'function') render();
+      } else if(typeof window.zeigeSaisonAbschluss === 'function') {
+        // Feier-Slideshow abspielen
+        setTimeout(() => { try { window.zeigeSaisonAbschluss(false); } catch(e) { console.warn(e); } }, 300);
+      } else {
+        alert('✓ Saison offiziell abgeschlossen.\nEnde: ' + new Date(endeTs).toLocaleDateString('de-AT'));
+        if(typeof render === 'function') render();
+      }
     } catch(err) {
       console.error('[SA] Saisonende-Save:', err);
       alert('Fehler beim Abschließen:\n\n' + (err.message||err));
