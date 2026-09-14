@@ -1646,6 +1646,24 @@ window.saveMilch = async function() {
   }
   if(navigator.vibrate) navigator.vibrate([30,10,30]);
 
+  // Zusatz-Toast: WZ-Info wenn Kühe mit vergangener WZ in dieser Messung waren
+  try {
+    const heuteWz = Date.now();
+    const wocheZurueckWz = heuteWz - 7 * 86400000;
+    let wzKuehe = 0;
+    Object.keys(prokuh).forEach(kid => {
+      const hasWz = Object.values(window.behandlungen||{}).some(b =>
+        b && b.kuhId === kid && b.wzMilchEnde &&
+        ((b.wzMilchEnde > heuteWz) ||   // noch aktiv
+         (b.wzMilchEnde >= wocheZurueckWz && b.wzMilchEnde <= heuteWz)) // vergangene Woche
+      );
+      if(hasWz) wzKuehe++;
+    });
+    if(wzKuehe > 0 && window.showSaveToast) {
+      setTimeout(() => window.showSaveToast('⚠ ' + wzKuehe + ' Kuh' + (wzKuehe!==1?'e':'') + ' mit Wartezeit — Milch wird als verworfen gezählt'), 1500);
+    }
+  } catch(e) { console.warn('[saveMilch] WZ-Toast:', e); }
+
   // 📸 Screenshot als extra Sicherheit (fire-and-forget) — Download aufs Handy + Firebase Storage Upload
   // Läuft NOCH vor navigate(), solange das milch-erfassen View sichtbar ist.
   try {
