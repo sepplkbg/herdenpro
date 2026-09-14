@@ -122,7 +122,34 @@
     const fmt = (v) => (v == null || v === 0) ? '–' : String(Math.round(v*10)/10).replace('.',',');
 
     // KOMPAKTE HTML-Tabelle (weniger inline-CSS, minifiziert für 50KB EmailJS-Limit)
-    // Bei 80 Kühen: alte Version ~30KB, neue ~12KB
+    // Rote Markierung für Kühe mit Wartezeit in der Woche vor dieser Messung
+    const behandlungen = window.behandlungen || {};
+    const _sperren = window.milchSperren || {};
+    const referenzTs = (alle && alle.length && alle[0].datum) || Date.now();
+    const wocheStartTs = referenzTs - 7 * 86400000;
+    function _wzInfoKuh(kuhId) {
+      const treffer = [];
+      Object.values(behandlungen).forEach(b => {
+        if(!b || b.kuhId !== kuhId || !b.wzMilchEnde) return;
+        let wzStart = b.datum || null;
+        if(!wzStart && b.wzMilchTage) wzStart = b.wzMilchEnde - b.wzMilchTage * 86400000;
+        if(!wzStart) return;
+        if(b.wzMilchEnde >= wocheStartTs && wzStart <= referenzTs) {
+          treffer.push({ von: wzStart, bis: b.wzMilchEnde, grund: b.medikament || b.diagnose || 'Behandlung' });
+        }
+      });
+      Object.values(_sperren).forEach(s => {
+        if(!s || s.kuhId !== kuhId || !s.vonTs || !s.bisTs) return;
+        if(s.bisTs >= wocheStartTs && s.vonTs <= referenzTs) {
+          treffer.push({ von: s.vonTs, bis: s.bisTs, grund: s.grund || 'Milchsperre' });
+        }
+      });
+      return treffer;
+    }
+    function _wzTooltip(list) {
+      const dt = (ts) => new Date(ts).toLocaleDateString('de-AT', {day:'2-digit', month:'2-digit'});
+      return list.map(p => dt(p.von) + '–' + dt(p.bis) + ' (' + p.grund + ')').join(', ');
+    }
     let tableRowsCompact = '';
     sortedIds.forEach(id => {
       const k = kuehe[id];
@@ -131,8 +158,15 @@
       const m = grup.morgen ? grup.morgen.prokuh[id] : null;
       const a = grup.abend  ? grup.abend.prokuh[id]  : null;
       const total = (parseFloat(m)||0) + (parseFloat(a)||0);
-      tableRowsCompact += '<tr><td class=n>#' + escapeHtml(nr) + '</td><td>' + nam + '</td><td class=r>' + fmt(m) + '</td><td class=r>' + fmt(a) + '</td><td class="r b">' + fmt(total) + '</td></tr>';
+      const wzList = _wzInfoKuh(id);
+      const rowStyle = wzList.length ? ' style="background:#fdecea"' : '';
+      const wzMark = wzList.length ? ' title="⚠ Wartezeit diese Woche: ' + escapeHtml(_wzTooltip(wzList)) + '"' : '';
+      const wzIcon = wzList.length ? ' <span style="color:#c0392b" title="Wartezeit">⚠</span>' : '';
+      const cellClass = wzList.length ? ' style="color:#c0392b;font-weight:700"' : '';
+      tableRowsCompact += '<tr' + rowStyle + wzMark + '><td class=n>#' + escapeHtml(nr) + '</td><td>' + nam + wzIcon + '</td><td class=r' + cellClass + '>' + fmt(m) + '</td><td class=r' + cellClass + '>' + fmt(a) + '</td><td class="r b"' + cellClass + '>' + fmt(total) + '</td></tr>';
     });
+    // Legende wenn mindestens eine Kuh WZ hatte
+    const anyWz = sortedIds.some(id => _wzInfoKuh(id).length > 0);
 
     const htmlTable =
       '<style>' +
@@ -161,6 +195,7 @@
         '<thead><tr><th>Nr</th><th style="text-align:left">Kuh</th><th>Morgens</th><th>Abends</th><th>Total</th></tr></thead>' +
         '<tbody>' + tableRowsCompact + '</tbody>' +
       '</table>' +
+      (anyWz ? '<p style="margin-top:8px;padding:6px 10px;background:#fdecea;border-left:3px solid #c0392b;color:#c0392b;font-size:12px"><b>⚠ Rot markierte Zeilen:</b> Kuh hatte in der Woche vor dieser Messung Wartezeit. Die Milch dieser Kühe wird als „verworfen" gezählt.</p>' : '') +
       (notizenAlle.length ? '<p class=notes><b>📝 Notizen:</b><br>' + escapeHtml(notizenAlle.join('\n')).replace(/\n/g,'<br>') + '</p>' : '') +
       '<p class=footer>Automatisch verschickt von HerdenPro</p>';
 

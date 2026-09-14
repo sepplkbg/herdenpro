@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<title>HerdenPro Icon-Generator</title>
+<style>
+  body { font-family: system-ui, sans-serif; background:#0c1a09; color:#eee; padding:2rem; max-width:900px; margin:0 auto; }
+  h1 { color:#d4a84b; }
+  .grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(140px,1fr)); gap:1rem; margin:1.5rem 0; }
+  .card { background:#1a2b12; border:1px solid #333; border-radius:10px; padding:.8rem; text-align:center; }
+  .card img { max-width:100%; height:auto; background:#222; border-radius:6px; }
+  .card b { display:block; margin:.4rem 0 .2rem; color:#d4a84b; }
+  .card a { display:inline-block; margin-top:.3rem; padding:.35rem .7rem; background:#d4a84b; color:#000; text-decoration:none; border-radius:6px; font-size:.85rem; font-weight:700; }
+  .card a:hover { background:#e8c565; }
+  button.big { padding:1rem 2rem; background:#d4a84b; color:#000; border:none; border-radius:10px; font-size:1.05rem; font-weight:700; cursor:pointer; }
+  p { color:#aaa; font-size:.9rem; line-height:1.6; }
+  code { background:#333; padding:2px 6px; border-radius:4px; color:#e8c565; }
+</style>
+</head>
+<body>
+<h1>🐄 HerdenPro Icon-Generator</h1>
+<p>
+  Dieses Werkzeug rendert das SVG-Icon in allen benötigten PNG-Größen für App Stores.
+  Für eine reine PWA (Web-Installation) reicht die <code>icon.svg</code> — diese PNG-Icons brauchst du erst wenn:
+</p>
+<ul style="color:#aaa">
+  <li>Du HerdenPro in den Play Store / App Store stellst (Stufe 2 / Capacitor)</li>
+  <li>Du iOS &lt; 15 unterstützen willst (SVG-Icons erst ab iOS 15)</li>
+</ul>
+
+<button class="big" onclick="renderAll()">🎨 Alle Icons generieren</button>
+<p style="margin-top:1rem">Nach dem Rendern: bei jedem Icon rechts unten „Download" klicken. Dateien in denselben Ordner wie <code>index.html</code> legen.</p>
+
+<div id="grid" class="grid"></div>
+
+<script>
+const sizes = [
+  { name: 'icon-72.png', size: 72 },
+  { name: 'icon-96.png', size: 96 },
+  { name: 'icon-128.png', size: 128 },
+  { name: 'icon-144.png', size: 144 },
+  { name: 'icon-152.png', size: 152 },
+  { name: 'icon-167.png', size: 167 },
+  { name: 'icon-180.png', size: 180 },     // Apple Touch
+  { name: 'icon-192.png', size: 192 },
+  { name: 'icon-256.png', size: 256 },
+  { name: 'icon-384.png', size: 384 },
+  { name: 'icon-512.png', size: 512 },
+  { name: 'favicon-16.png', size: 16 },
+  { name: 'favicon-32.png', size: 32 }
+];
+
+async function renderAll() {
+  const grid = document.getElementById('grid');
+  grid.innerHTML = '';
+  // SVG laden
+  const svgText = await fetch('icon.svg').then(r => r.text());
+  for(const {name, size} of sizes) {
+    const canvas = document.createElement('canvas');
+    canvas.width = size; canvas.height = size;
+    const ctx = canvas.getContext('2d');
+    const img = new Image();
+    const blob = new Blob([svgText], { type: 'image/svg+xml' });
+    const url = URL.createObjectURL(blob);
+    await new Promise((res, rej) => {
+      img.onload = () => { ctx.drawImage(img, 0, 0, size, size); URL.revokeObjectURL(url); res(); };
+      img.onerror = rej;
+      img.src = url;
+    });
+    const pngUrl = canvas.toDataURL('image/png');
+    const card = document.createElement('div');
+    card.className = 'card';
+    card.innerHTML = '<img src="' + pngUrl + '" style="width:' + Math.min(size,120) + 'px;height:' + Math.min(size,120) + 'px"/>' +
+                     '<b>' + name + '</b>' +
+                     '<div style="color:#888;font-size:.8rem">' + size + '×' + size + ' px</div>' +
+                     '<a download="' + name + '" href="' + pngUrl + '">⬇ Download</a>';
+    grid.appendChild(card);
+  }
+}
+</script>
+</body>
+</html>

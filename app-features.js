@@ -2687,10 +2687,21 @@ function renderMilch() {
               ${kueheOben.map(([id,k])=>{
                 // ── Wartezeit-Check für Milch ──
                 const heute = Date.now();
+                const wocheZurueck = heute - 7 * 86400000;
                 const aktiveWzBeh = Object.values(behandlungen||{}).find(b =>
                   b && b.aktiv !== false && b.kuhId === id &&
                   b.wzMilchEnde && b.wzMilchEnde > heute
                 );
+                // Auch: WZ war irgendwann in den letzten 7 Tagen aktiv (vergangene WZ diese Woche)
+                const vergangeneWzBeh = !aktiveWzBeh ? Object.values(behandlungen||{}).find(b =>
+                  b && b.kuhId === id &&
+                  b.wzMilchEnde && b.wzMilchEnde <= heute && b.wzMilchEnde >= wocheZurueck
+                ) : null;
+                // ── Milchsperre-Check (aus milchSperren) ──
+                // Nur relevant wenn KEINE aktive Behandlungs-WZ (die versteckt den Button)
+                const messTsFuerSperre = heute;
+                const aktSperre = (!aktiveWzBeh && typeof window.milchSperreFuerKuh === 'function')
+                  ? window.milchSperreFuerKuh(id, messTsFuerSperre) : null;
                 let wzHinweis = '';
                 let rowStyle = 'display:flex;flex-direction:column;padding:.35rem 0;border-bottom:1px solid var(--border)';
                 if(aktiveWzBeh) {
@@ -2709,9 +2720,35 @@ function renderMilch() {
                       </label>
                     </div>
                   `;
+                } else if(vergangeneWzBeh) {
+                  // Vergangene WZ diese Woche: rote Info (Milch dieser Woche wird als verworfen gezählt)
+                  const wzStart = vergangeneWzBeh.datum || (vergangeneWzBeh.wzMilchEnde - (vergangeneWzBeh.wzMilchTage||0)*86400000);
+                  const dt = (ts) => new Date(ts).toLocaleDateString('de-AT',{day:'2-digit',month:'2-digit'});
+                  const tageWz = Math.max(1, Math.ceil((vergangeneWzBeh.wzMilchEnde - wzStart) / 86400000));
+                  rowStyle += ';border-left:4px solid var(--red);padding-left:.4rem';
+                  wzHinweis = `
+                    <div class="wz-hinweis-vergangen" style="display:flex;align-items:center;gap:.5rem;background:rgba(220,60,60,.12);border:1px solid rgba(220,60,60,.35);border-radius:6px;padding:.35rem .55rem;margin:.3rem 0 .1rem;font-size:.72rem">
+                      <span style="font-size:.9rem">⚠</span>
+                      <span style="color:var(--red);font-weight:700;flex:1">WZ ${dt(wzStart)}–${dt(vergangeneWzBeh.wzMilchEnde)} (${tageWz} Tage) — Milch dieser Woche wird als verworfen gezählt</span>
+                    </div>
+                  `;
+                } else if(aktSperre) {
+                  // Milchsperre aktiv (rote Zeile + Info)
+                  const dt = (ts) => new Date(ts).toLocaleDateString('de-AT',{day:'2-digit',month:'2-digit'});
+                  rowStyle += ';border-left:4px solid var(--red);padding-left:.4rem';
+                  wzHinweis = `
+                    <div class="msp-hinweis" style="display:flex;align-items:center;gap:.5rem;background:rgba(220,60,60,.12);border:1px solid rgba(220,60,60,.35);border-radius:6px;padding:.35rem .55rem;margin:.3rem 0 .1rem;font-size:.72rem">
+                      <span style="font-size:.9rem">⚠</span>
+                      <span style="color:var(--red);font-weight:700;flex:1">Milchsperre ${dt(aktSperre.vonTs)}–${dt(aktSperre.bisTs)} (${aktSperre.tage} Tage · ${aktSperre.grund})${aktSperre.notiz?' · '+aktSperre.notiz:''}</span>
+                    </div>
+                  `;
                 }
+                // Button-Anzeige: NUR wenn keine aktive Behandlungs-WZ (User-Wunsch)
+                const sperreBtn = !aktiveWzBeh ? `
+                    <button type="button" class="msp-btn" onclick="showMilchSperrePopup('${id}')" style="align-self:flex-start;margin-top:.3rem;padding:.28rem .6rem;font-size:.7rem;background:${aktSperre?'rgba(220,60,60,.15)':'rgba(255,255,255,.05)'};border:1px solid ${aktSperre?'rgba(220,60,60,.5)':'var(--border)'};color:${aktSperre?'var(--red)':'var(--text3)'};border-radius:6px;cursor:pointer;font-family:inherit">${aktSperre?('⚠ Sperre '+aktSperre.tage+'T ('+aktSperre.grund+')'):'⚠ außergew. WZ erfassen'}</button>
+                ` : '';
                 return `
-                <div class="milch-kuh-row" data-bauer="${k.bauer||''}" data-wz="${aktiveWzBeh?'1':'0'}" style="${rowStyle}">
+                <div class="milch-kuh-row" data-kid="${id}" data-bauer="${k.bauer||''}" data-wz="${aktiveWzBeh?'1':'0'}" style="${rowStyle}">
                   <div style="display:flex;align-items:center;gap:.5rem">
                     <span class="nr-badge" style="min-width:38px;text-align:center">#${k.nr}</span>
                     <div style="flex:1;min-width:0">
@@ -2723,6 +2760,7 @@ function renderMilch() {
                     </div>
                   </div>
                   ${wzHinweis}
+                  ${sperreBtn}
                   <div id="milch-warn-${id}" style="display:none;font-size:.68rem;font-weight:600;padding:.1rem .5rem .1rem 42px;animation:kd-in .2s ease both"></div>
                 </div>`;
               }).join('')}
@@ -3218,6 +3256,11 @@ function renderEinstellungen() {
   const bauernListe=Object.entries(bauern).sort((a,b)=>a[1].name?.localeCompare(b[1].name));
   return `
     <div class="page-header"><h2>⚙ Einstellungen</h2></div>
+
+    <!-- Install-Status / Install-Button -->
+    <div style="margin-bottom:.8rem">
+      ${typeof window.hpInstallStatusHTML === 'function' ? window.hpInstallStatusHTML() : ''}
+    </div>
 
     <div class="card-section" style="margin-bottom:.8rem">
       <div class="section-label" style="margin-bottom:.6rem">ALM-EINSTELLUNGEN</div>

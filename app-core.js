@@ -246,6 +246,7 @@ let kuehe={}, behandlungen={}, besamungen={}, zaehlSession=null;
 let milchEintraege={}, weideTage={}, weiden={}, bauern={};
 let saisonInfo=null;
 let gruppen={}, fotos={}, zaehlVerlauf={}, chatNachrichten={}, kraftfutter={}, schalmtest={}, zellzahl={};
+let milchSperren={};
 
 // ── OFFLINE-CACHE: bei Start Daten aus localStorage laden (sofort verfügbar, auch offline) ──
 function _hpLoadCache(name) {
@@ -267,8 +268,9 @@ window._hpLoadCache = _hpLoadCache;
 //   dieser Kuh weiterverwendet. Ergibt realistische Saison-Gesamtmenge auch
 //   wenn nicht jeden Tag gemessen wird.
 // kueheIdsFilter: null/undefined = alle Kühe, sonst Set/Array von IDs
-// Returns: { gesamt, morgen, abend, tage, molkerei, sennerei } — gerundete Zahlen
+// Returns: { gesamt, morgen, abend, tage, molkerei, sennerei, verworfen } — gerundete Zahlen
 // molkerei/sennerei: nur bei Aufruf OHNE Kuh-Filter berechnet (aggregiert per Termin).
+// verworfen: Milch aus WZ/Milchsperre-Tagen (nicht verwertbar), regel "neue Messung gilt"
 window.computeCarryForwardGesamt = function(kueheIdsFilter) {
   const _mW = window.milchWert || function(v){ return typeof v === 'number' ? v : (v && v.wert != null ? parseFloat(v.wert) || 0 : parseFloat(v) || 0); };
   const kuehe = window.kuehe || {};
@@ -277,14 +279,14 @@ window.computeCarryForwardGesamt = function(kueheIdsFilter) {
     : Object.keys(kuehe);
   const eintraege = Object.values(window.milchEintraege || {})
     .filter(e => e && e.datum && e.prokuh);
-  if(!ids.length || !eintraege.length) return { gesamt: 0, morgen: 0, abend: 0, tage: 0, molkerei: 0, sennerei: 0 };
+  if(!ids.length || !eintraege.length) return { gesamt: 0, morgen: 0, abend: 0, tage: 0, molkerei: 0, sennerei: 0, verworfen: 0 };
 
   // Wenn Saison offiziell abgeschlossen: nur bis Saisonende-Datum rechnen
   const saisonEndeTs = (window.saisonInfo && window.saisonInfo.saisonEndeDatum) || null;
   const heute = new Date(); heute.setHours(23,59,59,999);
   const heuteTs = saisonEndeTs && saisonEndeTs < heute.getTime() ? saisonEndeTs : heute.getTime();
   let sumMorgen = 0, sumAbend = 0;
-  let sumMolkerei = 0, sumSennerei = 0;
+  let sumMolkerei = 0, sumSennerei = 0, sumVerworfen = 0;
   const tageSet = new Set();
 
   // Molkerei-Flag pro Termin (aggregiert): wenn IRGENDEIN Eintrag an dem Tag/Zeit
@@ -296,6 +298,39 @@ window.computeCarryForwardGesamt = function(kueheIdsFilter) {
     if(!(key in molkereiProTermin)) molkereiProTermin[key] = false;
     if(e.molkerei) molkereiProTermin[key] = true;
   });
+
+  // ── Wartezeit-Perioden pro Kuh vorberechnen ──
+  // Quellen: (1) Behandlungen mit wzMilchEnde, (2) milchSperren (Schritt 2)
+  const wzPerKuh = {};   // { kuhId: [{von, bis}, ...] }
+  const _behandlungen = window.behandlungen || {};
+  Object.values(_behandlungen).forEach(b => {
+    if(!b || !b.kuhId) return;
+    const wzEnde = b.wzMilchEnde || null;
+    if(!wzEnde) return;
+    // Start: ab erster Behandlung — sonst rückrechnen aus wzMilchTage
+    let wzStart = b.datum || null;
+    if(!wzStart && b.wzMilchTage) wzStart = wzEnde - (b.wzMilchTage) * 86400000;
+    if(!wzStart || wzEnde <= wzStart) return;
+    if(!wzPerKuh[b.kuhId]) wzPerKuh[b.kuhId] = [];
+    wzPerKuh[b.kuhId].push({ von: wzStart, bis: wzEnde });
+  });
+  // Zusätzliche Milchsperren (Schritt 2: eigener Node — hier schon vorbereitet)
+  const _sperren = window.milchSperren || {};
+  Object.values(_sperren).forEach(s => {
+    if(!s || !s.kuhId || !s.vonTs || !s.bisTs) return;
+    if(s.bisTs <= s.vonTs) return;
+    if(!wzPerKuh[s.kuhId]) wzPerKuh[s.kuhId] = [];
+    wzPerKuh[s.kuhId].push({ von: s.vonTs, bis: s.bisTs });
+  });
+
+  // Prüft ob eine konkrete Melkzeit in einer WZ-Periode liegt.
+  // Morgen-Melkung ≈ 06:00, Abend-Melkung ≈ 18:00 (heuristisch).
+  // So wird korrekt behandelt: WZ endet Fr 03:00 → Fr morgens (06:00) NICHT mehr WZ.
+  function _melkzeitInWZ(kid, melkTs) {
+    const list = wzPerKuh[kid];
+    if(!list || !list.length) return false;
+    return list.some(p => melkTs >= p.von && melkTs <= p.bis);
+  }
 
   ids.forEach(kid => {
     const morgens = [], abends = [];
@@ -318,6 +353,8 @@ window.computeCarryForwardGesamt = function(kueheIdsFilter) {
     let lastM = 0, lastA = 0;
     let lastMolkM = false, lastMolkA = false;
     while(iter.getTime() <= heuteTs) {
+      const dayStart = new Date(iter); dayStart.setHours(0,0,0,0);
+      const dayStartTs = dayStart.getTime();
       const dayEnd = new Date(iter); dayEnd.setHours(23,59,59,999);
       const dayTs = dayEnd.getTime();
       while(mIdx < morgens.length && morgens[mIdx].ts <= dayTs) {
@@ -332,15 +369,39 @@ window.computeCarryForwardGesamt = function(kueheIdsFilter) {
         lastMolkA = !!molkereiProTermin[iso + '_abend'];
         aIdx++;
       }
-      if(lastM > 0) {
-        sumMorgen += lastM;
-        tageSet.add(iter.toISOString().slice(0,10) + '_m');
-        if(lastMolkM) sumMolkerei += lastM; else sumSennerei += lastM;
+      // Separate Prüfung für Morgen- (06:00) und Abend-Melkzeit (18:00)
+      const morgenTs = dayStartTs + 6 * 3600 * 1000;
+      const abendTs  = dayStartTs + 18 * 3600 * 1000;
+      const inWzM = _melkzeitInWZ(kid, morgenTs);
+      const inWzA = _melkzeitInWZ(kid, abendTs);
+
+      // MORGEN
+      // Regel „neue Messung gilt" für WZ-Tage: nutze nächsten Morgen-Wert AB diesem Tag
+      // Fallback wenn keine spätere Messung: letzter bekannter Wert (lastM)
+      let wertM = lastM;
+      if(inWzM) {
+        const naechster = morgens.find(m => m.ts >= dayStartTs);
+        if(naechster) wertM = naechster.wert;
       }
-      if(lastA > 0) {
-        sumAbend += lastA;
+      if(wertM > 0) {
+        sumMorgen += wertM;
+        tageSet.add(iter.toISOString().slice(0,10) + '_m');
+        if(inWzM) sumVerworfen += wertM;
+        else if(lastMolkM) sumMolkerei += wertM;
+        else sumSennerei += wertM;
+      }
+      // ABEND
+      let wertA = lastA;
+      if(inWzA) {
+        const naechster = abends.find(a => a.ts >= dayStartTs);
+        if(naechster) wertA = naechster.wert;
+      }
+      if(wertA > 0) {
+        sumAbend += wertA;
         tageSet.add(iter.toISOString().slice(0,10) + '_a');
-        if(lastMolkA) sumMolkerei += lastA; else sumSennerei += lastA;
+        if(inWzA) sumVerworfen += wertA;
+        else if(lastMolkA) sumMolkerei += wertA;
+        else sumSennerei += wertA;
       }
       iter.setDate(iter.getDate() + 1);
     }
@@ -352,8 +413,116 @@ window.computeCarryForwardGesamt = function(kueheIdsFilter) {
     abend: Math.round(sumAbend),
     molkerei: Math.round(sumMolkerei),
     sennerei: Math.round(sumSennerei),
+    verworfen: Math.round(sumVerworfen),
     tage: tageSet.size
   };
+};
+
+// ══════════════════════════════════════════════════════════════════════════════
+//  WARTEZEITEN & VERWORFEN pro Kuh
+// ══════════════════════════════════════════════════════════════════════════════
+// Liefert für eine Kuh alle WZ-Ereignisse (aus behandlungen + milchSperren) mit
+// Zeitraum, Grund und rechnerisch verworfener Milchmenge.
+// Regel "neue Messung gilt": pro Melkung wird der nächste Messwert nach dem Tag
+// verwendet (Fallback: letzter Messwert davor).
+window.computeKuhWartezeiten = function(kuhId) {
+  if(!kuhId) return { ereignisse: [], total: {tage:0, verworfen:0, count:0} };
+  const behandlungen = window.behandlungen || {};
+  const _mW = window.milchWert || function(v){ return typeof v === 'number' ? v : (v && v.wert != null ? parseFloat(v.wert) || 0 : parseFloat(v) || 0); };
+  const eintraege = Object.values(window.milchEintraege || {})
+    .filter(e => e && e.datum && e.prokuh);
+
+  // Messwerte dieser Kuh sammeln
+  const morgens = [], abends = [];
+  eintraege.forEach(e => {
+    const val = _mW(e.prokuh[kuhId]);
+    if(val <= 0) return;
+    if((e.zeit || 'morgen') === 'abend') abends.push({ts: e.datum, wert: val});
+    else morgens.push({ts: e.datum, wert: val});
+  });
+  morgens.sort((a,b) => a.ts - b.ts);
+  abends.sort((a,b) => a.ts - b.ts);
+
+  // WZ-Perioden sammeln (Behandlungen + Milchsperren)
+  const perioden = [];
+  Object.values(behandlungen).forEach(b => {
+    if(!b || b.kuhId !== kuhId || !b.wzMilchEnde) return;
+    let wzStart = b.datum || null;
+    if(!wzStart && b.wzMilchTage) wzStart = b.wzMilchEnde - b.wzMilchTage * 86400000;
+    if(!wzStart || b.wzMilchEnde <= wzStart) return;
+    perioden.push({
+      von: wzStart,
+      bis: b.wzMilchEnde,
+      medikament: b.medikament || '',
+      diagnose: b.diagnose || '',
+      grund: (b.medikament || b.diagnose || 'Behandlung'),
+      quelle: 'behandlung',
+      tage: Math.max(1, Math.ceil((b.wzMilchEnde - wzStart) / 86400000))
+    });
+  });
+  const _sperren = window.milchSperren || {};
+  Object.values(_sperren).forEach(s => {
+    if(!s || s.kuhId !== kuhId || !s.vonTs || !s.bisTs) return;
+    if(s.bisTs <= s.vonTs) return;
+    perioden.push({
+      von: s.vonTs,
+      bis: s.bisTs,
+      grund: s.grund || 'Milchsperre',
+      notiz: s.notiz || '',
+      quelle: 'sperre',
+      tage: Math.max(1, Math.ceil((s.bisTs - s.vonTs) / 86400000))
+    });
+  });
+  perioden.sort((a,b) => a.von - b.von);
+
+  // Verworfene Menge pro Periode berechnen
+  const ereignisse = perioden.map(p => {
+    let verworfenM = 0, verworfenA = 0;
+    let mCount = 0, aCount = 0;
+    const iter = new Date(p.von); iter.setHours(0,0,0,0);
+    while(iter.getTime() <= p.bis) {
+      const dayStartTs = iter.getTime();
+      const morgenTs = dayStartTs + 6 * 3600 * 1000;
+      const abendTs = dayStartTs + 18 * 3600 * 1000;
+      if(morgenTs >= p.von && morgenTs <= p.bis) {
+        const naechster = morgens.find(m => m.ts >= dayStartTs);
+        let letzter = null;
+        for(let i = morgens.length - 1; i >= 0; i--) { if(morgens[i].ts < dayStartTs) { letzter = morgens[i]; break; } }
+        const wert = naechster ? naechster.wert : (letzter ? letzter.wert : 0);
+        if(wert > 0) { verworfenM += wert; mCount++; }
+      }
+      if(abendTs >= p.von && abendTs <= p.bis) {
+        const naechster = abends.find(a => a.ts >= dayStartTs);
+        let letzter = null;
+        for(let i = abends.length - 1; i >= 0; i--) { if(abends[i].ts < dayStartTs) { letzter = abends[i]; break; } }
+        const wert = naechster ? naechster.wert : (letzter ? letzter.wert : 0);
+        if(wert > 0) { verworfenA += wert; aCount++; }
+      }
+      iter.setDate(iter.getDate() + 1);
+    }
+    return {
+      ...p,
+      verworfen: Math.round(verworfenM + verworfenA),
+      verworfenM: Math.round(verworfenM),
+      verworfenA: Math.round(verworfenA),
+      melkungen: mCount + aCount,
+      // Vorläufig = keine Messung nach WZ-Ende gefunden
+      vorlaeufig: (() => {
+        const nachWZ_M = morgens.find(m => m.ts >= p.bis);
+        const nachWZ_A = abends.find(a => a.ts >= p.bis);
+        return !(nachWZ_M && nachWZ_A);
+      })()
+    };
+  });
+
+  const total = ereignisse.reduce((acc, e) => {
+    acc.tage += e.tage;
+    acc.verworfen += e.verworfen;
+    acc.count += 1;
+    return acc;
+  }, {tage:0, verworfen:0, count:0});
+
+  return { ereignisse, total };
 };
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -423,6 +592,7 @@ bauern = _hpLoadCache('bauern') || {};
 saisonInfo = _hpLoadCache('saisonInfo'); window.saisonInfo = saisonInfo;
 gruppen = _hpLoadCache('gruppen') || {};
 kraftfutter = _hpLoadCache('kraftfutter') || {};
+milchSperren = _hpLoadCache('milchSperren') || {}; window.milchSperren = milchSperren;
 schalmtest = _hpLoadCache('schalmtest') || {};
 zellzahl = _hpLoadCache('zellzahl') || {};
 
@@ -477,6 +647,7 @@ function initApp() {
   onValue(ref(db,'fotos'),         s=>{ fotos=s.val()||{};          render(); });
   onValue(ref(db,'chat'),           s=>{ chatNachrichten=s.val()||{}; renderChat(); });
   onValue(ref(db,'kraftfutter'),    s=>{ kraftfutter=s.val()||{}; _hpSaveCache('kraftfutter',kraftfutter); render(); });
+  onValue(ref(db,'milchSperren'),   s=>{ milchSperren=s.val()||{}; window.milchSperren=milchSperren; _hpSaveCache('milchSperren',milchSperren); render(); });
   onValue(ref(db,'zaehlVerlauf'),   s=>{ zaehlVerlauf=s.val()||{};   render(); });
   onValue(ref(db,'kalenderTermine'),s=>{ kalenderTermine=s.val()||{}; render(); });
   onValue(ref(db,'traenkeLog'),     s=>{ traenkeLog=s.val()||{};      render(); });
