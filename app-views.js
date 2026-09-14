@@ -975,6 +975,33 @@ function renderKuhDetail() {
       </div>
     </div>
 
+    <!-- WZ & Verworfen dieser Kuh -->
+    ${(function(){
+      const wz = window.computeKuhWartezeiten ? window.computeKuhWartezeiten(id) : { ereignisse: [], total: {tage:0, verworfen:0, count:0} };
+      if(!wz.ereignisse.length) return '';
+      const dtDE = (ts) => new Date(ts).toLocaleDateString('de-AT', {day:'2-digit', month:'2-digit'});
+      return `
+      <div style="background:linear-gradient(180deg,rgba(220,60,60,.08),transparent);border:1px solid rgba(220,60,60,.35);border-radius:10px;padding:.7rem;margin-bottom:.7rem">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.5rem">
+          <div style="font-size:.72rem;font-weight:700;color:var(--red);letter-spacing:.05em;text-transform:uppercase">⚠ Wartezeiten & Verworfene Milch</div>
+          <div style="font-size:.7rem;color:var(--text3)">${wz.total.count} Ereignis${wz.total.count!==1?'se':''} · ${wz.total.tage} Tage</div>
+        </div>
+        ${wz.ereignisse.map(e => `
+          <div style="padding:.4rem 0;border-top:1px solid var(--border);font-size:.78rem;line-height:1.35">
+            <div style="display:flex;justify-content:space-between;gap:.5rem">
+              <span style="color:var(--text)"><b>${dtDE(e.von)} – ${dtDE(e.bis)}</b> <span style="color:var(--text3)">(${e.tage} Tage)</span></span>
+              <span style="color:var(--red);font-weight:700;white-space:nowrap">${e.verworfen} L${e.vorlaeufig?' *':''}</span>
+            </div>
+            <div style="color:var(--text3);font-size:.72rem;margin-top:1px">${e.grund}${e.notiz?' · '+e.notiz:''} · ${e.melkungen} Melkungen</div>
+          </div>`).join('')}
+        <div style="display:flex;justify-content:space-between;padding:.5rem 0 0 0;margin-top:.3rem;border-top:1px solid var(--border);font-size:.8rem;font-weight:700">
+          <span style="color:var(--text2)">Gesamt Saison verworfen</span>
+          <span style="color:var(--red)">${wz.total.verworfen} L</span>
+        </div>
+        ${wz.ereignisse.some(e=>e.vorlaeufig) ? '<div style="font-size:.65rem;color:var(--text3);margin-top:.35rem;font-style:italic">* vorläufig — wird nachberechnet sobald neue Messung nach WZ-Ende vorliegt</div>' : ''}
+      </div>`;
+    })()}
+
     <!-- Chart-Anzeige-Umschaltung: welche Charts sichtbar sind -->
     ${(function(){
       const vis = (function(){ try { return JSON.parse(localStorage.getItem('kdChartVisible')||'null') || {morgen:true, abend:true, tag:true}; } catch(e){ return {morgen:true, abend:true, tag:true}; } })();
@@ -3724,17 +3751,23 @@ function renderStatistik() {
     });
   });
   
-  // Milchstatistik — GESAMT/MORGENS/ABENDS/MOLKEREI via Carry-Forward (identisch mit Blatt Milch)
+  // Milchstatistik — GESAMT/MORGENS/ABENDS/MOLKEREI/SENNEREI/VERWORFEN via Carry-Forward
   const milchListe = Object.values(milchEintraege).sort((a,b)=>a.datum-b.datum);
-  const cf = typeof window.computeCarryForwardGesamt === 'function' ? window.computeCarryForwardGesamt() : {gesamt:0,morgen:0,abend:0,molkerei:0};
+  const cf = typeof window.computeCarryForwardGesamt === 'function' ? window.computeCarryForwardGesamt() : {gesamt:0,morgen:0,abend:0,molkerei:0,sennerei:0,verworfen:0};
   const milchGesamt = cf.gesamt;
   const milchMorgen = cf.morgen;
   const milchAbend = cf.abend;
-  const milchMolkerei = cf.molkerei;
+  const milchMolkerei = cf.molkerei || 0;
+  const milchSennerei = cf.sennerei || 0;
+  const milchVerworfen = cf.verworfen || 0;
   // Morgens/Abends-Prozent
   const gesamtForPct = milchMorgen + milchAbend;
   const pctMorgen = gesamtForPct > 0 ? Math.round(milchMorgen / gesamtForPct * 100) : 0;
   const pctAbend = gesamtForPct > 0 ? 100 - pctMorgen : 0;
+  // Verwendungs-Prozente
+  const pctMolk = milchGesamt > 0 ? Math.round(milchMolkerei / milchGesamt * 100) : 0;
+  const pctSenn = milchGesamt > 0 ? Math.round(milchSennerei / milchGesamt * 100) : 0;
+  const pctVerw = milchGesamt > 0 ? Math.round(milchVerworfen / milchGesamt * 100) : 0;
   
   const maxTage = Math.max(...Object.values(proWeide).map(w=>w.tage), 1);
 
@@ -3797,9 +3830,11 @@ function renderStatistik() {
     <div class="section-title">Milch Saison <span style="font-size:.65rem;color:var(--text3);font-weight:400">· Carry-Forward</span></div>
     <div class="stats-grid" style="grid-template-columns:1fr 1fr">
       <div class="stat-card"><div class="stat-icon">🥛</div><div class="stat-num"><span class="stat-count-up" data-target="${Math.round(milchGesamt)}">0</span>L</div><div class="stat-label">Gesamt</div></div>
-      <div class="stat-card"><div class="stat-icon">🏭</div><div class="stat-num">${Math.round(milchMolkerei)}L</div><div class="stat-label">an Molkerei</div></div>
       <div class="stat-card"><div class="stat-icon">🌅</div><div class="stat-num">${Math.round(milchMorgen)}L</div><div class="stat-label">Morgens · <span style="color:var(--gold)">${pctMorgen}%</span></div></div>
       <div class="stat-card"><div class="stat-icon">🌇</div><div class="stat-num">${Math.round(milchAbend)}L</div><div class="stat-label">Abends · <span style="color:var(--gold)">${pctAbend}%</span></div></div>
+      <div class="stat-card"><div class="stat-icon">🧀</div><div class="stat-num">${Math.round(milchSennerei)}L</div><div class="stat-label">Sennerei · <span style="color:var(--gold)">${pctSenn}%</span></div></div>
+      <div class="stat-card"><div class="stat-icon">🏭</div><div class="stat-num">${Math.round(milchMolkerei)}L</div><div class="stat-label">Molkerei · <span style="color:var(--gold)">${pctMolk}%</span></div></div>
+      <div class="stat-card" style="${milchVerworfen>0?'border-color:var(--red);background:linear-gradient(180deg,rgba(220,60,60,.08),transparent)':''}"><div class="stat-icon" style="${milchVerworfen>0?'color:var(--red)':''}">⚠</div><div class="stat-num" style="${milchVerworfen>0?'color:var(--red)':''}">${Math.round(milchVerworfen)}L</div><div class="stat-label">Verworfen · <span style="color:${milchVerworfen>0?'var(--red)':'var(--text3)'}">${pctVerw}%</span></div></div>
     </div>
 
     ${kurvenDaten.length >= 2 ? `
@@ -6904,7 +6939,8 @@ function renderBackup() {
       <div style="display:flex;flex-direction:column;gap:.5rem">
         <button class="btn-secondary" onclick="exportKueheCSV()">🐄 Kühe exportieren</button>
         <button class="btn-secondary" onclick="exportBehandlungenCSV()">⚕ Behandlungen exportieren</button>
-        <button class="btn-secondary" onclick="exportMilchCSV()">🥛 Milchdaten exportieren</button>
+        <button class="btn-secondary" onclick="exportMilchCSV()">🥛 Milchdaten CSV</button>
+        <button class="btn-primary" onclick="exportMilchXLSX()">🥛 Milchdaten XLSX (mit WZ-Markierung)</button>
         <button class="btn-secondary" onclick="exportAlpung()">📊 Alpungstage exportieren</button>
         <button class="btn-primary" onclick="exportMolkereiExcel()">🧀 Molkerei Excel exportieren</button>
       </div>
@@ -7868,8 +7904,21 @@ function renderBauerDetail() {
 
   // Milch-Summe für diesen Bauern via Carry-Forward (analog Blatt Milch)
   const _mW = window.milchWert || function(v){ return typeof v === 'number' ? v : (v && v.wert != null ? parseFloat(v.wert) || 0 : parseFloat(v) || 0); };
-  const bauerCf = typeof window.computeCarryForwardGesamt === 'function' ? window.computeCarryForwardGesamt(kueheIds) : {gesamt:0};
+  const bauerCf = typeof window.computeCarryForwardGesamt === 'function' ? window.computeCarryForwardGesamt(kueheIds) : {gesamt:0, verworfen:0};
   const bauerMilchGesamt = bauerCf.gesamt;
+  const bauerVerworfen = bauerCf.verworfen || 0;
+  // WZ-Übersicht: welche Kühe haben aktuell/hatten WZ + Total-Verworfen
+  const bauerWzInfo = { kuehe: 0, tage: 0, verworfen: 0 };
+  if(typeof window.computeKuhWartezeiten === 'function') {
+    kueheIds.forEach(kid => {
+      const wz = window.computeKuhWartezeiten(kid);
+      if(wz.total.count > 0) {
+        bauerWzInfo.kuehe += 1;
+        bauerWzInfo.tage += wz.total.tage;
+        bauerWzInfo.verworfen += wz.total.verworfen;
+      }
+    });
+  }
 
   // ═══════════════════════════════════════════════════════════════════════
   // TAGESMILCH-VERLAUF pro Tag: für alle Kühe des Bauern gepaart Abend + nächster Morgen
@@ -7942,12 +7991,17 @@ function renderBauerDetail() {
     </div>
 
     <!-- Stats -->
-    <div class="stats-grid" style="grid-template-columns:1fr 1fr 1fr 1fr;margin-bottom:1rem">
+    <div class="stats-grid" style="grid-template-columns:1fr 1fr 1fr 1fr;margin-bottom:${bauerVerworfen>0?'.5rem':'1rem'}">
       <div class="stat-card"><div class="stat-icon">🐄</div><div class="stat-num">${kueheList.length}</div><div class="stat-label">Kühe</div></div>
       <div class="stat-card"><div class="stat-icon">🥛</div><div class="stat-num" style="font-size:1.2rem">${bauerMilchGesamt}L</div><div class="stat-label">Saison</div></div>
       <div class="stat-card ${aktivBehandlungen?'stat-warn':''}"><div class="stat-icon">⚕</div><div class="stat-num">${alleBList.length}</div><div class="stat-label">Behandlung${aktivBehandlungen?' <span style="color:var(--red);font-weight:700">·'+aktivBehandlungen+' aktiv</span>':''}</div></div>
       <div class="stat-card"><div class="stat-icon">🐮</div><div class="stat-num">${bsListe.length}</div><div class="stat-label">Trächtig</div></div>
     </div>
+    ${bauerVerworfen > 0 ? `
+    <div style="background:linear-gradient(90deg,rgba(220,60,60,.12),rgba(220,60,60,.04));border:1px solid rgba(220,60,60,.35);border-radius:10px;padding:.55rem .8rem;margin-bottom:1rem;display:flex;justify-content:space-between;align-items:center;font-size:.78rem">
+      <span style="color:var(--red);font-weight:700">⚠ ${bauerVerworfen} L verworfen diese Saison</span>
+      <span style="color:var(--text3);font-size:.72rem">${bauerWzInfo.kuehe} Kuh${bauerWzInfo.kuehe!==1?'e':''} · ${bauerWzInfo.tage} Tage WZ</span>
+    </div>` : ''}
 
     <!-- TAGESMILCH-VERLAUF (Bauer-Ebene, gepaart Abend + nächst folgender Morgen) -->
     ${tagesmilchPaare.length >= 1 ? `
@@ -8027,6 +8081,15 @@ function renderBauerDetail() {
           }
         }
 
+        // WZ-Verworfen-Info für diese Kuh (Total-Saison)
+        let verwHTML = '';
+        if(typeof window.computeKuhWartezeiten === 'function') {
+          const wzInfo = window.computeKuhWartezeiten(kid);
+          if(wzInfo.total.verworfen > 0) {
+            verwHTML = `<div style="font-size:.7rem;color:var(--red);margin-top:.1rem">⚠ ${wzInfo.total.verworfen}L verworfen (${wzInfo.total.tage} Tage WZ)</div>`;
+          }
+        }
+
         // Aktive Behandlungen + Wartezeit-Info
         const kuhBehalt = Object.entries(behandlungen).filter(([,beh])=>beh.kuhId===kid);
         const aktBeh = kuhBehalt.filter(([,beh])=>beh.aktiv);
@@ -8063,6 +8126,7 @@ function renderBauerDetail() {
               <div style="font-size:.7rem;color:var(--text3);margin-top:.1rem">${k.rasse||'–'} ${behBadge}</div>
               ${tmHTML}
               ${zzHTML}
+              ${verwHTML}
             </div>
           </div>
           <span class="chevron" style="align-self:center">›</span>

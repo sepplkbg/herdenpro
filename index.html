@@ -6,10 +6,20 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta name="theme-color" content="#0c1a09"/>
-<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🐄</text></svg>" />
+<meta name="color-scheme" content="dark"/>
+<meta name="mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="apple-mobile-web-app-title" content="HerdenPro"/>
+<meta name="application-name" content="HerdenPro"/>
+<meta name="description" content="Digitale Herdenverwaltung für Almwirtschaft — Milchmessung, Behandlungen, Sennerei"/>
+<!-- Favicon + Icons (SVG scales an alle Größen) -->
+<link rel="icon" type="image/svg+xml" href="icon.svg"/>
+<link rel="mask-icon" href="icon.svg" color="#0c1a09"/>
+<link rel="apple-touch-icon" href="icon.svg"/>
+<link rel="apple-touch-icon" sizes="180x180" href="icon.svg"/>
+<link rel="apple-touch-icon" sizes="152x152" href="icon.svg"/>
+<link rel="apple-touch-icon" sizes="167x167" href="icon.svg"/>
 <title>HerdenPro v25</title>
 <link rel="manifest" href="manifest.json"/>
 
@@ -19,11 +29,11 @@
 ═══════════════════════════════════════════════════════════════════════════ -->
 <script>
 // Force clear cache if version changed
-if(localStorage.getItem('hp_version') !== 'v52.4') {
+if(localStorage.getItem('hp_version') !== 'v53.0') {
   localStorage.removeItem('mainNav');
   localStorage.removeItem('mehrOrder');
   localStorage.removeItem('mehrOrder');
-  localStorage.setItem('hp_version','v52.4');
+  localStorage.setItem('hp_version','v53.0');
   // Force SW update
   if('serviceWorker' in navigator) {
     navigator.serviceWorker.getRegistrations().then(function(regs) {
@@ -39,8 +49,8 @@ if(localStorage.getItem('hp_version') !== 'v52.4') {
       });
     }
     // Reload once after clearing
-    if(!sessionStorage.getItem('reloaded_v52_4')) {
-      sessionStorage.setItem('reloaded_v52_4','1');
+    if(!sessionStorage.getItem('reloaded_v53_0')) {
+      sessionStorage.setItem('reloaded_v53_0','1');
       window.location.reload(true);
     }
   }
@@ -225,7 +235,8 @@ window.FIREBASE_CONFIG = {
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <script>if(typeof pdfjsLib !== 'undefined'){pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';}</script>
-<!-- SheetJS für Excel-Export -->
+<!-- ExcelJS für XLSX-Export mit Formatierung (rote Zellen, Kommentare) -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js"></script>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
@@ -392,6 +403,9 @@ window.FIREBASE_CONFIG = {
 <script src="app-sennerei.js"></script>
 <script src="app-saisonabschluss.js"></script>
 <script src="app-milestone.js"></script>
+<script src="app-milch-xlsx.js"></script>
+<script src="app-milchsperre.js"></script>
+<script src="app-install.js"></script>
 <script>
 document.addEventListener('DOMContentLoaded', function() {
   var mb = document.getElementById('nav-mehr');
