@@ -273,11 +273,12 @@
     const wochen = _wochenCache || [];
     return `
       <div class="page-header">
-        <h2>🥛 Sennerei — Abholung</h2>
+        <h2>🥛 Sennerei</h2>
         <div style="display:flex;gap:.4rem">
           <button class="btn-primary" onclick="sennereiUploadPdf()">📥 Woche via PDF importieren</button>
         </div>
       </div>
+      ${typeof window._renderSennereiTabs === 'function' ? window._renderSennereiTabs('abholung') : ''}
 
       <div style="background:var(--bg3);border:1px solid var(--border);border-radius:12px;padding:.8rem;margin-bottom:.8rem">
         <div style="font-size:.85rem;color:var(--text2);line-height:1.5">
