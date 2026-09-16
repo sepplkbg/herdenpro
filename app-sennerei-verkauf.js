@@ -302,10 +302,16 @@
         #sv-kg-popup .kg-frei-wrap input { flex:1; background:transparent; border:none; color:var(--text,#eee); font-size:2.2rem; font-weight:800; padding:.5rem 0; text-align:right; outline:none; font-family:inherit; min-width:0; }
         #sv-kg-popup .kg-frei-wrap .unit { font-size:1.2rem; color:var(--text3,#888); font-weight:700; }
 
-        /* Berechnung — groß und deutlich */
-        #sv-kg-popup .kg-berechnung { text-align:center; padding:1rem .9rem; background:rgba(212,168,75,.08); border:1.5px solid rgba(212,168,75,.3); border-radius:12px; font-size:1rem; color:var(--text2,#ccc); }
+        /* Berechnung — groß + KLICKBAR als Sofort-Speichern-Button (sichtbar vor Tastatur) */
+        #sv-kg-popup .kg-berechnung { text-align:center; padding:1.1rem .9rem; background:rgba(212,168,75,.08); border:2px solid rgba(212,168,75,.3); border-radius:14px; font-size:1rem; color:var(--text2,#ccc); font-family:inherit; width:100%; cursor:default; transition:all .15s; margin-bottom:.7rem; }
+        #sv-kg-popup .kg-berechnung.active { cursor:pointer; background:linear-gradient(135deg,var(--gold,#d4a84b),#c9a05a); border-color:var(--gold,#d4a84b); color:#000; box-shadow:0 4px 20px rgba(212,168,75,.4); }
+        #sv-kg-popup .kg-berechnung.active:active { transform:scale(.97); }
         #sv-kg-popup .kg-berechnung .rechnung { font-size:.88rem; color:var(--text3,#888); margin-bottom:.2rem; }
+        #sv-kg-popup .kg-berechnung.active .rechnung { color:rgba(0,0,0,.65); font-weight:600; }
         #sv-kg-popup .kg-berechnung .betrag { font-size:2rem; color:var(--gold,#d4a84b); font-weight:900; }
+        #sv-kg-popup .kg-berechnung.active .betrag { color:#000; }
+        #sv-kg-popup .kg-berechnung .tap-hint { font-size:.78rem; color:rgba(0,0,0,.7); margin-top:.4rem; font-weight:700; letter-spacing:.1em; text-transform:uppercase; display:none; }
+        #sv-kg-popup .kg-berechnung.active .tap-hint { display:block; }
 
         /* Sticky Footer */
         #sv-kg-popup .kg-foot { position:sticky; bottom:0; background:linear-gradient(180deg,transparent,var(--bg,#0c1a09) 30%); padding:1rem; padding-top:1.5rem; border-top:1px solid rgba(212,168,75,.15); flex-shrink:0; display:flex; gap:.5rem; }
@@ -342,10 +348,11 @@
           '<input type="text" inputmode="decimal" id="kg-frei-input" placeholder="0" oninput="_svKgFreiCalc(\'' + preisId + '\')"/>' +
           '<span class="unit">kg</span>' +
         '</div>' +
-        '<div class="kg-berechnung" id="kg-berechnung">' +
+        '<button type="button" class="kg-berechnung" id="kg-berechnung" onclick="_svKgFreiSpeichern(\'' + preisId + '\')" disabled>' +
           '<div class="rechnung">Preis pro kg</div>' +
           '<div class="betrag">' + preisKg.toFixed(2).replace('.',',') + ' €</div>' +
-        '</div>' +
+          '<div class="tap-hint">✓ Tippen zum Speichern</div>' +
+        '</button>' +
       '</div>' +
       // Sticky Footer
       '<div class="kg-foot">' +
@@ -374,13 +381,19 @@
       const gesamt = Math.round(kg * preisKg * 100) / 100;
       info.innerHTML =
         '<div class="rechnung">' + _fmtKg(kg) + ' kg × ' + preisKg.toFixed(2).replace('.',',') + ' €/kg</div>' +
-        '<div class="betrag">' + _fmtEUR(gesamt) + ' €</div>';
+        '<div class="betrag">' + _fmtEUR(gesamt) + ' €</div>' +
+        '<div class="tap-hint">✓ Tippen zum Speichern</div>';
+      info.classList.add('active');
+      info.disabled = false;
       btn.disabled = false;
       btn.innerHTML = '✓ Speichern · ' + _fmtEUR(gesamt) + ' €';
     } else {
       info.innerHTML =
         '<div class="rechnung">Preis pro kg</div>' +
-        '<div class="betrag">' + preisKg.toFixed(2).replace('.',',') + ' €</div>';
+        '<div class="betrag">' + preisKg.toFixed(2).replace('.',',') + ' €</div>' +
+        '<div class="tap-hint">✓ Tippen zum Speichern</div>';
+      info.classList.remove('active');
+      info.disabled = true;
       btn.disabled = true;
       btn.innerHTML = '✓ Verkauf speichern';
     }
@@ -953,13 +966,13 @@
     const st = document.createElement('style');
     st.id = 'sv-styles';
     st.textContent = `
-      .sv-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(105px,1fr)); gap:.5rem; }
-      .sv-btn { display:flex; flex-direction:column; align-items:center; justify-content:center; gap:.15rem; padding:.7rem .4rem; background:linear-gradient(180deg,var(--bg3),rgba(0,0,0,.15)); border:1.5px solid var(--border); border-radius:12px; color:var(--text); cursor:pointer; font-family:inherit; min-height:92px; text-align:center; transition:transform .08s, box-shadow .12s, border-color .15s; -webkit-tap-highlight-color:transparent; }
+      .sv-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); gap:.6rem; }
+      .sv-btn { display:flex; flex-direction:column; align-items:center; justify-content:center; gap:.35rem; padding:1.2rem .5rem; background:linear-gradient(180deg,var(--bg3),rgba(0,0,0,.15)); border:2px solid var(--border); border-radius:14px; color:var(--text); cursor:pointer; font-family:inherit; min-height:140px; text-align:center; transition:transform .08s, box-shadow .12s, border-color .15s; -webkit-tap-highlight-color:transparent; }
       .sv-btn:active { transform:scale(.94); border-color:var(--gold); box-shadow:0 0 0 3px rgba(212,168,75,.25); }
       .sv-btn:hover { border-color:var(--gold); }
-      .sv-btn-icon { font-size:1.5rem; line-height:1; }
-      .sv-btn-name { font-size:.72rem; font-weight:600; line-height:1.15; color:var(--text2); }
-      .sv-btn-preis { font-size:.95rem; font-weight:800; color:var(--gold); line-height:1; margin-top:.1rem; }
+      .sv-btn-icon { font-size:2.2rem; line-height:1; }
+      .sv-btn-name { font-size:1rem; font-weight:700; line-height:1.15; color:var(--text); margin-top:.2rem; }
+      .sv-btn-preis { font-size:1.15rem; font-weight:800; color:var(--gold); line-height:1; margin-top:.25rem; }
 
       .sv-toast { position:fixed; left:50%; bottom:1.2rem; transform:translateX(-50%); background:var(--bg2); border:2px solid var(--green); border-radius:14px; padding:.55rem .75rem; display:flex; align-items:center; gap:.7rem; box-shadow:0 8px 30px rgba(0,0,0,.4); z-index:9999; max-width:95vw; animation:svTin .2s ease; }
       @keyframes svTin { from{opacity:0;transform:translateX(-50%) translateY(15px)} to{opacity:1;transform:translateX(-50%) translateY(0)} }
