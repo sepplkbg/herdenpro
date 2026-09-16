@@ -78,12 +78,16 @@
   }
 
   // ── Summen berechnen ──
+  // ⚠ kesselmilch ist ein isoliertes Anzeige-Feld — wird NUR hier in der Sennerei-Produktion
+  //   summiert und angezeigt, NIEMALS für andere Berechnungen (Carry-Forward, Molkerei, etc.)
+  //   weiterverarbeitet.
   function _summen(eintraege) {
-    let sumKaese = 0, sumButter = 0;
+    let sumKaese = 0, sumButter = 0, sumKesselmilch = 0;
     const spezMap = {};   // { 'Graukäse|kg': gesamtMenge }
     eintraege.forEach(e => {
       sumKaese += parseFloat(e.kaeseKg) || 0;
       sumButter += parseFloat(e.butterKg) || 0;
+      sumKesselmilch += parseFloat(e.kesselmilchL) || 0;
       (e.spezialitaeten || []).forEach(s => {
         if(!s || !s.name) return;
         const key = s.name + '|' + (s.einheit || 'kg');
@@ -94,7 +98,7 @@
       const [name, einheit] = k.split('|');
       return { name, einheit, menge: m };
     }).sort((a, b) => a.name.localeCompare(b.name));
-    return { kaese: sumKaese, butter: sumButter, spezialitaeten: spezArr, tage: eintraege.length };
+    return { kaese: sumKaese, butter: sumButter, kesselmilch: sumKesselmilch, spezialitaeten: spezArr, tage: eintraege.length };
   }
 
   // ── HAUPT-VIEW: Übersichts-Seite ──
@@ -137,7 +141,13 @@
         </div>
       </div>
 
-      <!-- Summen -->
+      <!-- Kesselmilch (isolierte Anzeige — nur hier, keine anderen Berechnungen) -->
+      <div style="background:linear-gradient(90deg,rgba(122,203,255,.12),rgba(122,203,255,.04));border:1px solid rgba(122,203,255,.35);border-radius:10px;padding:.7rem .9rem;margin-bottom:.6rem;text-align:center">
+        <div style="font-size:.72rem;color:#7acbff;letter-spacing:.08em;font-weight:700">🥛 KESSELMILCH GESAMT</div>
+        <div style="font-size:1.9rem;color:#7acbff;font-weight:900;line-height:1.1">${_fmtZahl(summ.kesselmilch)} <span style="font-size:.85rem;color:rgba(122,203,255,.6);font-weight:400">L</span></div>
+      </div>
+
+      <!-- Summen Käse + Butter -->
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:.5rem;margin-bottom:.7rem">
         <div style="background:var(--bg3);border:1px solid var(--border);border-radius:10px;padding:.6rem .8rem;text-align:center">
           <div style="font-size:.75rem;color:var(--text3);letter-spacing:.05em">🧀 KÄSE GESAMT</div>
@@ -163,12 +173,21 @@
         ? '<div class="empty-state">Keine Einträge in diesem Zeitraum.<br>Tippe oben auf „+ Neu" um zu starten.</div>'
         : `<div class="card-list">
             ${eintraege.map(e => {
-              const spezText = (e.spezialitaeten||[]).filter(s => s && s.name && s.menge).map(s => _esc(s.name) + ' ' + _fmtZahl(s.menge) + ' ' + _esc(s.einheit||'kg')).join(', ');
+              const spezText = (e.spezialitaeten||[]).filter(s => s && s.name && s.menge).map(s => _esc(s.name) + ' ' + _fmtZahl(s.menge) + ' ' + _esc(s.einheit||'kg') + (s.charge?' ['+_esc(s.charge)+']':'')).join(', ');
+              const chargeText = [
+                e.kaeseCharge ? '🧀 ['+_esc(e.kaeseCharge)+']' : '',
+                e.butterCharge ? '🧈 ['+_esc(e.butterCharge)+']' : ''
+              ].filter(Boolean).join(' · ');
+              const kmText = (e.kesselmilchL != null && e.kesselmilchL > 0)
+                ? `<div style="font-size:.75rem;color:#7acbff;font-weight:600;margin-bottom:.1rem">🥛 Kesselmilch: ${_fmtZahl(e.kesselmilchL)} L</div>`
+                : '';
               return `
               <div class="list-card" style="cursor:pointer" onclick="_prodBearbeiten('${e.id}')">
                 <div class="list-card-left"><div>
                   <div class="list-card-title" style="font-weight:700">${_fmtDatum(e.datum)}</div>
+                  ${kmText}
                   <div class="list-card-sub" style="font-size:.82rem">🧀 ${_fmtZahl(e.kaeseKg)} kg · 🧈 ${_fmtZahl(e.butterKg)} kg</div>
+                  ${chargeText ? `<div style="font-size:.7rem;color:var(--text3);margin-top:.15rem">${chargeText}</div>` : ''}
                   ${spezText ? `<div style="font-size:.72rem;color:var(--text3);margin-top:.15rem">✨ ${spezText}</div>` : ''}
                   ${e.notiz ? `<div style="font-size:.72rem;color:var(--text3);margin-top:.15rem;font-style:italic">📝 ${_esc(e.notiz)}</div>` : ''}
                 </div></div>
@@ -220,9 +239,23 @@
     _showForm(id);
   };
 
-  // Preset-Gewichte für schnelle Eingabe (in kg)
-  const KAESE_PRESETS  = [5, 8, 10, 12, 15, 18, 20, 25, 30, 35, 40, 50];
-  const BUTTER_PRESETS = [0.5, 1, 1.5, 2, 2.5, 3, 4, 5, 6, 8, 10];
+  // Helper: sammelt alle bisher benutzten Spezialitäten-Namen mit letzten Einheiten aus der Historie.
+  // Sortiert nach Häufigkeit (meistgenutzte zuerst).
+  function _sammleSpezVorlagen() {
+    const einträge = window.sennereiProduktion || {};
+    const zaehler = {};   // { name+'|'+einheit: {name, einheit, count, lastUsed} }
+    Object.values(einträge).forEach(e => {
+      (e.spezialitaeten || []).forEach(s => {
+        if(!s || !s.name) return;
+        const key = s.name.trim() + '|' + (s.einheit || 'kg');
+        if(!zaehler[key]) zaehler[key] = { name: s.name.trim(), einheit: s.einheit || 'kg', count: 0, lastUsed: 0 };
+        zaehler[key].count += 1;
+        const ts = e.datumTs || (e.datum ? _isoToTs(e.datum) : 0);
+        if(ts > zaehler[key].lastUsed) zaehler[key].lastUsed = ts;
+      });
+    });
+    return Object.values(zaehler).sort((a, b) => b.count - a.count || b.lastUsed - a.lastUsed);
+  }
 
   function _showForm(existingId) {
     const alt = document.getElementById('prod-form');
@@ -247,6 +280,8 @@
         #prod-form .pf-tab.active { background:var(--gold,#d4a84b); color:#000; box-shadow:0 2px 8px rgba(212,168,75,.4); }
 
         #prod-form .pf-field { margin-bottom:1.4rem; }
+        #prod-form .pf-kesselmilch-field { padding:.7rem .8rem .8rem; background:linear-gradient(180deg,rgba(122,203,255,.06),rgba(122,203,255,.02)); border:1px solid rgba(122,203,255,.25); border-radius:12px; margin-bottom:1.6rem; }
+        #prod-form .pf-kesselmilch-field .pf-flabel .icon { color:#7acbff; }
         #prod-form .pf-flabel { display:flex; align-items:center; justify-content:space-between; font-size:.75rem; letter-spacing:.08em; text-transform:uppercase; color:var(--text3,#888); margin-bottom:.4rem; font-weight:600; }
         #prod-form .pf-flabel .icon { font-size:1.2rem; margin-right:.35rem; }
         #prod-form .pf-input-wrap { display:flex; align-items:center; background:rgba(255,255,255,.05); border:2px solid var(--border,#333); border-radius:12px; padding:.4rem .7rem; transition:border-color .15s; }
@@ -254,20 +289,31 @@
         #prod-form .pf-input-wrap input { flex:1; background:transparent; border:none; color:var(--text,#eee); font-size:2rem; font-weight:800; padding:.6rem 0; text-align:right; outline:none; font-family:inherit; min-width:0; }
         #prod-form .pf-input-wrap .unit { font-size:1.1rem; color:var(--text3,#888); margin-left:.4rem; font-weight:600; }
 
-        #prod-form .pf-presets { display:flex; flex-wrap:wrap; gap:.4rem; margin-top:.6rem; }
-        #prod-form .pf-preset { padding:.55rem .8rem; background:rgba(212,168,75,.08); border:1.5px solid rgba(212,168,75,.35); border-radius:10px; color:var(--gold,#d4a84b); font-size:.95rem; font-weight:700; cursor:pointer; min-width:52px; text-align:center; font-family:inherit; -webkit-tap-highlight-color:transparent; transition:transform .07s, background .15s; }
-        #prod-form .pf-preset:active { transform:scale(.93); background:rgba(212,168,75,.3); color:#000; }
-        #prod-form .pf-preset:hover { background:rgba(212,168,75,.18); }
+        /* Charge-Zeile unter dem kg-Feld */
+        #prod-form .pf-charge-wrap { display:flex; align-items:center; gap:.5rem; margin-top:.5rem; background:rgba(255,255,255,.03); border:1px solid var(--border,#333); border-radius:10px; padding:.4rem .7rem; }
+        #prod-form .pf-charge-wrap .pf-charge-label { font-size:.72rem; color:var(--text3,#888); letter-spacing:.05em; text-transform:uppercase; white-space:nowrap; }
+        #prod-form .pf-charge-wrap input { flex:1; background:transparent; border:none; color:var(--text,#eee); padding:.4rem 0; font-size:.95rem; font-family:inherit; outline:none; text-align:right; }
+        #prod-form .pf-charge-wrap input:focus { color:var(--gold); }
+
+        /* Spezialitäten-Vorlagen (Chips) */
+        #prod-form .pf-vorlagen-label { font-size:.72rem; color:var(--text3,#888); letter-spacing:.08em; text-transform:uppercase; margin-bottom:.4rem; }
+        #prod-form .pf-vorlagen { display:flex; flex-wrap:wrap; gap:.35rem; margin-bottom:1rem; padding-bottom:.9rem; border-bottom:1px solid var(--border,#333); }
+        #prod-form .pf-vorlage { padding:.55rem .8rem; background:rgba(212,168,75,.1); color:var(--gold,#d4a84b); border:1.5px solid rgba(212,168,75,.35); border-radius:10px; font-size:.85rem; font-weight:700; cursor:pointer; font-family:inherit; -webkit-tap-highlight-color:transparent; transition:transform .07s, background .15s; }
+        #prod-form .pf-vorlage:active { transform:scale(.94); background:rgba(212,168,75,.3); color:#000; }
 
         #prod-form .pf-notiz { width:100%; background:rgba(255,255,255,.05); border:2px solid var(--border,#333); border-radius:12px; color:var(--text,#eee); padding:.75rem 1rem; font-size:1rem; font-family:inherit; min-height:80px; resize:vertical; box-sizing:border-box; }
         #prod-form .pf-notiz:focus { outline:none; border-color:var(--gold,#d4a84b); }
 
-        #prod-form .pf-spez-row { display:flex; gap:.4rem; margin-bottom:.5rem; align-items:center; background:rgba(255,255,255,.03); border:1px solid var(--border,#333); border-radius:10px; padding:.4rem; }
+        #prod-form .pf-spez-row { display:flex; flex-wrap:wrap; gap:.35rem; margin-bottom:.5rem; align-items:center; background:rgba(255,255,255,.03); border:1px solid var(--border,#333); border-radius:10px; padding:.5rem; }
         #prod-form .pf-spez-row input, #prod-form .pf-spez-row select { background:rgba(255,255,255,.05); border:1px solid var(--border,#333); color:var(--text,#eee); padding:.55rem .6rem; border-radius:8px; font-size:.95rem; font-family:inherit; box-sizing:border-box; }
+        #prod-form .pf-spez-row .row1 { display:flex; gap:.35rem; align-items:center; width:100%; }
+        #prod-form .pf-spez-row .row2 { display:flex; gap:.35rem; align-items:center; width:100%; }
         #prod-form .pf-spez-row input.name { flex:1; min-width:0; }
         #prod-form .pf-spez-row input.menge { width:5.5rem; flex-shrink:0; text-align:center; font-weight:700; }
         #prod-form .pf-spez-row select.einheit { width:5rem; flex-shrink:0; }
-        #prod-form .pf-spez-row .del { background:rgba(220,60,60,.15); color:var(--red,#dc3c3c); border:1px solid rgba(220,60,60,.35); width:36px; height:40px; border-radius:8px; cursor:pointer; padding:0; flex-shrink:0; font-size:1rem; }
+        #prod-form .pf-spez-row input.charge { flex:1; min-width:0; }
+        #prod-form .pf-spez-row .charge-label { font-size:.72rem; color:var(--text3,#888); letter-spacing:.05em; text-transform:uppercase; padding-left:.2rem; white-space:nowrap; }
+        #prod-form .pf-spez-row .del { background:rgba(220,60,60,.15); color:var(--red,#dc3c3c); border:1px solid rgba(220,60,60,.35); width:36px; height:40px; border-radius:8px; cursor:pointer; padding:0; flex-shrink:0; font-size:1rem; align-self:flex-start; }
 
         #prod-form .pf-add-spez { width:100%; padding:.85rem; background:rgba(212,168,75,.1); color:var(--gold,#d4a84b); border:1.5px dashed rgba(212,168,75,.4); border-radius:12px; font-size:.95rem; font-weight:700; cursor:pointer; font-family:inherit; margin-top:.5rem; }
 
@@ -284,13 +330,25 @@
 
     const existing = existingId ? (window.sennereiProduktion || {})[existingId] : null;
     const datumVal = existing?.datum || _isoHeute();
+    // ⚠ KESSELMILCH ist ein ISOLIERTES Feld nur für dieses Blatt.
+    // Wird NIE für Carry-Forward-Berechnungen, Molkerei-Abrechnung, Verworfen o.ä. verwendet.
+    // Nur Anzeige + PDF hier.
+    const kesselmilchVal = existing?.kesselmilchL != null ? existing.kesselmilchL : '';
     const kaeseVal = existing?.kaeseKg != null ? existing.kaeseKg : '';
     const butterVal = existing?.butterKg != null ? existing.butterKg : '';
+    const kaeseChargeVal = existing?.kaeseCharge || '';
+    const butterChargeVal = existing?.butterCharge || '';
     const notizVal = existing?.notiz || '';
     const spezArr = (existing?.spezialitaeten || []).slice();
 
-    const kaeseChips  = KAESE_PRESETS.map(kg => `<button type="button" class="pf-preset" onclick="_pfSetKaese(${kg})">${_fmtNum(kg)}</button>`).join('');
-    const butterChips = BUTTER_PRESETS.map(kg => `<button type="button" class="pf-preset" onclick="_pfSetButter(${kg})">${_fmtNum(kg)}</button>`).join('');
+    // Bestehende Spezialitäten-Vorlagen aus Historie
+    const vorlagen = _sammleSpezVorlagen();
+    const vorlagenChips = vorlagen.length
+      ? '<div class="pf-vorlagen-label">Häufige Spezialitäten · Tap = hinzufügen</div>' +
+        '<div class="pf-vorlagen">' + vorlagen.slice(0, 12).map(v =>
+          `<button type="button" class="pf-vorlage" onclick="_pfAddSpezVorlage(${JSON.stringify(v.name).replace(/"/g,'&quot;')},'${_esc(v.einheit)}')">${_esc(v.name)} <span style="opacity:.65;font-weight:400">(${_esc(v.einheit)})</span></button>`
+        ).join('') + '</div>'
+      : '';
 
     const wrap = document.createElement('div');
     wrap.id = 'prod-form';
@@ -314,6 +372,14 @@
         '</div>' +
         // Tab Standard
         '<div id="pf-tab-std">' +
+          // Kesselmilch (GANZ OBEN, isoliert — wird NIE für andere Berechnungen verwendet)
+          '<div class="pf-field pf-kesselmilch-field">' +
+            '<div class="pf-flabel"><span><span class="icon">🥛</span>Kesselmilch</span><span style="color:var(--gold);text-transform:none;letter-spacing:0">L</span></div>' +
+            '<div class="pf-input-wrap">' +
+              '<input type="text" inputmode="decimal" id="pf-kesselmilch" value="' + kesselmilchVal + '" placeholder="0"/>' +
+              '<span class="unit">L</span>' +
+            '</div>' +
+          '</div>' +
           // Käse
           '<div class="pf-field">' +
             '<div class="pf-flabel"><span><span class="icon">🧀</span>Käse produziert</span><span style="color:var(--gold);text-transform:none;letter-spacing:0">kg</span></div>' +
@@ -321,7 +387,10 @@
               '<input type="text" inputmode="decimal" id="pf-kaese" value="' + kaeseVal + '" placeholder="0"/>' +
               '<span class="unit">kg</span>' +
             '</div>' +
-            '<div class="pf-presets">' + kaeseChips + '</div>' +
+            '<div class="pf-charge-wrap">' +
+              '<span class="pf-charge-label">Charge</span>' +
+              '<input type="text" id="pf-kaese-charge" value="' + _esc(kaeseChargeVal) + '" placeholder="z.B. K-2026-37"/>' +
+            '</div>' +
           '</div>' +
           // Butter
           '<div class="pf-field">' +
@@ -330,15 +399,22 @@
               '<input type="text" inputmode="decimal" id="pf-butter" value="' + butterVal + '" placeholder="0"/>' +
               '<span class="unit">kg</span>' +
             '</div>' +
-            '<div class="pf-presets">' + butterChips + '</div>' +
+            '<div class="pf-charge-wrap">' +
+              '<span class="pf-charge-label">Charge</span>' +
+              '<input type="text" id="pf-butter-charge" value="' + _esc(butterChargeVal) + '" placeholder="z.B. B-2026-37"/>' +
+            '</div>' +
           '</div>' +
         '</div>' +
         // Tab Spezialitäten
         '<div id="pf-tab-spez" style="display:none">' +
+          vorlagenChips +
           '<div id="pf-spez-list">' +
             (spezArr.length
               ? spezArr.map((s,i) => _spezRowHtml(s, i)).join('')
-              : '<div style="color:var(--text3);text-align:center;padding:1.2rem 0;font-size:.9rem">Noch keine Spezialitäten.</div>') +
+              : (vorlagen.length
+                  ? '<div style="color:var(--text3);text-align:center;padding:.9rem 0;font-size:.85rem">Vorlage antippen oder unten „+ Spezialität hinzufügen"</div>'
+                  : '<div style="color:var(--text3);text-align:center;padding:1.2rem 0;font-size:.9rem">Noch keine Spezialitäten.</div>')
+            ) +
           '</div>' +
           '<button type="button" class="pf-add-spez" onclick="_pfAddSpez()">+ Spezialität hinzufügen</button>' +
         '</div>' +
@@ -355,7 +431,7 @@
         '<button class="pf-save" onclick="_pfSave(' + (existingId ? '\'' + existingId + '\'' : 'null') + ')">✓ Speichern</button>' +
       '</div>';
     document.body.appendChild(wrap);
-    // KEIN Auto-Fokus (verhindert dass Tastatur sofort aufgeht → User sieht Presets)
+    // KEIN Auto-Fokus (verhindert dass Tastatur sofort aufgeht)
   }
 
   function _fmtNum(n) {
@@ -363,35 +439,39 @@
     return String(n).replace('.', ',');
   }
 
-  // Preset-Chip-Taps: setzen den Wert im Feld
-  window._pfSetKaese = function(kg) {
-    const el = document.getElementById('pf-kaese');
-    if(!el) return;
-    el.value = _fmtNum(kg);
-    el.blur();   // Tastatur zu falls offen
-    // Kurzes Highlight
-    el.style.transition = 'background .3s';
-    el.parentElement.style.borderColor = 'var(--gold)';
-    setTimeout(() => { if(el.parentElement) el.parentElement.style.borderColor = ''; }, 400);
-    if(navigator.vibrate) navigator.vibrate(12);
-  };
-  window._pfSetButter = function(kg) {
-    const el = document.getElementById('pf-butter');
-    if(!el) return;
-    el.value = _fmtNum(kg);
-    el.blur();
-    el.parentElement.style.borderColor = 'var(--gold)';
-    setTimeout(() => { if(el.parentElement) el.parentElement.style.borderColor = ''; }, 400);
+  // Spezialität aus Vorlage hinzufügen (Menge leer, muss noch eingegeben werden)
+  window._pfAddSpezVorlage = function(name, einheit) {
+    const list = document.getElementById('pf-spez-list');
+    if(!list) return;
+    if(list.querySelector('.empty-state, [style*="text-align:center"]')) {
+      list.innerHTML = '';
+    }
+    const idx = list.querySelectorAll('.pf-spez-row').length;
+    const div = document.createElement('div');
+    div.innerHTML = _spezRowHtml({name, menge:'', einheit, charge:''}, idx);
+    list.appendChild(div.firstChild);
+    // Fokus auf Menge-Feld der neuen Zeile
+    setTimeout(() => {
+      const rows = list.querySelectorAll('.pf-spez-row');
+      const last = rows[rows.length-1];
+      if(last) { const menge = last.querySelector('.menge'); if(menge) menge.focus(); }
+    }, 60);
     if(navigator.vibrate) navigator.vibrate(12);
   };
 
   function _spezRowHtml(s, i) {
     const einheiten = _EINHEITEN.map(e => `<option value="${e}"${s.einheit===e?' selected':''}>${e}</option>`).join('');
     return `<div class="pf-spez-row" data-idx="${i}">
-      <input type="text" class="name" value="${_esc(s.name||'')}" placeholder="z.B. Graukäse"/>
-      <input type="text" class="menge" inputmode="decimal" value="${s.menge||''}" placeholder="Menge"/>
-      <select class="einheit">${einheiten}</select>
-      <button type="button" class="del" onclick="_pfDelSpez(${i})">✕</button>
+      <div class="row1">
+        <input type="text" class="name" value="${_esc(s.name||'')}" placeholder="z.B. Graukäse"/>
+        <input type="text" class="menge" inputmode="decimal" value="${s.menge||''}" placeholder="Menge"/>
+        <select class="einheit">${einheiten}</select>
+        <button type="button" class="del" onclick="_pfDelSpez(${i})">✕</button>
+      </div>
+      <div class="row2">
+        <span class="charge-label">Charge</span>
+        <input type="text" class="charge" value="${_esc(s.charge||'')}" placeholder="z.B. G-2026-37"/>
+      </div>
     </div>`;
   }
 
@@ -440,6 +520,13 @@
       const butterKg = butterRaw === '' ? null : parseFloat(butterRaw);
       if(kaeseKg != null && isNaN(kaeseKg)) { alert('Käse-Wert ungültig'); if(btn) { btn.disabled=false; btn.textContent='Speichern'; } return; }
       if(butterKg != null && isNaN(butterKg)) { alert('Butter-Wert ungültig'); if(btn) { btn.disabled=false; btn.textContent='Speichern'; } return; }
+      // Kesselmilch (ISOLIERT — nur für dieses Blatt, nie für andere Berechnungen)
+      const kesselmilchRaw = (document.getElementById('pf-kesselmilch')?.value || '').replace(',','.');
+      const kesselmilchL = kesselmilchRaw === '' ? null : parseFloat(kesselmilchRaw);
+      if(kesselmilchL != null && isNaN(kesselmilchL)) { alert('Kesselmilch-Wert ungültig'); if(btn) { btn.disabled=false; btn.textContent='Speichern'; } return; }
+      // Chargen
+      const kaeseCharge = (document.getElementById('pf-kaese-charge')?.value || '').trim();
+      const butterCharge = (document.getElementById('pf-butter-charge')?.value || '').trim();
       // Spezialitäten sammeln
       const rows = document.querySelectorAll('#pf-spez-list .pf-spez-row');
       const spezialitaeten = [];
@@ -448,14 +535,20 @@
         const mengeRaw = r.querySelector('.menge').value.trim().replace(',','.');
         const menge = parseFloat(mengeRaw);
         const einheit = r.querySelector('.einheit').value || 'kg';
-        if(name && !isNaN(menge)) spezialitaeten.push({ name, menge, einheit });
+        const charge = (r.querySelector('.charge')?.value || '').trim();
+        if(name && !isNaN(menge)) spezialitaeten.push({ name, menge, einheit, charge });
       });
       const notiz = document.getElementById('pf-notiz').value.trim();
 
       const data = {
         datum,
+        datumTs: _isoToTs(datum),
+        // ⚠ ISOLIERTES FELD — nur Sennerei-Produktion-Blatt, NIE für andere Rechnungen
+        kesselmilchL: kesselmilchL,
         kaeseKg: kaeseKg,
+        kaeseCharge: kaeseCharge || null,
         butterKg: butterKg,
+        butterCharge: butterCharge || null,
         spezialitaeten,
         notiz,
         updatedAt: Date.now(),
@@ -502,54 +595,107 @@
     _pfDelete(id, datum);
   };
 
-  // ── PDF-DRUCK ──
+  // ── PDF-DRUCK: separate Tabelle pro Produkt (Käse / Butter / je Spezialität) ──
   window._prodDruckePDF = function() {
     const { eintraege, von, bis } = _getEintraege();
-    const summ = _summen(eintraege);
     const almName = (window.saisonInfo && window.saisonInfo.alm) || 'Alm';
     const jahr = (window.saisonInfo && window.saisonInfo.jahr) || new Date().getFullYear();
     const fmtNum = (n) => n == null || isNaN(n) ? '–' : String(Math.round(n*10)/10).replace('.',',');
-    const rows = eintraege.slice().reverse().map(e => {
-      const spez = (e.spezialitaeten||[]).filter(s=>s&&s.name&&s.menge).map(s => _esc(s.name)+' '+fmtNum(s.menge)+' '+_esc(s.einheit||'kg')).join(', ');
-      return '<tr>' +
-        '<td>' + _fmtDatum(e.datum, {weekday:'short', day:'2-digit', month:'2-digit', year:'numeric'}) + '</td>' +
-        '<td class="r">' + fmtNum(e.kaeseKg) + '</td>' +
-        '<td class="r">' + fmtNum(e.butterKg) + '</td>' +
-        '<td>' + (spez || '–') + '</td>' +
-        '<td>' + (_esc(e.notiz) || '–') + '</td>' +
-      '</tr>';
-    }).join('');
-    const spezSum = summ.spezialitaeten.map(s => _esc(s.name)+': <b>'+fmtNum(s.menge)+' '+_esc(s.einheit)+'</b>').join(' &nbsp;·&nbsp; ');
+    // Chronologisch aufsteigend
+    const chron = eintraege.slice().sort((a,b) => _isoToTs(a.datum) - _isoToTs(b.datum));
+
+    // ── Tabelle bauen (generische Helper) ──
+    function _buildProduktTabelle(icon, produktName, einheit, extractor) {
+      // extractor: (eintrag) => { menge, charge, notiz } | null
+      const zeilen = [];
+      let summe = 0;
+      chron.forEach(e => {
+        const val = extractor(e);
+        if(!val || val.menge == null || val.menge === '' || isNaN(val.menge) || val.menge <= 0) return;
+        zeilen.push({
+          datum: e.datum,
+          menge: val.menge,
+          charge: val.charge || '',
+          notiz: val.notiz || e.notiz || ''
+        });
+        summe += val.menge;
+      });
+      if(!zeilen.length) return '';
+      const rows = zeilen.map(z => {
+        return '<tr>' +
+          '<td>' + _fmtDatum(z.datum, {weekday:'short', day:'2-digit', month:'2-digit', year:'numeric'}) + '</td>' +
+          '<td class="r">' + fmtNum(z.menge) + '</td>' +
+          '<td>' + (z.charge ? _esc(z.charge) : '<span style="color:#bbb">–</span>') + '</td>' +
+          '<td>' + (z.notiz ? _esc(z.notiz) : '<span style="color:#bbb">–</span>') + '</td>' +
+        '</tr>';
+      }).join('');
+      return '<h2>' + icon + ' ' + _esc(produktName) + '</h2>' +
+        '<table>' +
+          '<thead><tr>' +
+            '<th style="width:22%">Datum</th>' +
+            '<th style="width:15%;text-align:right">Menge (' + _esc(einheit) + ')</th>' +
+            '<th style="width:23%">Charge</th>' +
+            '<th>Notiz</th>' +
+          '</tr></thead>' +
+          '<tbody>' + rows + '</tbody>' +
+          '<tfoot><tr>' +
+            '<td style="font-weight:700;text-align:right;padding-top:8px">SUMME</td>' +
+            '<td class="r" style="font-weight:800;color:#8b6914;font-size:14px;padding-top:8px">' + fmtNum(summe) + ' ' + _esc(einheit) + '</td>' +
+            '<td colspan="2" style="border-top:2px solid #d4a84b;padding-top:8px"></td>' +
+          '</tr></tfoot>' +
+        '</table>';
+    }
+
+    // Kesselmilch-Tabelle GANZ OBEN (isoliert — nur hier, keine anderen Rechnungen)
+    let tables = _buildProduktTabelle('🥛', 'Kesselmilch', 'L', (e) => ({
+      menge: e.kesselmilchL
+    }));
+    // Käse-Tabelle
+    tables += _buildProduktTabelle('🧀', 'Käse', 'kg', (e) => ({
+      menge: e.kaeseKg, charge: e.kaeseCharge
+    }));
+    // Butter-Tabelle
+    tables += _buildProduktTabelle('🧈', 'Butter', 'kg', (e) => ({
+      menge: e.butterKg, charge: e.butterCharge
+    }));
+
+    // Für jede Spezialität eigene Tabelle
+    // Erst alle vorkommenden Spez-Namen (name+einheit) sammeln
+    const spezKeys = {};   // { name+'|'+einheit: {name, einheit} }
+    chron.forEach(e => {
+      (e.spezialitaeten||[]).forEach(s => {
+        if(!s || !s.name || s.menge == null || isNaN(s.menge) || s.menge <= 0) return;
+        const key = s.name.trim() + '|' + (s.einheit || 'kg');
+        if(!spezKeys[key]) spezKeys[key] = { name: s.name.trim(), einheit: s.einheit || 'kg' };
+      });
+    });
+    Object.values(spezKeys).sort((a,b) => a.name.localeCompare(b.name)).forEach(sp => {
+      tables += _buildProduktTabelle('✨', sp.name, sp.einheit, (e) => {
+        const match = (e.spezialitaeten||[]).find(s => s && s.name && s.name.trim() === sp.name && (s.einheit || 'kg') === sp.einheit);
+        return match ? { menge: match.menge, charge: match.charge, notiz: e.notiz } : null;
+      });
+    });
+
+    if(!tables) tables = '<p style="color:#999;font-style:italic">Keine Einträge in diesem Zeitraum.</p>';
+
     const html =
       '<!DOCTYPE html><html><head><meta charset="UTF-8"/><title>Sennerei-Produktion ' + almName + '</title>' +
       '<style>' +
         'body{font-family:Georgia,serif;color:#222;padding:24px;max-width:900px;margin:0 auto}' +
         'h1{color:#6a4a10;border-bottom:2px solid #d4a84b;padding-bottom:8px;margin-bottom:14px}' +
-        'h2{color:#8b6914;margin-top:22px;font-size:1.05rem;border-bottom:1px solid #eee;padding-bottom:4px}' +
+        'h2{color:#8b6914;margin-top:26px;margin-bottom:8px;font-size:1.15rem;padding:4px 10px;background:#fff4d0;border-radius:6px 6px 0 0;border-left:4px solid #d4a84b}' +
         '.meta{color:#666;font-size:12px;margin-bottom:16px}' +
-        '.summ{background:#fff9e5;border-left:4px solid #d4a84b;padding:10px 14px;margin-bottom:16px;font-size:14px}' +
-        '.summ b{color:#8b6914;font-size:16px}' +
-        'table{border-collapse:collapse;width:100%;font-size:12px;margin-bottom:16px}' +
+        'table{border-collapse:collapse;width:100%;font-size:12px;margin-bottom:12px;page-break-inside:avoid}' +
         'th{background:#f0e0b0;text-align:left;padding:6px 8px;font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:#5a4010;border-bottom:2px solid #d4a84b}' +
-        'td{padding:5px 8px;border-bottom:1px solid #eee;vertical-align:top}' +
+        'td{padding:6px 8px;border-bottom:1px solid #eee;vertical-align:top}' +
         'td.r{text-align:right;font-family:monospace}' +
+        'tfoot td{border-bottom:none}' +
         '.footer{margin-top:24px;padding-top:8px;border-top:1px solid #eee;color:#999;font-size:10px;text-align:center;font-style:italic}' +
         '@media print{body{padding:0}}' +
       '</style></head><body>' +
       '<h1>🧀 Sennerei-Produktion — ' + _esc(almName) + '</h1>' +
-      '<div class="meta">Saison ' + _esc(String(jahr)) + ' &nbsp;·&nbsp; Zeitraum: <b>' + von.toLocaleDateString('de-AT') + ' – ' + bis.toLocaleDateString('de-AT') + '</b> &nbsp;·&nbsp; Erstellt: ' + new Date().toLocaleString('de-AT') + '</div>' +
-      '<div class="summ">' +
-        '🧀 Käse gesamt: <b>' + fmtNum(summ.kaese) + ' kg</b> &nbsp;·&nbsp; ' +
-        '🧈 Butter gesamt: <b>' + fmtNum(summ.butter) + ' kg</b>' +
-        (spezSum ? '<br>✨ Spezialitäten: ' + spezSum : '') +
-      '</div>' +
-      '<h2>📋 Einzelne Einträge (' + eintraege.length + ')</h2>' +
-      (eintraege.length ?
-        '<table>' +
-          '<thead><tr><th>Datum</th><th style="text-align:right">Käse (kg)</th><th style="text-align:right">Butter (kg)</th><th>Spezialitäten</th><th>Notiz</th></tr></thead>' +
-          '<tbody>' + rows + '</tbody>' +
-        '</table>'
-        : '<p style="color:#999;font-style:italic">Keine Einträge in diesem Zeitraum.</p>') +
+      '<div class="meta">Saison ' + _esc(String(jahr)) + ' &nbsp;·&nbsp; Zeitraum: <b>' + von.toLocaleDateString('de-AT') + ' – ' + bis.toLocaleDateString('de-AT') + '</b> &nbsp;·&nbsp; Erstellt: ' + new Date().toLocaleString('de-AT') + ' &nbsp;·&nbsp; ' + eintraege.length + ' Einträge</div>' +
+      tables +
       '<div class="footer">HerdenPro · Sennerei-Produktion · Automatisch generiert</div>' +
       '<script>setTimeout(()=>window.print(), 300);<\/script>' +
       '</body></html>';
