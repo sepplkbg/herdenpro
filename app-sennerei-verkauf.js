@@ -259,8 +259,9 @@
       window.sennereiVerkaeufe = window.sennereiVerkaeufe || {};
       window.sennereiVerkaeufe[newId] = data;
       window._verkaufLetzter = { id: newId, at: now };
-      _svHapticShort();
-      _svToastVerkauf(p.name + ' · ' + _fmtKg(kg) + ' kg', gesamt, newId);
+      _svHapticLong();
+      // GROSSER Kassier-Dialog statt kleiner Toast — User muss den Preis sofort sehen!
+      _svShowKassierDialog(p.name, kg, gesamt, newId);
       if(typeof render === 'function') render();
       const _retry = window.withAuthRetry || (async fn => await fn());
       await _retry(() => pushRef.set(data));
@@ -270,31 +271,48 @@
     }
   }
 
-  // ── kg-Popup mit Preset-Chips + freier Eingabe ──
+  // ── kg-Popup: FULLSCREEN mit großen Chips + großem Eingabefeld ──
   function _svShowKgPopup(preisId, p) {
     document.getElementById('sv-kg-popup')?.remove();
     if(!document.getElementById('sv-kg-popup-style')) {
       const st = document.createElement('style');
       st.id = 'sv-kg-popup-style';
       st.textContent = `
-        #sv-kg-popup { position:fixed; inset:0; z-index:99400; background:rgba(0,0,0,.7); backdrop-filter:blur(6px); display:flex; align-items:flex-end; justify-content:center; padding:0; }
-        #sv-kg-popup .kg-card { background:var(--bg2); border-top:1px solid rgba(212,168,75,.4); border-radius:18px 18px 0 0; max-width:560px; width:100%; padding:1rem 1rem 1.2rem; color:var(--text); box-shadow:0 -10px 40px rgba(0,0,0,.4); max-height:88vh; overflow-y:auto; animation:kgIn .22s cubic-bezier(.2,.9,.3,1); }
-        @keyframes kgIn { from{transform:translateY(60px);opacity:0} to{transform:translateY(0);opacity:1} }
-        #sv-kg-popup h3 { color:var(--gold); margin:0 0 .2rem 0; font-size:1.1rem; display:flex; align-items:center; gap:.4rem; }
-        #sv-kg-popup .kg-preis-info { color:var(--text3); font-size:.85rem; margin-bottom:.85rem; }
-        #sv-kg-popup .kg-label { display:block; font-size:.7rem; letter-spacing:.1em; text-transform:uppercase; color:var(--text3); margin:.85rem 0 .35rem 0; }
-        #sv-kg-popup .kg-presets { display:grid; grid-template-columns:repeat(auto-fill,minmax(64px,1fr)); gap:.35rem; }
-        #sv-kg-popup .kg-chip { padding:.65rem .3rem; background:linear-gradient(180deg,var(--bg3),rgba(0,0,0,.15)); border:1.5px solid var(--border); border-radius:9px; color:var(--text); font-size:.9rem; font-weight:700; cursor:pointer; text-align:center; -webkit-tap-highlight-color:transparent; transition:transform .07s, border-color .15s, background .15s; }
-        #sv-kg-popup .kg-chip:active { transform:scale(.92); border-color:var(--gold); background:rgba(212,168,75,.25); }
-        #sv-kg-popup .kg-chip:hover { border-color:var(--gold); }
-        #sv-kg-popup .kg-frei-row { display:flex; gap:.4rem; align-items:center; }
-        #sv-kg-popup .kg-frei-row input { flex:1; background:rgba(255,255,255,.05); border:1px solid var(--border); color:var(--text); padding:.65rem .7rem; border-radius:8px; font-size:1.05rem; font-family:inherit; box-sizing:border-box; text-align:center; font-weight:700; }
-        #sv-kg-popup .kg-frei-row .einheit { color:var(--text3); font-size:.9rem; padding:0 .4rem; }
-        #sv-kg-popup .kg-frei-row .btn-frei { background:var(--gold); color:#000; border:none; padding:.65rem 1rem; border-radius:8px; font-weight:700; cursor:pointer; font-size:.95rem; white-space:nowrap; }
-        #sv-kg-popup .kg-frei-row .btn-frei:disabled { opacity:.4; cursor:not-allowed; }
-        #sv-kg-popup .kg-berechnung { text-align:center; padding:.55rem; background:rgba(212,168,75,.08); border:1px solid rgba(212,168,75,.3); border-radius:8px; margin-top:.5rem; font-size:.9rem; color:var(--text2); min-height:2.2rem; }
-        #sv-kg-popup .kg-berechnung b { color:var(--gold); font-size:1.05rem; }
-        #sv-kg-popup .kg-abbrechen { background:transparent; color:var(--text3); border:none; padding:.6rem; margin-top:.7rem; width:100%; font-size:.85rem; cursor:pointer; }
+        #sv-kg-popup { position:fixed; inset:0; z-index:99400; background:var(--bg,#0c1a09); display:flex; flex-direction:column; overflow:hidden; animation:kgIn .18s ease; }
+        @keyframes kgIn { from{opacity:0;transform:translateY(20px)} to{opacity:1;transform:translateY(0)} }
+        #sv-kg-popup .kg-head { background:linear-gradient(180deg,#152912,#0c1a09); border-bottom:1px solid rgba(212,168,75,.3); padding:.9rem 1rem; display:flex; align-items:center; justify-content:space-between; flex-shrink:0; box-shadow:0 2px 12px rgba(0,0,0,.3); }
+        #sv-kg-popup .kg-title { display:flex; flex-direction:column; gap:.15rem; }
+        #sv-kg-popup .kg-title-main { font-family:Georgia,serif; font-size:1.25rem; color:var(--gold,#d4a84b); font-weight:700; }
+        #sv-kg-popup .kg-title-sub { font-size:.85rem; color:var(--text3,#888); font-weight:600; }
+        #sv-kg-popup .kg-close { background:transparent; border:none; color:var(--text3,#888); font-size:2rem; cursor:pointer; padding:.2rem .5rem; line-height:1; }
+
+        #sv-kg-popup .kg-body { flex:1; overflow-y:auto; padding:1rem; padding-bottom:2rem; -webkit-overflow-scrolling:touch; }
+        #sv-kg-popup .kg-label { display:block; font-size:.78rem; letter-spacing:.1em; text-transform:uppercase; color:var(--text3,#888); margin:0 0 .6rem 0; font-weight:600; }
+
+        /* GROSSE Chips */
+        #sv-kg-popup .kg-presets { display:grid; grid-template-columns:repeat(auto-fill,minmax(88px,1fr)); gap:.5rem; margin-bottom:1.5rem; }
+        #sv-kg-popup .kg-chip { padding:1rem .3rem; background:linear-gradient(180deg,var(--bg3),rgba(0,0,0,.15)); border:2px solid var(--border,#333); border-radius:12px; color:var(--text,#eee); font-size:1.15rem; font-weight:800; cursor:pointer; text-align:center; -webkit-tap-highlight-color:transparent; transition:transform .07s, border-color .15s, background .15s; min-height:64px; font-family:inherit; }
+        #sv-kg-popup .kg-chip:active { transform:scale(.93); border-color:var(--gold,#d4a84b); background:rgba(212,168,75,.3); color:#000; }
+        #sv-kg-popup .kg-chip:hover { border-color:var(--gold,#d4a84b); }
+        #sv-kg-popup .kg-chip .unit-sm { font-size:.72rem; font-weight:600; color:var(--text3,#888); display:block; margin-top:.15rem; }
+
+        /* Freies Gewicht — RIESIG */
+        #sv-kg-popup .kg-frei-wrap { background:rgba(255,255,255,.03); border:2px solid var(--border,#333); border-radius:14px; padding:.6rem .9rem; display:flex; align-items:center; gap:.5rem; transition:border-color .15s; margin-bottom:.7rem; }
+        #sv-kg-popup .kg-frei-wrap:focus-within { border-color:var(--gold,#d4a84b); background:rgba(212,168,75,.06); }
+        #sv-kg-popup .kg-frei-wrap input { flex:1; background:transparent; border:none; color:var(--text,#eee); font-size:2.2rem; font-weight:800; padding:.5rem 0; text-align:right; outline:none; font-family:inherit; min-width:0; }
+        #sv-kg-popup .kg-frei-wrap .unit { font-size:1.2rem; color:var(--text3,#888); font-weight:700; }
+
+        /* Berechnung — groß und deutlich */
+        #sv-kg-popup .kg-berechnung { text-align:center; padding:1rem .9rem; background:rgba(212,168,75,.08); border:1.5px solid rgba(212,168,75,.3); border-radius:12px; font-size:1rem; color:var(--text2,#ccc); }
+        #sv-kg-popup .kg-berechnung .rechnung { font-size:.88rem; color:var(--text3,#888); margin-bottom:.2rem; }
+        #sv-kg-popup .kg-berechnung .betrag { font-size:2rem; color:var(--gold,#d4a84b); font-weight:900; }
+
+        /* Sticky Footer */
+        #sv-kg-popup .kg-foot { position:sticky; bottom:0; background:linear-gradient(180deg,transparent,var(--bg,#0c1a09) 30%); padding:1rem; padding-top:1.5rem; border-top:1px solid rgba(212,168,75,.15); flex-shrink:0; display:flex; gap:.5rem; }
+        #sv-kg-popup .kg-foot button { padding:1.1rem; border-radius:12px; font-size:1.05rem; font-weight:800; cursor:pointer; border:none; font-family:inherit; }
+        #sv-kg-popup .kg-cancel { flex:1; background:rgba(255,255,255,.08); color:var(--text,#eee); }
+        #sv-kg-popup .kg-save { flex:2; background:var(--gold,#d4a84b); color:#000; }
+        #sv-kg-popup .kg-save:disabled { opacity:.4; cursor:not-allowed; }
       `;
       document.head.appendChild(st);
     }
@@ -302,28 +320,40 @@
     const preisKg = p.preisProKg != null ? p.preisProKg : p.preis;
     const presets = (kat.presets || []).slice();
     const chipsHtml = presets.length
-      ? presets.map(kg => `<button class="kg-chip" onclick="_svKgTap('${preisId}',${kg})">${_fmtKg(kg)}</button>`).join('')
-      : '<div style="color:var(--text3);font-size:.82rem;text-align:center;padding:.5rem 0">Keine Standard-Gewichte für diese Kategorie.</div>';
+      ? presets.map(kg => `<button class="kg-chip" onclick="_svKgTap('${preisId}',${kg})">${_fmtKg(kg)}<span class="unit-sm">kg</span></button>`).join('')
+      : '<div style="color:var(--text3);font-size:.9rem;text-align:center;padding:1rem 0">Keine Standard-Gewichte für diese Kategorie.<br>Bitte freies Gewicht eintragen.</div>';
     const wrap = document.createElement('div');
     wrap.id = 'sv-kg-popup';
-    wrap.onclick = (e) => { if(e.target.id === 'sv-kg-popup') _svKgClose(); };
     wrap.innerHTML =
-      '<div class="kg-card">' +
-        '<h3>' + _esc(kat.icon) + ' ' + _esc(p.name) + '</h3>' +
-        '<div class="kg-preis-info">' + _fmtEUR(preisKg) + ' € / kg</div>' +
-        '<div class="kg-label">Standard-Gewichte (kg) · Tap = sofort verkaufen</div>' +
-        '<div class="kg-presets">' + chipsHtml + '</div>' +
-        '<div class="kg-label">Oder freies Gewicht</div>' +
-        '<div class="kg-frei-row">' +
-          '<input type="text" inputmode="decimal" id="kg-frei-input" placeholder="z.B. 0,35 oder 1,25" oninput="_svKgFreiCalc(\'' + preisId + '\')"/>' +
-          '<span class="einheit">kg</span>' +
-          '<button class="btn-frei" id="kg-frei-btn" disabled onclick="_svKgFreiSpeichern(\'' + preisId + '\')">✓ Speichern</button>' +
+      // Sticky Header
+      '<div class="kg-head">' +
+        '<div class="kg-title">' +
+          '<span class="kg-title-main">' + _esc(kat.icon) + ' ' + _esc(p.name) + '</span>' +
+          '<span class="kg-title-sub">' + _fmtEUR(preisKg) + ' € / kg</span>' +
         '</div>' +
-        '<div class="kg-berechnung" id="kg-berechnung">' + preisKg.toFixed(2).replace('.',',') + ' € / kg</div>' +
-        '<button class="kg-abbrechen" onclick="_svKgClose()">Abbrechen</button>' +
+        '<button class="kg-close" onclick="_svKgClose()" title="Schließen">✕</button>' +
+      '</div>' +
+      // Body scrollable
+      '<div class="kg-body">' +
+        (presets.length ? '<div class="kg-label">Standard-Gewicht · Tap = sofort verkaufen</div>' : '') +
+        '<div class="kg-presets">' + chipsHtml + '</div>' +
+        '<div class="kg-label">Oder freies Gewicht eintippen</div>' +
+        '<div class="kg-frei-wrap">' +
+          '<input type="text" inputmode="decimal" id="kg-frei-input" placeholder="0" oninput="_svKgFreiCalc(\'' + preisId + '\')"/>' +
+          '<span class="unit">kg</span>' +
+        '</div>' +
+        '<div class="kg-berechnung" id="kg-berechnung">' +
+          '<div class="rechnung">Preis pro kg</div>' +
+          '<div class="betrag">' + preisKg.toFixed(2).replace('.',',') + ' €</div>' +
+        '</div>' +
+      '</div>' +
+      // Sticky Footer
+      '<div class="kg-foot">' +
+        '<button class="kg-cancel" onclick="_svKgClose()">Abbrechen</button>' +
+        '<button class="kg-save" id="kg-frei-btn" disabled onclick="_svKgFreiSpeichern(\'' + preisId + '\')">✓ Verkauf speichern</button>' +
       '</div>';
     document.body.appendChild(wrap);
-    setTimeout(() => { try { document.getElementById('kg-frei-input').focus(); } catch(e){} }, 100);
+    // KEIN Auto-Fokus → Presets sichtbar, Tastatur geht erst auf wenn User ins Feld tippt
   }
 
   window._svKgTap = function(preisId, kg) {
@@ -342,11 +372,17 @@
     const info = document.getElementById('kg-berechnung');
     if(!isNaN(kg) && kg > 0) {
       const gesamt = Math.round(kg * preisKg * 100) / 100;
-      info.innerHTML = _fmtKg(kg) + ' kg × ' + preisKg.toFixed(2).replace('.',',') + ' €/kg = <b>' + _fmtEUR(gesamt) + ' €</b>';
+      info.innerHTML =
+        '<div class="rechnung">' + _fmtKg(kg) + ' kg × ' + preisKg.toFixed(2).replace('.',',') + ' €/kg</div>' +
+        '<div class="betrag">' + _fmtEUR(gesamt) + ' €</div>';
       btn.disabled = false;
+      btn.innerHTML = '✓ Speichern · ' + _fmtEUR(gesamt) + ' €';
     } else {
-      info.innerHTML = preisKg.toFixed(2).replace('.',',') + ' € / kg';
+      info.innerHTML =
+        '<div class="rechnung">Preis pro kg</div>' +
+        '<div class="betrag">' + preisKg.toFixed(2).replace('.',',') + ' €</div>';
       btn.disabled = true;
+      btn.innerHTML = '✓ Verkauf speichern';
     }
   };
   window._svKgFreiSpeichern = function(preisId) {
@@ -443,6 +479,7 @@
 
   window._svUndo = async function(verkaufId) {
     document.querySelectorAll('.sv-toast').forEach(el => el.remove());
+    document.getElementById('sv-kassier-dialog')?.remove();
     try {
       if(window.sennereiVerkaeufe) delete window.sennereiVerkaeufe[verkaufId];
       const _retry = window.withAuthRetry || (async fn => await fn());
@@ -452,6 +489,68 @@
     } catch(err) {
       console.error('[Verkauf] Undo fail:', err);
     }
+  };
+
+  // ── GROSSER Kassier-Dialog nach Sofort-Verkauf ──
+  // Zeigt riesig den zu kassierenden Betrag, damit der User an der Kassa nichts übersieht.
+  function _svShowKassierDialog(produktName, kg, betrag, verkaufId) {
+    document.getElementById('sv-kassier-dialog')?.remove();
+    if(!document.getElementById('sv-kassier-style')) {
+      const st = document.createElement('style');
+      st.id = 'sv-kassier-style';
+      st.textContent = `
+        #sv-kassier-dialog { position:fixed; inset:0; z-index:99700; background:rgba(0,0,0,.85); backdrop-filter:blur(10px); display:flex; align-items:center; justify-content:center; padding:1rem; animation:svkin .18s ease; }
+        @keyframes svkin { from{opacity:0} to{opacity:1} }
+        #sv-kassier-dialog .kd-card { background:linear-gradient(160deg,#1a2b12,#0c1a09); border:3px solid var(--gold,#d4a84b); border-radius:24px; max-width:520px; width:100%; padding:2rem 1.5rem; color:var(--text,#eee); box-shadow:0 20px 80px rgba(0,0,0,.6), 0 0 60px rgba(212,168,75,.3); text-align:center; animation:svkbounce .35s cubic-bezier(.2,.9,.3,1.3); }
+        @keyframes svkbounce { 0%{transform:scale(.7);opacity:0} 100%{transform:scale(1);opacity:1} }
+        #sv-kassier-dialog .kd-check { font-size:3.5rem; line-height:1; margin-bottom:.3rem; animation:svkcheck .5s ease .1s both; color:var(--green,#4ab54e); }
+        @keyframes svkcheck { 0%{transform:scale(0) rotate(-180deg);opacity:0} 100%{transform:scale(1) rotate(0);opacity:1} }
+        #sv-kassier-dialog .kd-produkt { font-size:1.2rem; color:var(--text2,#ccc); margin-bottom:.3rem; font-family:Georgia,serif; }
+        #sv-kassier-dialog .kd-menge { font-size:.95rem; color:var(--text3,#888); margin-bottom:1.5rem; }
+        #sv-kassier-dialog .kd-kassiere { font-size:.85rem; color:var(--gold,#d4a84b); letter-spacing:.2em; text-transform:uppercase; font-weight:800; margin-bottom:.3rem; }
+        #sv-kassier-dialog .kd-betrag { font-size:min(6rem,20vw); color:var(--gold,#d4a84b); font-weight:900; line-height:1; margin-bottom:.5rem; letter-spacing:-.03em; text-shadow:0 0 30px rgba(212,168,75,.4); font-family:Georgia,serif; }
+        #sv-kassier-dialog .kd-currency { font-size:2rem; margin-left:.3rem; color:rgba(212,168,75,.7); font-weight:700; }
+        #sv-kassier-dialog .kd-timer { font-size:.75rem; color:var(--text3,#888); margin:.9rem 0 1.2rem; }
+        #sv-kassier-dialog .kd-btns { display:flex; gap:.6rem; }
+        #sv-kassier-dialog .kd-btns button { flex:1; padding:1.1rem; border-radius:14px; font-size:1rem; font-weight:800; cursor:pointer; border:none; font-family:inherit; }
+        #sv-kassier-dialog .kd-undo { background:rgba(220,60,60,.15); color:var(--red,#dc3c3c); border:1.5px solid rgba(220,60,60,.35); }
+        #sv-kassier-dialog .kd-fertig { background:var(--gold,#d4a84b); color:#000; flex:2; }
+      `;
+      document.head.appendChild(st);
+    }
+    const dlg = document.createElement('div');
+    dlg.id = 'sv-kassier-dialog';
+    dlg.innerHTML =
+      '<div class="kd-card">' +
+        '<div class="kd-check">✓</div>' +
+        '<div class="kd-produkt">' + _esc(produktName) + '</div>' +
+        '<div class="kd-menge">' + _fmtKg(kg) + ' kg verkauft</div>' +
+        '<div class="kd-kassiere">Kassieren</div>' +
+        '<div class="kd-betrag">' + _fmtEUR(betrag) + '<span class="kd-currency">€</span></div>' +
+        '<div class="kd-timer" id="kd-timer">Schließt in 8 s automatisch — oder unten tippen</div>' +
+        '<div class="kd-btns">' +
+          '<button class="kd-undo" onclick="_svUndo(\'' + verkaufId + '\')">↺ Rückgängig</button>' +
+          '<button class="kd-fertig" onclick="_svKassierClose()">✓ Fertig</button>' +
+        '</div>' +
+      '</div>';
+    document.body.appendChild(dlg);
+    // Auto-Dismiss nach 8 Sekunden
+    let sekunden = 8;
+    const timerEl = document.getElementById('kd-timer');
+    const iv = setInterval(() => {
+      sekunden--;
+      if(timerEl) timerEl.textContent = 'Schließt in ' + sekunden + ' s automatisch — oder unten tippen';
+      if(sekunden <= 0) { clearInterval(iv); _svKassierClose(); }
+    }, 1000);
+    dlg._sv_timer = iv;
+  }
+  window._svKassierClose = function() {
+    const dlg = document.getElementById('sv-kassier-dialog');
+    if(!dlg) return;
+    if(dlg._sv_timer) clearInterval(dlg._sv_timer);
+    dlg.style.opacity = '0';
+    dlg.style.transition = 'opacity .2s';
+    setTimeout(() => dlg.remove(), 200);
   };
 
   function _svHapticShort() { if(navigator.vibrate) navigator.vibrate(15); }
@@ -640,23 +739,34 @@
       const st = document.createElement('style');
       st.id = 'sv-preis-form-style';
       st.textContent = `
-        #sv-preis-form { position:fixed; inset:0; z-index:99500; background:rgba(0,0,0,.7); backdrop-filter:blur(6px); display:flex; align-items:center; justify-content:center; padding:1rem; }
-        #sv-preis-form .pf-card { background:var(--bg2); border:1px solid rgba(212,168,75,.3); border-radius:14px; max-width:440px; width:100%; padding:1.2rem; color:var(--text); box-shadow:0 20px 60px rgba(0,0,0,.5); }
-        #sv-preis-form h3 { color:var(--gold); margin:0 0 .8rem 0; font-size:1.1rem; }
-        #sv-preis-form label { display:block; font-size:.7rem; letter-spacing:.1em; text-transform:uppercase; color:var(--text3); margin:.7rem 0 .3rem 0; }
-        #sv-preis-form input, #sv-preis-form select { width:100%; background:rgba(255,255,255,.05); border:1px solid var(--border); color:var(--text); padding:.6rem .7rem; border-radius:8px; font-size:.95rem; box-sizing:border-box; font-family:inherit; }
-        #sv-preis-form .pf-btns { display:flex; gap:.5rem; margin-top:1.2rem; }
-        #sv-preis-form .pf-btns button { flex:1; padding:.7rem; border-radius:10px; font-size:.9rem; font-weight:600; cursor:pointer; border:none; }
-        #sv-preis-form .pf-cancel { background:rgba(255,255,255,.08); color:var(--text); }
-        #sv-preis-form .pf-save { background:var(--gold); color:#000; }
+        /* FULLSCREEN Preisliste-Editor */
+        #sv-preis-form { position:fixed; inset:0; z-index:99500; background:var(--bg,#0c1a09); display:flex; flex-direction:column; overflow:hidden; }
+        #sv-preis-form .pf-head { background:linear-gradient(180deg,#152912,#0c1a09); border-bottom:1px solid rgba(212,168,75,.3); padding:.9rem 1rem; display:flex; align-items:center; justify-content:space-between; flex-shrink:0; }
+        #sv-preis-form .pf-head h3 { color:var(--gold,#d4a84b); margin:0; font-size:1.15rem; font-family:Georgia,serif; }
+        #sv-preis-form .pf-close { background:transparent; border:none; color:var(--text3,#888); font-size:2rem; cursor:pointer; padding:.2rem .5rem; line-height:1; }
+        #sv-preis-form .pf-body { flex:1; overflow-y:auto; padding:1.2rem 1rem; }
+        #sv-preis-form label { display:block; font-size:.78rem; letter-spacing:.1em; text-transform:uppercase; color:var(--text3,#888); margin:1rem 0 .4rem 0; font-weight:600; }
+        #sv-preis-form label:first-child { margin-top:0; }
+        #sv-preis-form input, #sv-preis-form select { width:100%; background:rgba(255,255,255,.05); border:2px solid var(--border,#333); color:var(--text,#eee); padding:.9rem 1rem; border-radius:12px; font-size:1.1rem; box-sizing:border-box; font-family:inherit; transition:border-color .15s; }
+        #sv-preis-form input:focus, #sv-preis-form select:focus { outline:none; border-color:var(--gold,#d4a84b); background:rgba(212,168,75,.05); }
+        #sv-preis-form input[type="number"], #sv-preis-form input[inputmode="decimal"] { font-weight:700; text-align:right; }
+        #sv-preis-form .pf-foot { position:sticky; bottom:0; background:linear-gradient(180deg,transparent,var(--bg,#0c1a09) 30%); padding:1rem; padding-top:1.5rem; border-top:1px solid rgba(212,168,75,.15); flex-shrink:0; display:flex; gap:.5rem; }
+        #sv-preis-form .pf-foot button { flex:1; padding:1.1rem; border-radius:12px; font-size:1.05rem; font-weight:800; cursor:pointer; border:none; font-family:inherit; }
+        #sv-preis-form .pf-cancel { background:rgba(255,255,255,.08); color:var(--text,#eee); }
+        #sv-preis-form .pf-save { background:var(--gold,#d4a84b); color:#000; }
       `;
       document.head.appendChild(st);
     }
     const w = document.createElement('div');
     w.id = 'sv-preis-form';
     w.innerHTML =
-      '<div class="pf-card">' +
+      // Sticky Header
+      '<div class="pf-head">' +
         '<h3>' + (existing ? '✎ Preisliste-Eintrag' : '+ Neuer Preisliste-Eintrag') + '</h3>' +
+        '<button class="pf-close" onclick="document.getElementById(\'sv-preis-form\').remove()">✕</button>' +
+      '</div>' +
+      // Body
+      '<div class="pf-body">' +
         '<label>Bezeichnung</label>' +
         '<input type="text" id="sv-pname" value="' + _esc(existing?.name || '') + '" placeholder="z.B. Käse"/>' +
         '<label>Preis (€ pro kg, brutto inkl. USt)</label>' +
@@ -665,15 +775,15 @@
         '<select id="sv-pkat">' +
           KATEGORIEN.map(k => '<option value="' + k.id + '"' + ((existing?.kategorie || 'kaese') === k.id ? ' selected' : '') + '>' + k.icon + ' ' + k.label + '</option>').join('') +
         '</select>' +
-        '<label>Sortierung (kleinere Zahl = vorne)</label>' +
+        '<label>Sortierung (kleinere Zahl = vorne im Grid)</label>' +
         '<input type="number" id="sv-psort" value="' + (existing?.sortierung || 10) + '" min="0" step="10"/>' +
-        '<div class="pf-btns">' +
-          '<button class="pf-cancel" onclick="document.getElementById(\'sv-preis-form\').remove()">Abbrechen</button>' +
-          '<button class="pf-save" onclick="_svPreisSave(' + (existingId ? '\'' + existingId + '\'' : 'null') + ')">Speichern</button>' +
-        '</div>' +
+      '</div>' +
+      // Sticky Footer
+      '<div class="pf-foot">' +
+        '<button class="pf-cancel" onclick="document.getElementById(\'sv-preis-form\').remove()">Abbrechen</button>' +
+        '<button class="pf-save" onclick="_svPreisSave(' + (existingId ? '\'' + existingId + '\'' : 'null') + ')">✓ Speichern</button>' +
       '</div>';
     document.body.appendChild(w);
-    setTimeout(() => document.getElementById('sv-pname')?.focus(), 100);
   }
 
   window._svPreisSave = async function(existingId) {
@@ -755,6 +865,43 @@
       return `<tr><td>${dat} ${uhr}</td><td>${pos}</td><td class="r"><b>${_fmtEUR(v.summe)} €</b></td></tr>`;
     }).join('');
 
+    // Einzelverkäufe pro Produkt (nur Datum + Menge)
+    const proProduktEinzel = {};   // { name: { einheit, zeilen: [{ts, menge}] } }
+    verkaeufe.slice().forEach(v => {
+      (v.positionen||[]).forEach(p => {
+        const name = p.name;
+        if(!proProduktEinzel[name]) proProduktEinzel[name] = { einheit: p.mengeKg != null ? 'kg' : 'Stk', zeilen: [] };
+        proProduktEinzel[name].zeilen.push({
+          ts: v.datumTs,
+          menge: p.mengeKg != null ? p.mengeKg : (p.menge || 1),
+          einheit: p.mengeKg != null ? 'kg' : 'Stk'
+        });
+      });
+    });
+    const proProduktTables = Object.entries(proProduktEinzel)
+      .sort((a,b) => a[0].localeCompare(b[0]))
+      .map(([name, info]) => {
+        const zeilen = info.zeilen.slice().sort((a,b) => a.ts - b.ts);
+        const summe = zeilen.reduce((s, z) => s + (z.menge || 0), 0);
+        const rowsHtml = zeilen.map(z => {
+          const dat = new Date(z.ts).toLocaleDateString('de-AT', {weekday:'short', day:'2-digit', month:'2-digit'});
+          const uhr = new Date(z.ts).toLocaleTimeString('de-AT', {hour:'2-digit', minute:'2-digit'});
+          return '<tr>' +
+            '<td>' + dat + ' · ' + uhr + '</td>' +
+            '<td class="r">' + _fmtKg(z.menge) + ' ' + _esc(z.einheit) + '</td>' +
+          '</tr>';
+        }).join('');
+        return '<h2>' + _esc(name) + ' — Einzelverkäufe</h2>' +
+          '<table style="max-width:520px">' +
+            '<thead><tr><th style="width:65%">Datum · Zeit</th><th style="text-align:right">Menge</th></tr></thead>' +
+            '<tbody>' + rowsHtml + '</tbody>' +
+            '<tfoot><tr>' +
+              '<td style="font-weight:700;text-align:right;padding-top:8px;border-top:2px solid #d4a84b">SUMME</td>' +
+              '<td class="r" style="font-weight:800;color:#8b6914;padding-top:8px;border-top:2px solid #d4a84b">' + _fmtKg(summe) + ' ' + _esc(info.einheit) + '</td>' +
+            '</tr></tfoot>' +
+          '</table>';
+      }).join('');
+
     const html =
       '<!DOCTYPE html><html><head><meta charset="UTF-8"/><title>Sennerei-Verkauf ' + almName + '</title>' +
       '<style>' +
@@ -768,6 +915,7 @@
         'table{border-collapse:collapse;width:100%;font-size:12px;margin-bottom:16px}' +
         'th{background:#f0e0b0;text-align:left;padding:6px 8px;font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:#5a4010;border-bottom:2px solid #d4a84b}' +
         'td{padding:5px 8px;border-bottom:1px solid #eee;vertical-align:top}' +
+        'tfoot td{border-bottom:none}' +
         'td.r{text-align:right;font-family:monospace}' +
         '.footer{margin-top:24px;padding-top:8px;border-top:1px solid #eee;color:#999;font-size:10px;text-align:center;font-style:italic}' +
         '@media print{body{padding:0}}' +
@@ -783,6 +931,11 @@
         '<h2>📋 Alle Verkäufe (chronologisch, neuste unten)</h2>' +
         '<table><thead><tr><th>Datum · Zeit</th><th>Positionen</th><th style="text-align:right">Summe</th></tr></thead><tbody>' + rows + '</tbody></table>'
         : '<p style="color:#999;font-style:italic">Keine Verkäufe in diesem Zeitraum.</p>') +
+      (proProduktTables
+        ? '<div style="page-break-before:always"></div><h1 style="margin-top:20px">📦 Einzelverkäufe pro Produkt</h1>' +
+          '<div class="meta">Jede Position eines Verkaufs — chronologisch pro Produkt · nur Datum + Menge</div>' +
+          proProduktTables
+        : '') +
       '<div class="footer">HerdenPro · Sennerei-Verkauf · Alle Preise Bruttopreise inkl. USt · Bar-Zahlung</div>' +
       '<script>setTimeout(()=>window.print(), 300);<\/script>' +
       '</body></html>';
