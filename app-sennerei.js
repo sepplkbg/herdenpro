@@ -587,10 +587,21 @@
                       <button class="btn-primary" style="flex:1;background:var(--green)" onclick="sennereiWizardFinalSpeichern()">${saveLabel}</button>`;
     }
 
+    // Header-Save-/Weiter-Button (immer sichtbar, auch bei offener Tastatur)
+    let headerAction = '';
+    if(step === 1) {
+      headerAction = '<button onclick="sennereiWizardWeiter()" style="background:var(--gold);color:#000;border:none;padding:.55rem 1rem;border-radius:10px;font-size:.9rem;font-weight:800;cursor:pointer;font-family:inherit;white-space:nowrap;box-shadow:0 2px 8px rgba(212,168,75,.35)">Weiter ▸</button>';
+    } else if(step < 6) {
+      headerAction = '<button onclick="sennereiWizardWeiter()" style="background:var(--gold);color:#000;border:none;padding:.55rem 1rem;border-radius:10px;font-size:.9rem;font-weight:800;cursor:pointer;font-family:inherit;white-space:nowrap;box-shadow:0 2px 8px rgba(212,168,75,.35)">Weiter ▸</button>';
+    } else {
+      const istN = !!(b && b.abgeholtAm);
+      headerAction = '<button onclick="sennereiWizardFinalSpeichern()" style="background:var(--green);color:#000;border:none;padding:.55rem 1rem;border-radius:10px;font-size:.9rem;font-weight:800;cursor:pointer;font-family:inherit;white-space:nowrap;box-shadow:0 2px 8px rgba(77,184,78,.35)">' + (istN ? '✓ Speichern (+)' : '✓ Speichern') + '</button>';
+    }
     return `
-      <div class="page-header">
-        <h2>🥛 ${b.name}</h2>
-        <button class="btn-secondary" onclick="navigate('sennerei_woche')">✕</button>
+      <div class="page-header" style="display:flex;align-items:center;justify-content:space-between;gap:.4rem;flex-wrap:nowrap">
+        <h2 style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin:0">🥛 ${b.name}</h2>
+        ${headerAction}
+        <button class="btn-secondary" onclick="navigate('sennerei_woche')" style="padding:.55rem .9rem">✕</button>
       </div>
       ${stepIndicator}
       <div style="background:var(--bg3);border:1px solid var(--border);border-radius:10px;padding:.4rem .7rem;margin-bottom:.6rem;font-size:.75rem;color:var(--text3);text-align:center">
@@ -681,8 +692,7 @@
             <span style="font-size:.72rem;color:var(--text3);font-weight:400">(aus PDF)</span>
           </div>
         </div>
-        <label class="inp-label">Klötze abgeholt</label>
-        <input id="sb-b-klotze" class="inp" type="number" step="1" min="0" inputmode="numeric" value="${d.klotze || ''}" placeholder="${klotzeVorschlag}" style="margin-bottom:.5rem" />
+        <input type="hidden" id="sb-b-klotze" value="${d.klotze || 0}" />
         <label class="inp-label">Tatsächlich abgeholt (kg)</label>
         <input id="sb-b-abgeholt" class="inp" type="number" step="0.1" min="0" inputmode="decimal" value="${d.abgeholt || ''}" placeholder="${bt.zumAbholen || 0}" style="margin-bottom:.5rem" />
         <label class="inp-label">Chargen (Produktionsdatum, kommagetrennt) — z.B. 1208, 1508</label>
