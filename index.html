@@ -29,11 +29,11 @@
 ═══════════════════════════════════════════════════════════════════════════ -->
 <script>
 // Force clear cache if version changed
-if(localStorage.getItem('hp_version') !== 'v53.1') {
+if(localStorage.getItem('hp_version') !== 'v53.2') {
   localStorage.removeItem('mainNav');
   localStorage.removeItem('mehrOrder');
   localStorage.removeItem('mehrOrder');
-  localStorage.setItem('hp_version','v53.1');
+  localStorage.setItem('hp_version','v53.2');
   // Force SW update
   if('serviceWorker' in navigator) {
     navigator.serviceWorker.getRegistrations().then(function(regs) {
@@ -49,8 +49,8 @@ if(localStorage.getItem('hp_version') !== 'v53.1') {
       });
     }
     // Reload once after clearing
-    if(!sessionStorage.getItem('reloaded_v53_1')) {
-      sessionStorage.setItem('reloaded_v53_1','1');
+    if(!sessionStorage.getItem('reloaded_v53_2')) {
+      sessionStorage.setItem('reloaded_v53_2','1');
       window.location.reload(true);
     }
   }
@@ -407,6 +407,7 @@ window.FIREBASE_CONFIG = {
 <script src="app-milchsperre.js"></script>
 <script src="app-install.js"></script>
 <script src="app-sennerei-produktion.js"></script>
+<script src="app-sennerei-verkauf.js"></script>
 <script>
 document.addEventListener('DOMContentLoaded', function() {
   var mb = document.getElementById('nav-mehr');
