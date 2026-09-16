@@ -185,10 +185,15 @@
 
   // Tab-Bar für Sennerei-Blatt
   function _renderSennereiTabs(active) {
+    const btn = (route, actKey, icon, label) => {
+      const isActive = active === actKey;
+      return `<button onclick="navigate('${route}')" style="flex:1;padding:.55rem .3rem;background:${isActive?'var(--gold)':'transparent'};color:${isActive?'#000':'var(--text2)'};border:none;border-radius:7px;font-size:.78rem;font-weight:600;cursor:pointer;white-space:nowrap">${icon} ${label}</button>`;
+    };
     return `
-      <div style="display:flex;background:var(--bg3);border:1px solid var(--border);border-radius:10px;padding:3px;margin-bottom:.7rem">
-        <button onclick="navigate('sennerei')" style="flex:1;padding:.55rem;background:${active==='abholung'?'var(--gold)':'transparent'};color:${active==='abholung'?'#000':'var(--text2)'};border:none;border-radius:7px;font-size:.85rem;font-weight:600;cursor:pointer">📦 Abholung</button>
-        <button onclick="navigate('sennerei_produktion')" style="flex:1;padding:.55rem;background:${active==='produktion'?'var(--gold)':'transparent'};color:${active==='produktion'?'#000':'var(--text2)'};border:none;border-radius:7px;font-size:.85rem;font-weight:600;cursor:pointer">🧀 Produktion</button>
+      <div style="display:flex;background:var(--bg3);border:1px solid var(--border);border-radius:10px;padding:3px;margin-bottom:.7rem;gap:2px">
+        ${btn('sennerei', 'abholung', '📦', 'Abholung')}
+        ${btn('sennerei_produktion', 'produktion', '🧀', 'Produktion')}
+        ${btn('sennerei_verkauf', 'verkauf', '💰', 'Verkauf')}
       </div>
     `;
   }
