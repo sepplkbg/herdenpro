@@ -248,6 +248,7 @@ let saisonInfo=null;
 let gruppen={}, fotos={}, zaehlVerlauf={}, chatNachrichten={}, kraftfutter={}, schalmtest={}, zellzahl={};
 let milchSperren={};
 let sennereiProduktion={};
+let sennereiPreisliste={}, sennereiVerkaeufe={};
 
 // ── OFFLINE-CACHE: bei Start Daten aus localStorage laden (sofort verfügbar, auch offline) ──
 function _hpLoadCache(name) {
@@ -595,6 +596,8 @@ gruppen = _hpLoadCache('gruppen') || {};
 kraftfutter = _hpLoadCache('kraftfutter') || {};
 milchSperren = _hpLoadCache('milchSperren') || {}; window.milchSperren = milchSperren;
 sennereiProduktion = _hpLoadCache('sennereiProduktion') || {}; window.sennereiProduktion = sennereiProduktion;
+sennereiPreisliste = _hpLoadCache('sennereiPreisliste') || {}; window.sennereiPreisliste = sennereiPreisliste;
+sennereiVerkaeufe = _hpLoadCache('sennereiVerkaeufe') || {}; window.sennereiVerkaeufe = sennereiVerkaeufe;
 schalmtest = _hpLoadCache('schalmtest') || {};
 zellzahl = _hpLoadCache('zellzahl') || {};
 
@@ -651,6 +654,8 @@ function initApp() {
   onValue(ref(db,'kraftfutter'),    s=>{ kraftfutter=s.val()||{}; _hpSaveCache('kraftfutter',kraftfutter); render(); });
   onValue(ref(db,'milchSperren'),   s=>{ milchSperren=s.val()||{}; window.milchSperren=milchSperren; _hpSaveCache('milchSperren',milchSperren); render(); });
   onValue(ref(db,'sennerei/produktion'), s=>{ sennereiProduktion=s.val()||{}; window.sennereiProduktion=sennereiProduktion; _hpSaveCache('sennereiProduktion',sennereiProduktion); render(); });
+  onValue(ref(db,'sennerei/preisliste'), s=>{ sennereiPreisliste=s.val()||{}; window.sennereiPreisliste=sennereiPreisliste; _hpSaveCache('sennereiPreisliste',sennereiPreisliste); render(); });
+  onValue(ref(db,'sennerei/verkaeufe'),  s=>{ sennereiVerkaeufe=s.val()||{}; window.sennereiVerkaeufe=sennereiVerkaeufe; _hpSaveCache('sennereiVerkaeufe',sennereiVerkaeufe); render(); });
   onValue(ref(db,'zaehlVerlauf'),   s=>{ zaehlVerlauf=s.val()||{};   render(); });
   onValue(ref(db,'kalenderTermine'),s=>{ kalenderTermine=s.val()||{}; render(); });
   onValue(ref(db,'traenkeLog'),     s=>{ traenkeLog=s.val()||{};      render(); });
@@ -843,6 +848,7 @@ function render() {
     sennerei_woche: function(){return (window.renderSennereiWoche||function(){return '<div class="empty-state">Sennerei-Woche lädt…</div>';})();},
     sennerei_bauer: function(){return (window.renderSennereiBauer||function(){return '<div class="empty-state">Sennerei-Bauer lädt…</div>';})();},
     sennerei_produktion: function(){return (window.renderSennereiProduktion||function(){return '<div class="empty-state">Sennerei-Produktion lädt…</div>';})();},
+    sennerei_verkauf: function(){return (window.renderSennereiVerkauf||function(){return '<div class="empty-state">Sennerei-Verkauf lädt…</div>';})();},
     bauer_detail: function(){return renderBauerDetail();},
     bauern_menu:  function(){return renderBauernMenu();},
     bauern:       function(){return renderBauernMenu();},
