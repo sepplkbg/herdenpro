@@ -220,6 +220,10 @@
     _showForm(id);
   };
 
+  // Preset-Gewichte für schnelle Eingabe (in kg)
+  const KAESE_PRESETS  = [5, 8, 10, 12, 15, 18, 20, 25, 30, 35, 40, 50];
+  const BUTTER_PRESETS = [0.5, 1, 1.5, 2, 2.5, 3, 4, 5, 6, 8, 10];
+
   function _showForm(existingId) {
     const alt = document.getElementById('prod-form');
     if(alt) alt.remove();
@@ -228,27 +232,52 @@
       const st = document.createElement('style');
       st.id = 'prod-form-style';
       st.textContent = `
-        #prod-form { position:fixed; inset:0; z-index:99500; background:rgba(0,0,0,.7); backdrop-filter:blur(6px); display:flex; align-items:center; justify-content:center; padding:1rem; overflow-y:auto; }
-        #prod-form .pf-card { background:var(--bg2); border:1px solid rgba(212,168,75,.3); border-radius:14px; max-width:520px; width:100%; padding:1.2rem; color:var(--text); box-shadow:0 20px 60px rgba(0,0,0,.5); max-height:90vh; overflow-y:auto; }
-        #prod-form h3 { color:var(--gold); margin:0 0 .2rem 0; font-size:1.15rem; }
-        #prod-form .pf-sub { color:var(--text3); font-size:.8rem; margin-bottom:.9rem; }
-        #prod-form label { display:block; font-size:.7rem; letter-spacing:.1em; text-transform:uppercase; color:var(--text3); margin:.7rem 0 .3rem 0; }
-        #prod-form input, #prod-form textarea, #prod-form select { width:100%; background:rgba(255,255,255,.05); border:1px solid var(--border); color:var(--text); padding:.6rem .7rem; border-radius:8px; font-size:.95rem; box-sizing:border-box; font-family:inherit; }
-        #prod-form textarea { min-height:70px; resize:vertical; }
-        #prod-form .pf-tabs { display:flex; gap:3px; background:rgba(255,255,255,.04); padding:3px; border-radius:8px; margin-bottom:.8rem; }
-        #prod-form .pf-tab { flex:1; padding:.55rem; background:transparent; border:none; color:var(--text3); font-size:.85rem; font-weight:600; cursor:pointer; border-radius:6px; }
-        #prod-form .pf-tab.active { background:var(--gold); color:#000; }
-        #prod-form .pf-spez-row { display:flex; gap:.35rem; margin-bottom:.4rem; align-items:center; }
-        #prod-form .pf-spez-row input { flex:1; }
-        #prod-form .pf-spez-row .menge { width:5rem; flex-shrink:0; }
-        #prod-form .pf-spez-row .einheit { width:4.5rem; flex-shrink:0; }
-        #prod-form .pf-spez-row .del { background:rgba(220,60,60,.15); color:var(--red); border:1px solid rgba(220,60,60,.35); width:32px; height:38px; border-radius:6px; cursor:pointer; padding:0; flex-shrink:0; }
-        #prod-form .pf-btns { display:flex; gap:.5rem; margin-top:1.2rem; }
-        #prod-form .pf-btns button { flex:1; padding:.75rem; border-radius:10px; font-size:.95rem; font-weight:600; cursor:pointer; border:none; }
-        #prod-form .pf-cancel { background:rgba(255,255,255,.08); color:var(--text); }
-        #prod-form .pf-save { background:var(--gold); color:#000; }
-        #prod-form .pf-delete { background:rgba(220,60,60,.15); color:var(--red); border:1px solid rgba(220,60,60,.4); }
+        /* FULLSCREEN-Overlay statt zentriertem Popup */
+        #prod-form { position:fixed; inset:0; z-index:99500; background:var(--bg,#0c1a09); display:flex; flex-direction:column; overflow:hidden; }
+        #prod-form .pf-head { background:linear-gradient(180deg,#152912,#0c1a09); border-bottom:1px solid rgba(212,168,75,.3); padding:.85rem 1rem; display:flex; align-items:center; justify-content:space-between; flex-shrink:0; box-shadow:0 2px 12px rgba(0,0,0,.3); }
+        #prod-form .pf-title { font-family:Georgia,serif; font-size:1.15rem; color:var(--gold,#d4a84b); font-weight:700; }
+        #prod-form .pf-close { background:transparent; border:none; color:var(--text3,#888); font-size:1.8rem; cursor:pointer; padding:.2rem .5rem; line-height:1; }
+        #prod-form .pf-body { flex:1; overflow-y:auto; padding:1rem; padding-bottom:6rem; -webkit-overflow-scrolling:touch; }
+        #prod-form .pf-datum { display:flex; align-items:center; gap:.6rem; margin-bottom:1.2rem; padding:.6rem .8rem; background:rgba(212,168,75,.06); border:1px solid rgba(212,168,75,.25); border-radius:10px; }
+        #prod-form .pf-datum label { font-size:.72rem; letter-spacing:.1em; text-transform:uppercase; color:var(--text3,#888); margin:0; white-space:nowrap; }
+        #prod-form .pf-datum input { flex:1; background:transparent; border:none; color:var(--text,#eee); padding:.4rem 0; font-size:1rem; font-family:inherit; text-align:right; }
+
+        #prod-form .pf-tabs { display:flex; gap:4px; background:rgba(255,255,255,.04); padding:4px; border-radius:12px; margin-bottom:1.2rem; }
+        #prod-form .pf-tab { flex:1; padding:.75rem; background:transparent; border:none; color:var(--text3,#888); font-size:.95rem; font-weight:700; cursor:pointer; border-radius:9px; font-family:inherit; }
+        #prod-form .pf-tab.active { background:var(--gold,#d4a84b); color:#000; box-shadow:0 2px 8px rgba(212,168,75,.4); }
+
+        #prod-form .pf-field { margin-bottom:1.4rem; }
+        #prod-form .pf-flabel { display:flex; align-items:center; justify-content:space-between; font-size:.75rem; letter-spacing:.08em; text-transform:uppercase; color:var(--text3,#888); margin-bottom:.4rem; font-weight:600; }
+        #prod-form .pf-flabel .icon { font-size:1.2rem; margin-right:.35rem; }
+        #prod-form .pf-input-wrap { display:flex; align-items:center; background:rgba(255,255,255,.05); border:2px solid var(--border,#333); border-radius:12px; padding:.4rem .7rem; transition:border-color .15s; }
+        #prod-form .pf-input-wrap:focus-within { border-color:var(--gold,#d4a84b); background:rgba(212,168,75,.06); }
+        #prod-form .pf-input-wrap input { flex:1; background:transparent; border:none; color:var(--text,#eee); font-size:2rem; font-weight:800; padding:.6rem 0; text-align:right; outline:none; font-family:inherit; min-width:0; }
+        #prod-form .pf-input-wrap .unit { font-size:1.1rem; color:var(--text3,#888); margin-left:.4rem; font-weight:600; }
+
+        #prod-form .pf-presets { display:flex; flex-wrap:wrap; gap:.4rem; margin-top:.6rem; }
+        #prod-form .pf-preset { padding:.55rem .8rem; background:rgba(212,168,75,.08); border:1.5px solid rgba(212,168,75,.35); border-radius:10px; color:var(--gold,#d4a84b); font-size:.95rem; font-weight:700; cursor:pointer; min-width:52px; text-align:center; font-family:inherit; -webkit-tap-highlight-color:transparent; transition:transform .07s, background .15s; }
+        #prod-form .pf-preset:active { transform:scale(.93); background:rgba(212,168,75,.3); color:#000; }
+        #prod-form .pf-preset:hover { background:rgba(212,168,75,.18); }
+
+        #prod-form .pf-notiz { width:100%; background:rgba(255,255,255,.05); border:2px solid var(--border,#333); border-radius:12px; color:var(--text,#eee); padding:.75rem 1rem; font-size:1rem; font-family:inherit; min-height:80px; resize:vertical; box-sizing:border-box; }
+        #prod-form .pf-notiz:focus { outline:none; border-color:var(--gold,#d4a84b); }
+
+        #prod-form .pf-spez-row { display:flex; gap:.4rem; margin-bottom:.5rem; align-items:center; background:rgba(255,255,255,.03); border:1px solid var(--border,#333); border-radius:10px; padding:.4rem; }
+        #prod-form .pf-spez-row input, #prod-form .pf-spez-row select { background:rgba(255,255,255,.05); border:1px solid var(--border,#333); color:var(--text,#eee); padding:.55rem .6rem; border-radius:8px; font-size:.95rem; font-family:inherit; box-sizing:border-box; }
+        #prod-form .pf-spez-row input.name { flex:1; min-width:0; }
+        #prod-form .pf-spez-row input.menge { width:5.5rem; flex-shrink:0; text-align:center; font-weight:700; }
+        #prod-form .pf-spez-row select.einheit { width:5rem; flex-shrink:0; }
+        #prod-form .pf-spez-row .del { background:rgba(220,60,60,.15); color:var(--red,#dc3c3c); border:1px solid rgba(220,60,60,.35); width:36px; height:40px; border-radius:8px; cursor:pointer; padding:0; flex-shrink:0; font-size:1rem; }
+
+        #prod-form .pf-add-spez { width:100%; padding:.85rem; background:rgba(212,168,75,.1); color:var(--gold,#d4a84b); border:1.5px dashed rgba(212,168,75,.4); border-radius:12px; font-size:.95rem; font-weight:700; cursor:pointer; font-family:inherit; margin-top:.5rem; }
+
+        /* Sticky footer mit Buttons */
+        #prod-form .pf-foot { position:sticky; bottom:0; background:linear-gradient(180deg,transparent,var(--bg,#0c1a09) 25%); padding:1rem; padding-top:1.5rem; border-top:1px solid rgba(212,168,75,.15); flex-shrink:0; display:flex; gap:.5rem; }
+        #prod-form .pf-foot button { padding:1rem; border-radius:12px; font-size:1rem; font-weight:700; cursor:pointer; border:none; font-family:inherit; }
+        #prod-form .pf-cancel { flex:1; background:rgba(255,255,255,.08); color:var(--text,#eee); }
+        #prod-form .pf-save { flex:2; background:var(--gold,#d4a84b); color:#000; }
         #prod-form .pf-save:disabled { opacity:.5; cursor:wait; }
+        #prod-form .pf-delete { flex:1; background:rgba(220,60,60,.15); color:var(--red,#dc3c3c); border:1px solid rgba(220,60,60,.4); }
       `;
       document.head.appendChild(st);
     }
@@ -260,42 +289,101 @@
     const notizVal = existing?.notiz || '';
     const spezArr = (existing?.spezialitaeten || []).slice();
 
+    const kaeseChips  = KAESE_PRESETS.map(kg => `<button type="button" class="pf-preset" onclick="_pfSetKaese(${kg})">${_fmtNum(kg)}</button>`).join('');
+    const butterChips = BUTTER_PRESETS.map(kg => `<button type="button" class="pf-preset" onclick="_pfSetButter(${kg})">${_fmtNum(kg)}</button>`).join('');
+
     const wrap = document.createElement('div');
     wrap.id = 'prod-form';
     wrap.innerHTML =
-      '<div class="pf-card">' +
-        '<h3>🧀 ' + (existing ? 'Tagesproduktion bearbeiten' : 'Neue Tagesproduktion') + '</h3>' +
-        '<div class="pf-sub">Was wurde an diesem Tag produziert?</div>' +
-        '<label>Datum</label>' +
-        '<input type="date" id="pf-datum" value="' + datumVal + '" max="' + _isoHeute() + '"/>' +
+      // Header (sticky top)
+      '<div class="pf-head">' +
+        '<div class="pf-title">🧀 ' + (existing ? 'Bearbeiten' : 'Tagesproduktion') + '</div>' +
+        '<button class="pf-close" onclick="_pfClose()" title="Schließen">✕</button>' +
+      '</div>' +
+      // Body (scrollable)
+      '<div class="pf-body">' +
+        // Datum-Zeile
+        '<div class="pf-datum">' +
+          '<label>Datum</label>' +
+          '<input type="date" id="pf-datum" value="' + datumVal + '" max="' + _isoHeute() + '"/>' +
+        '</div>' +
+        // Tabs
         '<div class="pf-tabs">' +
           '<button class="pf-tab active" data-tab="std" onclick="_pfSwitchTab(\'std\')">🧀 Standard</button>' +
           '<button class="pf-tab" data-tab="spez" onclick="_pfSwitchTab(\'spez\')">✨ Spezialitäten</button>' +
         '</div>' +
+        // Tab Standard
         '<div id="pf-tab-std">' +
-          '<label>🧀 Käse (kg)</label>' +
-          '<input type="text" inputmode="decimal" id="pf-kaese" value="' + kaeseVal + '" placeholder="z.B. 15,5"/>' +
-          '<label>🧈 Butter (kg)</label>' +
-          '<input type="text" inputmode="decimal" id="pf-butter" value="' + butterVal + '" placeholder="z.B. 3,2"/>' +
-        '</div>' +
-        '<div id="pf-tab-spez" style="display:none">' +
-          '<label style="display:flex;justify-content:space-between;align-items:center">Spezialitäten <button type="button" onclick="_pfAddSpez()" style="background:var(--gold);color:#000;border:none;padding:.25rem .55rem;border-radius:6px;font-size:.72rem;font-weight:700;cursor:pointer">+ Hinzufügen</button></label>' +
-          '<div id="pf-spez-list">' +
-            (spezArr.length ? spezArr.map((s,i) => _spezRowHtml(s, i)).join('') : '<div style="color:var(--text3);text-align:center;padding:.7rem 0;font-size:.8rem">Noch keine Spezialitäten. Tipp „+ Hinzufügen".</div>') +
+          // Käse
+          '<div class="pf-field">' +
+            '<div class="pf-flabel"><span><span class="icon">🧀</span>Käse produziert</span><span style="color:var(--gold);text-transform:none;letter-spacing:0">kg</span></div>' +
+            '<div class="pf-input-wrap">' +
+              '<input type="text" inputmode="decimal" id="pf-kaese" value="' + kaeseVal + '" placeholder="0"/>' +
+              '<span class="unit">kg</span>' +
+            '</div>' +
+            '<div class="pf-presets">' + kaeseChips + '</div>' +
+          '</div>' +
+          // Butter
+          '<div class="pf-field">' +
+            '<div class="pf-flabel"><span><span class="icon">🧈</span>Butter produziert</span><span style="color:var(--gold);text-transform:none;letter-spacing:0">kg</span></div>' +
+            '<div class="pf-input-wrap">' +
+              '<input type="text" inputmode="decimal" id="pf-butter" value="' + butterVal + '" placeholder="0"/>' +
+              '<span class="unit">kg</span>' +
+            '</div>' +
+            '<div class="pf-presets">' + butterChips + '</div>' +
           '</div>' +
         '</div>' +
-        '<label>📝 Notiz (optional)</label>' +
-        '<textarea id="pf-notiz" placeholder="z.B. Kessel 2 nachmittags, Wetter mild">' + _esc(notizVal) + '</textarea>' +
-        '<div class="pf-btns">' +
-          '<button class="pf-cancel" onclick="_pfClose()">Abbrechen</button>' +
-          (existing ? '<button class="pf-delete" onclick="_pfDelete(\'' + existingId + '\',\'' + datumVal + '\')">Löschen</button>' : '') +
-          '<button class="pf-save" onclick="_pfSave(' + (existingId ? '\'' + existingId + '\'' : 'null') + ')">Speichern</button>' +
+        // Tab Spezialitäten
+        '<div id="pf-tab-spez" style="display:none">' +
+          '<div id="pf-spez-list">' +
+            (spezArr.length
+              ? spezArr.map((s,i) => _spezRowHtml(s, i)).join('')
+              : '<div style="color:var(--text3);text-align:center;padding:1.2rem 0;font-size:.9rem">Noch keine Spezialitäten.</div>') +
+          '</div>' +
+          '<button type="button" class="pf-add-spez" onclick="_pfAddSpez()">+ Spezialität hinzufügen</button>' +
         '</div>' +
+        // Notiz (immer sichtbar am Ende)
+        '<div class="pf-field" style="margin-top:1.5rem">' +
+          '<div class="pf-flabel"><span>📝 Notiz (optional)</span></div>' +
+          '<textarea class="pf-notiz" id="pf-notiz" placeholder="z.B. Kessel 2 nachmittags, Wetter mild">' + _esc(notizVal) + '</textarea>' +
+        '</div>' +
+      '</div>' +
+      // Footer (sticky bottom)
+      '<div class="pf-foot">' +
+        '<button class="pf-cancel" onclick="_pfClose()">Abbrechen</button>' +
+        (existing ? '<button class="pf-delete" onclick="_pfDelete(\'' + existingId + '\',\'' + datumVal + '\')">Löschen</button>' : '') +
+        '<button class="pf-save" onclick="_pfSave(' + (existingId ? '\'' + existingId + '\'' : 'null') + ')">✓ Speichern</button>' +
       '</div>';
     document.body.appendChild(wrap);
-    // Focus auf Käse-Feld
-    setTimeout(() => { try { document.getElementById('pf-kaese').focus(); } catch(e){} }, 100);
+    // KEIN Auto-Fokus (verhindert dass Tastatur sofort aufgeht → User sieht Presets)
   }
+
+  function _fmtNum(n) {
+    if(Number.isInteger(n)) return String(n);
+    return String(n).replace('.', ',');
+  }
+
+  // Preset-Chip-Taps: setzen den Wert im Feld
+  window._pfSetKaese = function(kg) {
+    const el = document.getElementById('pf-kaese');
+    if(!el) return;
+    el.value = _fmtNum(kg);
+    el.blur();   // Tastatur zu falls offen
+    // Kurzes Highlight
+    el.style.transition = 'background .3s';
+    el.parentElement.style.borderColor = 'var(--gold)';
+    setTimeout(() => { if(el.parentElement) el.parentElement.style.borderColor = ''; }, 400);
+    if(navigator.vibrate) navigator.vibrate(12);
+  };
+  window._pfSetButter = function(kg) {
+    const el = document.getElementById('pf-butter');
+    if(!el) return;
+    el.value = _fmtNum(kg);
+    el.blur();
+    el.parentElement.style.borderColor = 'var(--gold)';
+    setTimeout(() => { if(el.parentElement) el.parentElement.style.borderColor = ''; }, 400);
+    if(navigator.vibrate) navigator.vibrate(12);
+  };
 
   function _spezRowHtml(s, i) {
     const einheiten = _EINHEITEN.map(e => `<option value="${e}"${s.einheit===e?' selected':''}>${e}</option>`).join('');
