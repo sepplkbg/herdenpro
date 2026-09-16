@@ -267,8 +267,10 @@
       st.textContent = `
         /* FULLSCREEN-Overlay statt zentriertem Popup */
         #prod-form { position:fixed; inset:0; z-index:99500; background:var(--bg,#0c1a09); display:flex; flex-direction:column; overflow:hidden; }
-        #prod-form .pf-head { background:linear-gradient(180deg,#152912,#0c1a09); border-bottom:1px solid rgba(212,168,75,.3); padding:.85rem 1rem; display:flex; align-items:center; justify-content:space-between; flex-shrink:0; box-shadow:0 2px 12px rgba(0,0,0,.3); }
-        #prod-form .pf-title { font-family:Georgia,serif; font-size:1.15rem; color:var(--gold,#d4a84b); font-weight:700; }
+        #prod-form .pf-head { background:linear-gradient(180deg,#152912,#0c1a09); border-bottom:1px solid rgba(212,168,75,.3); padding:.7rem 1rem; display:flex; align-items:center; justify-content:space-between; gap:.5rem; flex-shrink:0; box-shadow:0 2px 12px rgba(0,0,0,.3); }
+        #prod-form .pf-title { font-family:Georgia,serif; font-size:1.1rem; color:var(--gold,#d4a84b); font-weight:700; flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+        #prod-form .pf-head-save { background:var(--gold,#d4a84b); color:#000; border:none; padding:.55rem 1rem; border-radius:10px; font-size:.9rem; font-weight:800; cursor:pointer; font-family:inherit; white-space:nowrap; box-shadow:0 2px 8px rgba(212,168,75,.35); }
+        #prod-form .pf-head-save:disabled { opacity:.5; cursor:wait; }
         #prod-form .pf-close { background:transparent; border:none; color:var(--text3,#888); font-size:1.8rem; cursor:pointer; padding:.2rem .5rem; line-height:1; }
         #prod-form .pf-body { flex:1; overflow-y:auto; padding:1rem; padding-bottom:6rem; -webkit-overflow-scrolling:touch; }
         #prod-form .pf-datum { display:flex; align-items:center; gap:.6rem; margin-bottom:1.2rem; padding:.6rem .8rem; background:rgba(212,168,75,.06); border:1px solid rgba(212,168,75,.25); border-radius:10px; }
@@ -353,9 +355,10 @@
     const wrap = document.createElement('div');
     wrap.id = 'prod-form';
     wrap.innerHTML =
-      // Header (sticky top)
+      // Header (sticky top) mit Speichern-Button — immer sichtbar auch bei offener Tastatur
       '<div class="pf-head">' +
         '<div class="pf-title">🧀 ' + (existing ? 'Bearbeiten' : 'Tagesproduktion') + '</div>' +
+        '<button class="pf-head-save" onclick="_pfSave(' + (existingId ? '\'' + existingId + '\'' : 'null') + ')">✓ Speichern</button>' +
         '<button class="pf-close" onclick="_pfClose()" title="Schließen">✕</button>' +
       '</div>' +
       // Body (scrollable)
@@ -509,21 +512,23 @@
   };
 
   window._pfSave = async function(existingId) {
-    const btn = document.querySelector('#prod-form .pf-save');
-    if(btn) { btn.disabled = true; btn.textContent = '⏳'; }
+    // Beide Speichern-Buttons ansprechen (Footer + Header)
+    const btns = document.querySelectorAll('#prod-form .pf-save, #prod-form .pf-head-save');
+    btns.forEach(b => { b.disabled = true; b._origText = b.textContent; b.textContent = '⏳'; });
+    const btn = btns[0];   // für Fehler-Restore-Text
     try {
       const datum = document.getElementById('pf-datum').value;
-      if(!datum) { alert('Bitte Datum wählen'); if(btn) { btn.disabled=false; btn.textContent='Speichern'; } return; }
+      if(!datum) { alert('Bitte Datum wählen'); btns.forEach(b => { b.disabled=false; b.textContent = b._origText || (b.classList.contains('pf-head-save') ? '✓ Speichern' : '✓ Speichern'); }); return; }
       const kaeseRaw = (document.getElementById('pf-kaese').value||'').replace(',','.');
       const butterRaw = (document.getElementById('pf-butter').value||'').replace(',','.');
       const kaeseKg = kaeseRaw === '' ? null : parseFloat(kaeseRaw);
       const butterKg = butterRaw === '' ? null : parseFloat(butterRaw);
-      if(kaeseKg != null && isNaN(kaeseKg)) { alert('Käse-Wert ungültig'); if(btn) { btn.disabled=false; btn.textContent='Speichern'; } return; }
-      if(butterKg != null && isNaN(butterKg)) { alert('Butter-Wert ungültig'); if(btn) { btn.disabled=false; btn.textContent='Speichern'; } return; }
+      if(kaeseKg != null && isNaN(kaeseKg)) { alert('Käse-Wert ungültig'); btns.forEach(b => { b.disabled=false; b.textContent = b._origText || (b.classList.contains('pf-head-save') ? '✓ Speichern' : '✓ Speichern'); }); return; }
+      if(butterKg != null && isNaN(butterKg)) { alert('Butter-Wert ungültig'); btns.forEach(b => { b.disabled=false; b.textContent = b._origText || (b.classList.contains('pf-head-save') ? '✓ Speichern' : '✓ Speichern'); }); return; }
       // Kesselmilch (ISOLIERT — nur für dieses Blatt, nie für andere Berechnungen)
       const kesselmilchRaw = (document.getElementById('pf-kesselmilch')?.value || '').replace(',','.');
       const kesselmilchL = kesselmilchRaw === '' ? null : parseFloat(kesselmilchRaw);
-      if(kesselmilchL != null && isNaN(kesselmilchL)) { alert('Kesselmilch-Wert ungültig'); if(btn) { btn.disabled=false; btn.textContent='Speichern'; } return; }
+      if(kesselmilchL != null && isNaN(kesselmilchL)) { alert('Kesselmilch-Wert ungültig'); btns.forEach(b => { b.disabled=false; b.textContent = b._origText || (b.classList.contains('pf-head-save') ? '✓ Speichern' : '✓ Speichern'); }); return; }
       // Chargen
       const kaeseCharge = (document.getElementById('pf-kaese-charge')?.value || '').trim();
       const butterCharge = (document.getElementById('pf-butter-charge')?.value || '').trim();
@@ -573,7 +578,7 @@
     } catch(err) {
       console.error('[SennereiProd] Save:', err);
       alert('Fehler beim Speichern:\n\n' + (err.message || err));
-      if(btn) { btn.disabled = false; btn.textContent = 'Speichern'; }
+      btns.forEach(b => { b.disabled=false; b.textContent = b._origText || '✓ Speichern'; });
     }
   };
 
