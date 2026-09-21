@@ -29,11 +29,11 @@
 ═══════════════════════════════════════════════════════════════════════════ -->
 <script>
 // Force clear cache if version changed
-if(localStorage.getItem('hp_version') !== 'v54.7') {
+if(localStorage.getItem('hp_version') !== 'v54.8') {
   localStorage.removeItem('mainNav');
   localStorage.removeItem('mehrOrder');
   localStorage.removeItem('mehrOrder');
-  localStorage.setItem('hp_version','v54.7');
+  localStorage.setItem('hp_version','v54.8');
   // Force SW update
   if('serviceWorker' in navigator) {
     navigator.serviceWorker.getRegistrations().then(function(regs) {
@@ -49,8 +49,8 @@ if(localStorage.getItem('hp_version') !== 'v54.7') {
       });
     }
     // Reload once after clearing
-    if(!sessionStorage.getItem('reloaded_v54_7')) {
-      sessionStorage.setItem('reloaded_v54_7','1');
+    if(!sessionStorage.getItem('reloaded_v54_8')) {
+      sessionStorage.setItem('reloaded_v54_8','1');
       window.location.reload(true);
     }
   }
@@ -200,6 +200,56 @@ window.FIREBASE_CONFIG = (function() {
     try { return JSON.parse(localStorage.getItem('hp_test_config')); } catch(e) {}
   }
   return window.HP_PROD_CONFIG;
+})();
+
+// ── PROJEKT-WECHSEL-ERKENNUNG ──
+// Beide HerdenPro-Apps liegen auf sepplkbg.github.io — teilen sich localStorage.
+// Wenn zuletzt ein anderes Firebase-Projekt geladen war (andere Alm) → alle
+// alten Cache- und Auth-Daten LÖSCHEN, damit die neue Alm sauber startet.
+(function() {
+  try {
+    const currentProjectId = (window.FIREBASE_CONFIG || {}).projectId;
+    if(!currentProjectId) return;
+    const storedProjectId = localStorage.getItem('hp_last_projectId');
+    if(storedProjectId && storedProjectId !== currentProjectId) {
+      console.warn('[Multi-App] Projekt-Wechsel erkannt: ' + storedProjectId + ' → ' + currentProjectId + ' · Cache & Auth werden zurückgesetzt');
+      // Alle Cache-, Auth- und User-Daten weg
+      const keys = Object.keys(localStorage);
+      keys.forEach(k => {
+        if(k.startsWith('firebase:') ||
+           k.startsWith('hp_autoauth') ||
+           k.startsWith('cache_') ||
+           k === 'lastAuthUid' ||
+           k === 'mainNav' ||
+           k === 'mehrOrder' ||
+           k === 'hp_version' ||
+           k.startsWith('milchWarn') ||
+           k.startsWith('milch_') ||
+           k.startsWith('cache_userProfile_')) {
+          localStorage.removeItem(k);
+        }
+      });
+      // Service Worker aufräumen damit auch die ausgelieferten Dateien passen
+      if('serviceWorker' in navigator) {
+        navigator.serviceWorker.getRegistrations().then(function(regs) {
+          regs.forEach(function(reg) { try { reg.unregister(); } catch(e){} });
+        }).catch(function(){});
+      }
+      if(window.caches) {
+        caches.keys().then(function(keys) {
+          keys.forEach(function(k) { try { caches.delete(k); } catch(e){} });
+        }).catch(function(){});
+      }
+      // Session-Marker damit die Reload-Schleife den Reset nicht dauernd wiederholt
+      sessionStorage.setItem('hp_projekt_reset', '1');
+      // Sanft neu laden — der Fetch holt frische Dateien
+      if(!sessionStorage.getItem('hp_projekt_reset_reloaded')) {
+        sessionStorage.setItem('hp_projekt_reset_reloaded','1');
+        setTimeout(function(){ location.reload(); }, 100);
+      }
+    }
+    localStorage.setItem('hp_last_projectId', currentProjectId);
+  } catch(e) { console.warn('[Multi-App] Projekt-Check-Fehler:', e); }
 })();
   // ── ALLE_MODULE (muss vor renderNav verfügbar sein) ──
   window.ALLE_MODULE = [
