@@ -1654,6 +1654,7 @@ window.saveMilch = async function() {
     Object.keys(prokuh).forEach(kid => {
       const hasWz = Object.values(window.behandlungen||{}).some(b =>
         b && b.kuhId === kid && b.wzMilchEnde &&
+        !(window.hpIstTrockenstellBehandlung && window.hpIstTrockenstellBehandlung(b)) &&
         ((b.wzMilchEnde > heuteWz) ||   // noch aktiv
          (b.wzMilchEnde >= wocheZurueckWz && b.wzMilchEnde <= heuteWz)) // vergangene Woche
       );

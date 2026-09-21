@@ -2688,14 +2688,16 @@ function renderMilch() {
                 // ── Wartezeit-Check für Milch ──
                 const heute = Date.now();
                 const wocheZurueck = heute - 7 * 86400000;
+                // Trockenstell-Behandlungen NICHT als WZ zählen (Laktation-Ende, keine „Verwerfen"-Regel)
+                const _istTs = (b) => window.hpIstTrockenstellBehandlung && window.hpIstTrockenstellBehandlung(b);
                 const aktiveWzBeh = Object.values(behandlungen||{}).find(b =>
                   b && b.aktiv !== false && b.kuhId === id &&
-                  b.wzMilchEnde && b.wzMilchEnde > heute
+                  b.wzMilchEnde && b.wzMilchEnde > heute && !_istTs(b)
                 );
                 // Auch: WZ war irgendwann in den letzten 7 Tagen aktiv (vergangene WZ diese Woche)
                 const vergangeneWzBeh = !aktiveWzBeh ? Object.values(behandlungen||{}).find(b =>
                   b && b.kuhId === id &&
-                  b.wzMilchEnde && b.wzMilchEnde <= heute && b.wzMilchEnde >= wocheZurueck
+                  b.wzMilchEnde && b.wzMilchEnde <= heute && b.wzMilchEnde >= wocheZurueck && !_istTs(b)
                 ) : null;
                 // ── Milchsperre-Check (aus milchSperren) ──
                 // Nur relevant wenn KEINE aktive Behandlungs-WZ (die versteckt den Button)
@@ -3261,6 +3263,16 @@ function renderEinstellungen() {
     <div style="margin-bottom:.8rem">
       ${typeof window.hpInstallStatusHTML === 'function' ? window.hpInstallStatusHTML() : ''}
     </div>
+
+    <!-- Tutorial + Suche -->
+    <div class="card-section" style="margin-bottom:.8rem">
+      <div class="section-label" style="margin-bottom:.6rem">HILFE & SUCHE</div>
+      <button class="btn-secondary" style="width:100%;margin-bottom:.4rem" onclick="hpZeigeOnboarding()">📚 Tutorial anzeigen</button>
+      <button class="btn-secondary" style="width:100%" onclick="hpSuche()">🔍 Globale Suche öffnen</button>
+    </div>
+
+    <!-- Env-Switch (Prod ↔ Test) -->
+    ${typeof window.hpEnvSwitchHTML === 'function' ? window.hpEnvSwitchHTML() : ''}
 
     <div class="card-section" style="margin-bottom:.8rem">
       <div class="section-label" style="margin-bottom:.6rem">ALM-EINSTELLUNGEN</div>

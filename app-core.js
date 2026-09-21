@@ -263,6 +263,20 @@ window._hpSaveCache = _hpSaveCache;
 window._hpLoadCache = _hpLoadCache;
 
 // ══════════════════════════════════════════════════════════════════════════════
+//  HELPER: Ist es eine Trockenstell-Behandlung?
+//  Trockenstellen beendet die Laktation → die Kuh gibt einfach keine Milch mehr.
+//  Die Behandlung darf NICHT als „Wartezeit → Milch verworfen" gerechnet werden.
+// ══════════════════════════════════════════════════════════════════════════════
+window.hpIstTrockenstellBehandlung = function(b) {
+  if(!b) return false;
+  const combined = ((b.diagnose || '') + ' ' + (b.medikament || '') + ' ' + (b.notiz || '')).toLowerCase();
+  return combined.includes('trockenstell') ||
+         combined.includes('trocken stell') ||
+         combined.includes('trockenlegen') ||
+         combined.includes('trocken legen');
+};
+
+// ══════════════════════════════════════════════════════════════════════════════
 //  CARRY-FORWARD GESAMTMILCH-BERECHNUNG
 // ══════════════════════════════════════════════════════════════════════════════
 // Berechnet die Gesamtmilch mit Carry-Forward-Logik:
@@ -302,13 +316,17 @@ window.computeCarryForwardGesamt = function(kueheIdsFilter) {
   });
 
   // ── Wartezeit-Perioden pro Kuh vorberechnen ──
-  // Quellen: (1) Behandlungen mit wzMilchEnde, (2) milchSperren (Schritt 2)
+  // Quellen: (1) Behandlungen mit wzMilchEnde, (2) milchSperren
+  // ⚠ AUSGENOMMEN: Trockenstell-Behandlungen — die beenden die Laktation,
+  //   die Kuh gibt einfach keine Milch mehr (kein „Verwerfen")
   const wzPerKuh = {};   // { kuhId: [{von, bis}, ...] }
   const _behandlungen = window.behandlungen || {};
   Object.values(_behandlungen).forEach(b => {
     if(!b || !b.kuhId) return;
     const wzEnde = b.wzMilchEnde || null;
     if(!wzEnde) return;
+    // Trockenstell-Behandlung ausschließen
+    if(window.hpIstTrockenstellBehandlung && window.hpIstTrockenstellBehandlung(b)) return;
     // Start: ab erster Behandlung — sonst rückrechnen aus wzMilchTage
     let wzStart = b.datum || null;
     if(!wzStart && b.wzMilchTage) wzStart = wzEnde - (b.wzMilchTage) * 86400000;
@@ -446,9 +464,12 @@ window.computeKuhWartezeiten = function(kuhId) {
   abends.sort((a,b) => a.ts - b.ts);
 
   // WZ-Perioden sammeln (Behandlungen + Milchsperren)
+  // ⚠ Trockenstell-Behandlungen ausschließen — die beenden die Laktation,
+  //   die Kuh gibt einfach keine Milch mehr, kein „Verwerfen"
   const perioden = [];
   Object.values(behandlungen).forEach(b => {
     if(!b || b.kuhId !== kuhId || !b.wzMilchEnde) return;
+    if(window.hpIstTrockenstellBehandlung && window.hpIstTrockenstellBehandlung(b)) return;
     let wzStart = b.datum || null;
     if(!wzStart && b.wzMilchTage) wzStart = b.wzMilchEnde - b.wzMilchTage * 86400000;
     if(!wzStart || b.wzMilchEnde <= wzStart) return;

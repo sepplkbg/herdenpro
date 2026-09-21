@@ -131,6 +131,8 @@
       const treffer = [];
       Object.values(behandlungen).forEach(b => {
         if(!b || b.kuhId !== kuhId || !b.wzMilchEnde) return;
+        // Trockenstellen ist keine Wartezeit-Milch
+        if(window.hpIstTrockenstellBehandlung && window.hpIstTrockenstellBehandlung(b)) return;
         let wzStart = b.datum || null;
         if(!wzStart && b.wzMilchTage) wzStart = b.wzMilchEnde - b.wzMilchTage * 86400000;
         if(!wzStart) return;
