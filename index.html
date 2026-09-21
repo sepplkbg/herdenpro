@@ -29,11 +29,11 @@
 ═══════════════════════════════════════════════════════════════════════════ -->
 <script>
 // Force clear cache if version changed
-if(localStorage.getItem('hp_version') !== 'v54.4') {
+if(localStorage.getItem('hp_version') !== 'v54.7') {
   localStorage.removeItem('mainNav');
   localStorage.removeItem('mehrOrder');
   localStorage.removeItem('mehrOrder');
-  localStorage.setItem('hp_version','v54.4');
+  localStorage.setItem('hp_version','v54.7');
   // Force SW update
   if('serviceWorker' in navigator) {
     navigator.serviceWorker.getRegistrations().then(function(regs) {
@@ -49,8 +49,8 @@ if(localStorage.getItem('hp_version') !== 'v54.4') {
       });
     }
     // Reload once after clearing
-    if(!sessionStorage.getItem('reloaded_v54_4')) {
-      sessionStorage.setItem('reloaded_v54_4','1');
+    if(!sessionStorage.getItem('reloaded_v54_7')) {
+      sessionStorage.setItem('reloaded_v54_7','1');
       window.location.reload(true);
     }
   }
@@ -164,7 +164,12 @@ window.doLogin = async function() {
     console.error('doLogin error:', err);
   }
 };
-window.FIREBASE_CONFIG = {
+// ════════════════════════════════════════════════════════════════════════════
+// FIREBASE-CONFIG mit ENV-SWITCH (Prod / Test)
+// Umschaltung via localStorage.hp_env ('prod' | 'test')
+// Test-Config wird als JSON in localStorage.hp_test_config gespeichert
+// ════════════════════════════════════════════════════════════════════════════
+window.HP_PROD_CONFIG = {
   apiKey:            "AIzaSyB2YSWcf1Kk2QG_JcCjkgJikx-f73yj-kc",
   authDomain:        "herdenmanagement-33ff5.firebaseapp.com",
   databaseURL:       "https://herdenmanagement-33ff5-default-rtdb.europe-west1.firebasedatabase.app",
@@ -173,6 +178,29 @@ window.FIREBASE_CONFIG = {
   messagingSenderId: "878244944607",
   appId:             "1:878244944607:web:f03beab5ae689495f6676a"
 };
+window.HP_ENV = (function() {
+  try {
+    const env = localStorage.getItem('hp_env');
+    if(env === 'test') {
+      const raw = localStorage.getItem('hp_test_config');
+      if(raw) {
+        const cfg = JSON.parse(raw);
+        if(cfg && cfg.apiKey && cfg.databaseURL) {
+          console.log('[Env] TEST-MODUS aktiv · Projekt:', cfg.projectId);
+          return 'test';
+        }
+      }
+      console.warn('[Env] Test-Modus angefordert aber keine gültige Test-Config. Nutze PROD.');
+    }
+  } catch(e) { console.warn('[Env] Fehler beim Env-Load:', e); }
+  return 'prod';
+})();
+window.FIREBASE_CONFIG = (function() {
+  if(window.HP_ENV === 'test') {
+    try { return JSON.parse(localStorage.getItem('hp_test_config')); } catch(e) {}
+  }
+  return window.HP_PROD_CONFIG;
+})();
   // ── ALLE_MODULE (muss vor renderNav verfügbar sein) ──
   window.ALLE_MODULE = [
     {id:'herde',    icon:'🐄',  label:'Herde'},
@@ -320,6 +348,10 @@ window.FIREBASE_CONFIG = {
       <span style="font-size:.48rem;color:var(--text3);letter-spacing:.06em;opacity:.8">Engineering by LN Machinery</span>
     </div>
     <div style="display:flex;align-items:center;gap:.5rem">
+      <!-- GLOBALE SUCHE -->
+      <button id="global-suche-btn" onclick="hpSuche()"
+        title="Suche (Kuh, Bauer, Behandlung, ...)"
+        style="background:transparent;border:1.5px solid var(--border2);border-radius:8px;padding:.15rem .45rem;color:var(--text2);cursor:pointer;line-height:1;font-size:.95rem;display:inline-flex;align-items:center;justify-content:center;min-width:28px">🔍</button>
       <!-- Schriftgröße-Schnellzugriff -->
       <button id="schrift-quick-btn" onclick="toggleSchriftPopup()"
         title="Schriftgröße anpassen"
@@ -408,6 +440,9 @@ window.FIREBASE_CONFIG = {
 <script src="app-install.js"></script>
 <script src="app-sennerei-produktion.js"></script>
 <script src="app-sennerei-verkauf.js"></script>
+<script src="app-onboarding.js"></script>
+<script src="app-suche.js"></script>
+<script src="app-env-switch.js"></script>
 <script>
 document.addEventListener('DOMContentLoaded', function() {
   var mb = document.getElementById('nav-mehr');
