@@ -8,9 +8,12 @@
 // Firebase compat wrappers
 var db_instance = null;
 function getDb() { return db_instance || firebase.database(); }
-function ref(db, path) { 
-  if(typeof path === 'undefined') { path = db; return firebase.database().ref(path); }
-  return firebase.database().ref(path); 
+function ref(db, path) {
+  // 2 Argumente: db-Objekt + Pfad → normaler Fall: firebase.database().ref(path)
+  if(arguments.length >= 2) return firebase.database().ref(path);
+  // 1 Argument: entweder String (dann ist es der Pfad) oder db-Objekt (dann Root-Ref)
+  if(typeof db === 'string') return firebase.database().ref(db);
+  return firebase.database().ref();
 }
 function onValue(refObj, callback, errCallback) {
   refObj.on('value', function(snap) { callback(snap); }, errCallback||function(){});
