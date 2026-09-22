@@ -164,25 +164,39 @@
   // Wichtig: manuell schon geschützte Funktionen (saveMilch, saveBehandlung, saveKlauen, saveWeide)
   //          werden NICHT nochmal gewrappt (per _wrapped Flag verhindert).
   setTimeout(() => {
+    // Show-Function-Aliases für inkonsistente Namensgebung (Typo-Fix + Umbenennungen)
+    if(typeof window.showAbtriebbForm === 'function' && typeof window.showAbtriebForm !== 'function') {
+      window.showAbtriebForm = window.showAbtriebbForm;
+    }
+    if(typeof window.showKalenderForm === 'function' && typeof window.showKalenderTerminForm !== 'function') {
+      window.showKalenderTerminForm = window.showKalenderForm;
+    }
+    if(typeof window.showWartungMaschineForm === 'function' && typeof window.showMaschineForm !== 'function') {
+      window.showMaschineForm = window.showWartungMaschineForm;
+    }
+    if(typeof window.showWartungServiceForm === 'function' && typeof window.showServiceForm !== 'function') {
+      window.showServiceForm = window.showWartungServiceForm;
+    }
+
     const saves = [
       ['saveKuh',            'kuh-form-overlay'],
       ['saveBesamung',       'besamung-form-overlay'],
       ['saveKalbung',        'kalbung-form-overlay'],
-      ['saveJournal',        'journal-form-overlay'],
-      ['saveKontakt',        'kontakt-form-overlay'],
+      ['saveJournal',        'journal-overlay'],
+      ['saveKontakt',        'kontakt-overlay'],
       ['saveNotfallKontakt', 'notfall-kontakt-overlay'],
-      ['saveGruppe',         'gruppe-form-overlay'],
-      ['saveKalenderTermin', 'kalender-form-overlay'],
-      ['saveMaschine',       'maschine-form-overlay'],
-      ['saveChecklistePunkt','checkliste-form-overlay'],
-      ['saveService',        'service-form-overlay'],
-      ['saveAufgabe',        'aufgabe-form-overlay'],
+      ['saveGruppe',         'gruppe-overlay'],
+      ['saveKalenderTermin', 'kalender-overlay'],
+      ['saveMaschine',       'wartung-maschine-overlay'],
+      ['saveChecklistePunkt','wartung-punkt-overlay'],
+      ['saveService',        'wartung-service-overlay'],
+      ['saveAufgabe',        'aufgabe-overlay'],
       ['saveLagerArtikel',   'lager-artikel-overlay'],
       ['saveLagerVerbrauch', 'lager-verbrauch-overlay'],
       ['saveLagerZugang',    'lager-zugang-overlay'],
       ['saveSaisonArchiv',   'saison-archiv-overlay'],
-      ['saveTraenke',        'traenke-form-overlay'],
-      ['saveBauer',          'bauer-form-overlay'],
+      ['saveTraenke',        'traenke-overlay'],
+      ['saveBauer',          'bauer-overlay'],
       ['saveKfLieferung',    'kf-lieferung-overlay'],
       ['saveKraftfutter',    'kf-overlay'],
       ['saveSchalmViertel',  'schalm-form-overlay'],
