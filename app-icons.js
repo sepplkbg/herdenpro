@@ -140,6 +140,16 @@
     'shield':       'noto:shield',
     'bulb':         'noto:light-bulb',
     'meat':         'noto:cut-of-meat',
+    'recycle':      'noto:recycling-symbol',
+    'radioactive':  'noto:radioactive',
+    'books':        'noto:books',
+    'phone-mobile': 'noto:mobile-phone',
+    'rocket':       'noto:rocket',
+    'game':         'noto:video-game',
+    'bird':         'noto:bird',
+    'boom':         'noto:collision',
+    'construction': 'noto:construction',
+    'ruler':        'noto:triangular-ruler',
 
     // Klauen
     'hoof':         'noto:paw-prints',
@@ -241,6 +251,9 @@
     '🏥': 'hospital', '⚕': 'medical', '🧪': 'test-tube', '⚗': 'flask',
     '🔬': 'microscope', '📲': 'mobile',
     '🏭': 'factory', '⚡': 'lightning', '🛡': 'shield', '💡': 'bulb', '🥩': 'meat',
+    '♻': 'recycle', '☢': 'radioactive', '📚': 'books', '📱': 'phone-mobile',
+    '🚀': 'rocket', '🎮': 'game', '🐦': 'bird', '💥': 'boom',
+    '🚧': 'construction', '📐': 'ruler',
     // Sennerei / Milch
     '⚖': 'scale', '💰': 'cash', '💶': 'money', '🧾': 'receipt',
     // Lager
