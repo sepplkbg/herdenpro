@@ -135,6 +135,11 @@
     'flask':        'noto:alembic',
     'microscope':   'noto:microscope',
     'mobile':       'noto:mobile-phone-with-arrow',
+    'factory':      'noto:factory',
+    'lightning':    'noto:high-voltage',
+    'shield':       'noto:shield',
+    'bulb':         'noto:light-bulb',
+    'meat':         'noto:cut-of-meat',
 
     // Klauen
     'hoof':         'noto:paw-prints',
@@ -235,6 +240,7 @@
     '❤': 'heart', '💊': 'medicine', '💉': 'syringe', '🩺': 'stethoscope',
     '🏥': 'hospital', '⚕': 'medical', '🧪': 'test-tube', '⚗': 'flask',
     '🔬': 'microscope', '📲': 'mobile',
+    '🏭': 'factory', '⚡': 'lightning', '🛡': 'shield', '💡': 'bulb', '🥩': 'meat',
     // Sennerei / Milch
     '⚖': 'scale', '💰': 'cash', '💶': 'money', '🧾': 'receipt',
     // Lager
