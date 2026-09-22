@@ -1,0 +1,27 @@
+# Private Daten NIEMALS ins Repo committen
+HerdenPro_Backup_*.json
+HerdenPro_Rohdaten*.xls*
+HerdenPro_Rohdaten*.xlsm
+*.backup.json
+*.private.*
+
+# Token & Secrets
+.github-token*
+.env
+*.pem
+*.key
+
+# OS-Files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Editor-Files
+.vscode/
+.idea/
+*.swp
+*~
+
+# Sync-Script logs
+sync-*.log
+
