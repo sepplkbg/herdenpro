@@ -133,6 +133,8 @@
     'medical':      'noto:medical-symbol',
     'test-tube':    'noto:test-tube',
     'flask':        'noto:alembic',
+    'microscope':   'noto:microscope',
+    'mobile':       'noto:mobile-phone-with-arrow',
 
     // Klauen
     'hoof':         'noto:paw-prints',
@@ -232,6 +234,7 @@
     // Gesundheit
     '❤': 'heart', '💊': 'medicine', '💉': 'syringe', '🩺': 'stethoscope',
     '🏥': 'hospital', '⚕': 'medical', '🧪': 'test-tube', '⚗': 'flask',
+    '🔬': 'microscope', '📲': 'mobile',
     // Sennerei / Milch
     '⚖': 'scale', '💰': 'cash', '💶': 'money', '🧾': 'receipt',
     // Lager
