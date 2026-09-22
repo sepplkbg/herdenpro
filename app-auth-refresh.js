@@ -168,6 +168,10 @@
     if(typeof window.showAbtriebbForm === 'function' && typeof window.showAbtriebForm !== 'function') {
       window.showAbtriebForm = window.showAbtriebbForm;
     }
+    // Header-Suche-Button: hpSuche() war undefined → navigiere zum Suche-Modul
+    if(typeof window.hpSuche !== 'function' && typeof window.navigate === 'function') {
+      window.hpSuche = function() { window.navigate('suche'); };
+    }
     if(typeof window.showKalenderForm === 'function' && typeof window.showKalenderTerminForm !== 'function') {
       window.showKalenderTerminForm = window.showKalenderForm;
     }
