@@ -29,11 +29,11 @@
 ═══════════════════════════════════════════════════════════════════════════ -->
 <script>
 // Force clear cache if version changed
-if(localStorage.getItem('hp_version') !== 'v54.9') {
+if(localStorage.getItem('hp_version') !== 'v54.11') {
   localStorage.removeItem('mainNav');
   localStorage.removeItem('mehrOrder');
   localStorage.removeItem('mehrOrder');
-  localStorage.setItem('hp_version','v54.9');
+  localStorage.setItem('hp_version','v54.11');
   // Force SW update
   if('serviceWorker' in navigator) {
     navigator.serviceWorker.getRegistrations().then(function(regs) {
@@ -319,6 +319,20 @@ window.FIREBASE_CONFIG = (function() {
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
 
+<!-- ICONIFY: 200.000+ SVG-Icons via Web-Component. Usage: <iconify-icon icon="lucide:cow"></iconify-icon> -->
+<script src="https://code.iconify.design/iconify-icon/2.1.0/iconify-icon.min.js"></script>
+<style>
+  iconify-icon {
+    display: inline-block;
+    vertical-align: -0.125em;
+    font-size: 1.2em;
+    line-height: 1;
+  }
+  .hp-icon-lg { font-size: 1.5em; }
+  .hp-icon-xl { font-size: 2em; }
+  .hp-icon-2xl { font-size: 2.5em; }
+</style>
+
 <!-- KÄSE MODUL CSS -->
 
 </head>
@@ -475,6 +489,7 @@ window.FIREBASE_CONFIG = (function() {
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
+<script src="app-icons.js"></script>
 <script src="app-core.js"></script>
 <script src="app-views.js"></script>
 <script src="app-features.js"></script>

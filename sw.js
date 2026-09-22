@@ -1,4 +1,4 @@
-const CACHE = 'herdenpro-v311';
+const CACHE = 'herdenpro-v313';
 const SHELL = [
   '/herdenpro/',
   '/herdenpro/manifest.json'
@@ -48,7 +48,11 @@ self.addEventListener('fetch', e => {
     url.includes('gstatic.com/firebasejs') ||
     url.includes('unpkg.com/leaflet') ||
     url.includes('cdn.jsdelivr.net') ||
-    url.includes('cdnjs.cloudflare.com')
+    url.includes('cdnjs.cloudflare.com') ||
+    url.includes('code.iconify.design') ||
+    url.includes('api.iconify.design') ||
+    url.includes('api.simplesvg.com') ||
+    url.includes('api.unisvg.com')
   ) {
     e.respondWith(
       caches.match(e.request).then(cached => {
