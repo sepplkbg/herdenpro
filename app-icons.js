@@ -353,7 +353,12 @@
       frag.appendChild(document.createTextNode(text.slice(lastIdx)));
     }
     if(frag.childNodes.length > 0) {
-      textNode.parentNode.replaceChild(frag, textNode);
+      // Guard: parentNode kann in der Zwischenzeit null geworden sein (DOM-Race)
+      try {
+        if(textNode.parentNode) {
+          textNode.parentNode.replaceChild(frag, textNode);
+        }
+      } catch(e) { /* stiller Skip — nicht kritisch */ }
     }
   }
 
@@ -427,6 +432,24 @@
   } else {
     boot();
   }
+
+  // Alias für Typo-Bugs: showAbtriebForm → showAbtriebbForm (doppel-b)
+  // Wird nach 5s ausgeführt damit die echten Funktionen definiert sind
+  setTimeout(() => {
+    if(typeof window.showAbtriebbForm === 'function' && typeof window.showAbtriebForm !== 'function') {
+      window.showAbtriebForm = window.showAbtriebbForm;
+    }
+    // Weitere Namens-Aliase für Save-Wrapper-Kompatibilität
+    if(typeof window.showKalenderForm === 'function' && typeof window.showKalenderTerminForm !== 'function') {
+      window.showKalenderTerminForm = window.showKalenderForm;
+    }
+    if(typeof window.showWartungMaschineForm === 'function' && typeof window.showMaschineForm !== 'function') {
+      window.showMaschineForm = window.showWartungMaschineForm;
+    }
+    if(typeof window.showWartungServiceForm === 'function' && typeof window.showServiceForm !== 'function') {
+      window.showServiceForm = window.showWartungServiceForm;
+    }
+  }, 5000);
 
   console.log('[Icons] v' + VERSION + ' — ' + Object.keys(ICONS).length + ' bunte Icons, ' + Object.keys(EMOJI_MAP).length + ' Emojis gemappt');
 })();

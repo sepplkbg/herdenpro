@@ -29,11 +29,11 @@
 ═══════════════════════════════════════════════════════════════════════════ -->
 <script>
 // Force clear cache if version changed
-if(localStorage.getItem('hp_version') !== 'v54.14') {
+if(localStorage.getItem('hp_version') !== 'v54.15') {
   localStorage.removeItem('mainNav');
   localStorage.removeItem('mehrOrder');
   localStorage.removeItem('mehrOrder');
-  localStorage.setItem('hp_version','v54.14');
+  localStorage.setItem('hp_version','v54.15');
   // Force SW update
   if('serviceWorker' in navigator) {
     navigator.serviceWorker.getRegistrations().then(function(regs) {
