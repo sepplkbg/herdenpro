@@ -1,218 +1,213 @@
 // ══════════════════════════════════════════════════════════════════════════════
-//  ICON-HELPER + AUTO-REPLACER (v2.0)
+//  ICON-HELPER + AUTO-REPLACER (v3.0 — FARBIG)
 //  ------------------------------------------------------------------
-//  1) Iconify-Wrapper mit zentralem Icon-Register
-//  2) Emoji → Icon Runtime-Transformer (MutationObserver-basiert)
+//  Nutzt Noto Color Emoji + Fluent Color für farbige Icons (nicht monochrom).
+//  Emojis werden zur Laufzeit gegen bunte SVG-Icons ersetzt.
 //
-//  Usage (statischer Aufruf):
-//    hpIcon('cow')                → '<iconify-icon icon="lucide:cow"></iconify-icon>'
-//    hpIcon('cow', 'lg', 'red')   → mit Grösse + Farbe
-//
-//  Runtime-Auto-Replace ist per Default AN. Ausnahmen:
-//    - <input>, <textarea>, <select>, [contenteditable]  (User-Eingaben)
-//    - <code>, <pre>, <script>, <style>
-//    - Elemente mit Klasse .hp-no-icon                    (opt-out)
-//    - Elemente mit Klasse .hp-user-content               (Journal, Notizen, Kommentare)
-//    - data-no-icon-replace="1" Attribut
-//
-//  Icon-Suche: https://icon-sets.iconify.design
+//  Usage:
+//    hpIcon('cow')  → farbiges Kuh-Icon
+//    <iconify-icon icon="noto:cow-face"></iconify-icon>
 // ══════════════════════════════════════════════════════════════════════════════
 (function() {
-  const VERSION = '2.0';
+  const VERSION = '3.0-color';
 
-  // ── Zentrales Icon-Register ────────────────────────────────────────────
+  // ── Zentrales Icon-Register — FARBIG (noto:* + fluent-color:*) ──────────
   const ICONS = {
     // Tiere & Herde
-    'cow':          'lucide:cow',
+    'cow':          'noto:cow-face',
     'cow-face':     'noto:cow-face',
-    'bull':         'game-icons:bull',
-    'calf':         'noto:calf',
+    'bull':         'noto:ox',
+    'calf':         'noto:cow',
     'sheep':        'noto:ewe',
-    'milk':         'lucide:milk',
-    'milk-off':     'lucide:milk-off',
-    'cheese':       'lucide:cake-slice',
-    'butter':       'mdi:butter',
+    'goat':         'noto:goat',
+    'pig':          'noto:pig-face',
 
-    // Aktionen
-    'add':          'lucide:plus',
-    'add-circle':   'lucide:plus-circle',
-    'edit':         'lucide:pencil',
-    'delete':       'lucide:trash-2',
-    'save':         'lucide:save',
-    'close':        'lucide:x',
-    'check':        'lucide:check',
-    'check-circle': 'lucide:check-circle',
-    'search':       'lucide:search',
-    'filter':       'lucide:filter',
-    'export':       'lucide:download',
-    'import':       'lucide:upload',
-    'copy':         'lucide:copy',
-    'print':        'lucide:printer',
-    'share':        'lucide:share-2',
-    'refresh':      'lucide:refresh-cw',
-    'sync':         'lucide:refresh-ccw',
-    'settings':     'lucide:settings',
-    'menu':         'lucide:menu',
-    'back':         'lucide:arrow-left',
-    'forward':      'lucide:arrow-right',
-    'up':           'lucide:arrow-up',
-    'down':         'lucide:arrow-down',
-    'send':         'lucide:send',
-    'attach':       'lucide:paperclip',
-    'link':         'lucide:link',
-    'external':     'lucide:external-link',
+    // Milch & Käse (bunt)
+    'milk':         'noto:glass-of-milk',
+    'milk-off':     'twemoji:no-entry',
+    'cheese':       'noto:cheese-wedge',
+    'butter':       'noto:butter',
+    'droplet':      'noto:droplet',
 
-    // Status
-    'warning':      'lucide:alert-triangle',
-    'error':        'lucide:alert-circle',
-    'info':         'lucide:info',
-    'success':      'lucide:circle-check',
-    'question':     'lucide:help-circle',
-    'lock':         'lucide:lock',
-    'unlock':       'lucide:unlock',
-    'star':         'lucide:star',
-    'flag':         'lucide:flag',
-    'bell':         'lucide:bell',
-    'alert':        'lucide:alarm-clock-check',
-    'siren':        'game-icons:siren',
-    'red-dot':      'lucide:circle',
-    'green-dot':    'lucide:circle',
-    'yellow-dot':   'lucide:circle',
+    // Aktionen (bunt: check grün, x rot etc.)
+    'add':          'noto:plus',
+    'add-circle':   'fluent-color:add-circle-24',
+    'edit':         'noto:pencil',
+    'delete':       'noto:wastebasket',
+    'save':         'noto:floppy-disk',
+    'close':        'noto:cross-mark',
+    'check':        'noto:check-mark-button',
+    'check-circle': 'noto:check-mark-button',
+    'search':       'noto:magnifying-glass-tilted-left',
+    'filter':       'fluent-color:filter-24',
+    'export':       'noto:down-arrow',
+    'import':       'noto:up-arrow',
+    'copy':         'fluent-color:copy-24',
+    'print':        'noto:printer',
+    'share':        'fluent-color:share-24',
+    'refresh':      'fluent-color:arrow-clockwise-dashes-24',
+    'sync':         'fluent-color:arrow-sync-24',
+    'settings':     'noto:gear',
+    'menu':         'fluent-color:list-24',
+    'back':         'fluent-color:arrow-left-24',
+    'forward':      'fluent-color:arrow-right-24',
+    'up':           'noto:up-arrow',
+    'down':         'noto:down-arrow',
+    'send':         'noto:incoming-envelope',
+    'attach':       'noto:paperclip',
+    'link':         'noto:link',
+    'external':     'fluent-color:open-24',
+
+    // Status (mit Farb-Codierung: rot/gelb/grün)
+    'warning':      'noto:warning',
+    'error':        'fluent-color:error-circle-24',
+    'info':         'fluent-color:info-24',
+    'success':      'noto:check-mark-button',
+    'question':     'noto:red-question-mark',
+    'lock':         'noto:locked',
+    'unlock':       'noto:unlocked',
+    'star':         'noto:star',
+    'flag':         'noto:triangular-flag',
+    'bell':         'noto:bell',
+    'alert':        'noto:alarm-clock',
+    'siren':        'noto:police-car-light',
+    'red-dot':      'twemoji:red-circle',
+    'green-dot':    'twemoji:green-circle',
+    'yellow-dot':   'twemoji:yellow-circle',
 
     // Zeit & Kalender
-    'calendar':     'lucide:calendar',
-    'calendar-add': 'lucide:calendar-plus',
-    'clock':        'lucide:clock',
-    'time':         'lucide:clock',
-    'sunrise':      'lucide:sunrise',
-    'sunset':       'lucide:sunset',
-    'hourglass':    'lucide:hourglass',
+    'calendar':     'noto:calendar',
+    'calendar-add': 'fluent-color:calendar-add-24',
+    'clock':        'noto:mantelpiece-clock',
+    'time':         'noto:mantelpiece-clock',
+    'sunrise':      'noto:sunrise',
+    'sunset':       'noto:sunset',
+    'hourglass':    'noto:hourglass-not-done',
 
-    // Wetter
-    'weather':      'lucide:cloud-sun',
-    'sun':          'lucide:sun',
-    'moon':         'lucide:moon',
-    'cloud':        'lucide:cloud',
-    'cloud-sun':    'lucide:cloud-sun',
-    'rain':         'lucide:cloud-rain',
-    'rain-sun':     'lucide:cloud-sun-rain',
-    'snow':         'lucide:snowflake',
-    'fog':          'lucide:cloud-fog',
-    'thunder':      'lucide:cloud-lightning',
-    'wind':         'lucide:wind',
-    'thermometer':  'lucide:thermometer',
+    // Wetter (klar farbig)
+    'weather':      'noto:sun-behind-cloud',
+    'sun':          'noto:sun',
+    'moon':         'noto:crescent-moon',
+    'cloud':        'noto:cloud',
+    'cloud-sun':    'noto:sun-behind-cloud',
+    'rain':         'noto:cloud-with-rain',
+    'rain-sun':     'noto:sun-behind-rain-cloud',
+    'snow':         'noto:snowflake',
+    'fog':          'noto:fog',
+    'thunder':      'noto:cloud-with-lightning',
+    'wind':         'noto:wind-face',
+    'thermometer':  'noto:thermometer',
 
     // Personen & Kontakte
-    'user':         'lucide:user',
-    'users':        'lucide:users',
-    'farmer':       'game-icons:farmer',
-    'contact':      'lucide:contact',
-    'phone':        'lucide:phone',
-    'email':        'lucide:mail',
-    'sms':          'lucide:message-square',
-    'chat':         'lucide:message-circle',
-    'whatsapp':     'ic:baseline-whatsapp',
-    'address':      'lucide:map-pin',
+    'user':         'noto:bust-in-silhouette',
+    'users':        'noto:busts-in-silhouette',
+    'farmer':       'noto:man-farmer',
+    'contact':      'noto:card-index',
+    'phone':        'noto:telephone-receiver',
+    'email':        'noto:e-mail',
+    'sms':          'noto:speech-balloon',
+    'chat':         'noto:left-speech-bubble',
+    'whatsapp':     'logos:whatsapp-icon',
+    'address':      'noto:round-pushpin',
 
     // Ort & Weide
-    'map':          'lucide:map',
-    'pin':          'lucide:map-pin',
-    'gps':          'lucide:navigation',
-    'meadow':       'lucide:trees',
-    'herb':         'lucide:sprout',
-    'grain':        'lucide:wheat',
-    'seedling':     'lucide:sprout',
-    'mountain':     'lucide:mountain',
-    'mountain-snow':'lucide:mountain-snow',
-    'home':         'lucide:home',
-    'barn':         'game-icons:barn',
+    'map':          'noto:world-map',
+    'pin':          'noto:round-pushpin',
+    'gps':          'fluent-color:location-24',
+    'meadow':       'noto:evergreen-tree',
+    'herb':         'noto:herb',
+    'grain':        'noto:sheaf-of-rice',
+    'seedling':     'noto:seedling',
+    'mountain':     'noto:mountain',
+    'mountain-snow':'noto:snow-capped-mountain',
+    'home':         'noto:house',
+    'barn':         'noto:house-with-garden',
 
     // Gesundheit & Behandlung
-    'heart':        'lucide:heart',
-    'medicine':     'lucide:pill',
-    'syringe':      'lucide:syringe',
-    'stethoscope':  'lucide:stethoscope',
-    'hospital':     'lucide:hospital',
-    'first-aid':    'mdi:medical-bag',
-    'medical':      'mdi:medical-bag',
-    'test-tube':    'lucide:test-tube',
-    'flask':        'lucide:flask-conical',
+    'heart':        'noto:red-heart',
+    'medicine':     'noto:pill',
+    'syringe':      'noto:syringe',
+    'stethoscope':  'noto:stethoscope',
+    'hospital':     'noto:hospital',
+    'first-aid':    'noto:medical-symbol',
+    'medical':      'noto:medical-symbol',
+    'test-tube':    'noto:test-tube',
+    'flask':        'noto:alembic',
 
     // Klauen
-    'hoof':         'game-icons:cow-hoof',
+    'hoof':         'noto:paw-prints',
 
     // Milch & Sennerei
-    'droplet':      'lucide:droplet',
-    'scale':        'lucide:scale',
-    'cash':         'lucide:banknote',
-    'money':        'lucide:euro',
-    'invoice':      'lucide:file-text',
-    'receipt':      'lucide:receipt',
+    'scale':        'noto:balance-scale',
+    'cash':         'noto:money-bag',
+    'money':        'noto:euro-banknote',
+    'invoice':      'noto:receipt',
+    'receipt':      'noto:receipt',
 
     // Kraftfutter & Lager
-    'feed':         'game-icons:corn',
-    'package':      'lucide:package',
-    'warehouse':    'lucide:warehouse',
-    'truck':        'lucide:truck',
-    'label':        'lucide:tag',
+    'feed':         'noto:ear-of-corn',
+    'package':      'noto:package',
+    'warehouse':    'fluent-color:building-factory-24',
+    'truck':        'noto:articulated-lorry',
+    'label':        'noto:label',
 
     // Datei & Dokumente
-    'file':         'lucide:file',
-    'file-text':    'lucide:file-text',
-    'folder':       'lucide:folder',
-    'notebook':     'lucide:notebook',
+    'file':         'noto:page-facing-up',
+    'file-text':    'noto:page-with-curl',
+    'folder':       'noto:file-folder',
+    'notebook':     'noto:notebook-with-decorative-cover',
     'excel':        'vscode-icons:file-type-excel',
     'pdf':          'vscode-icons:file-type-pdf2',
-    'image':        'lucide:image',
-    'camera':       'lucide:camera',
-    'qr':           'lucide:qr-code',
-    'barcode':      'lucide:barcode',
-    'clipboard':    'lucide:clipboard',
-    'memo':         'lucide:file-pen',
+    'image':        'noto:framed-picture',
+    'camera':       'noto:camera',
+    'qr':           'fluent-color:scan-object-24',
+    'barcode':      'fluent-color:barcode-scanner-24',
+    'clipboard':    'noto:clipboard',
+    'memo':         'noto:memo',
 
     // Werkzeug & Wartung
-    'tool':         'lucide:wrench',
-    'gear':         'lucide:cog',
-    'hammer':       'lucide:hammer',
-    'machine':      'game-icons:tractor',
+    'tool':         'noto:wrench',
+    'gear':         'noto:gear',
+    'hammer':       'noto:hammer',
+    'machine':      'noto:tractor',
 
     // Charts & Statistik
-    'chart':        'lucide:bar-chart-3',
-    'chart-line':   'lucide:line-chart',
-    'chart-pie':    'lucide:pie-chart',
-    'trend-up':     'lucide:trending-up',
-    'trend-down':   'lucide:trending-down',
+    'chart':        'noto:bar-chart',
+    'chart-line':   'noto:chart-increasing',
+    'chart-pie':    'fluent-color:data-pie-24',
+    'trend-up':     'noto:chart-increasing',
+    'trend-down':   'noto:chart-decreasing',
 
     // Sonstiges
-    'trash':        'lucide:trash-2',
-    'list':         'lucide:list',
-    'grid':         'lucide:grid-3x3',
-    'eye':          'lucide:eye',
-    'eye-off':      'lucide:eye-off',
-    'sparkle':      'lucide:sparkles',
-    'trophy':       'lucide:trophy',
-    'gift':         'lucide:gift',
-    'globe':        'lucide:globe',
-    'wifi':         'lucide:wifi',
-    'wifi-off':     'lucide:wifi-off',
-    'battery':      'lucide:battery',
-    'log-in':       'lucide:log-in',
-    'log-out':      'lucide:log-out',
-    'archive':      'lucide:archive',
-    'restore':      'lucide:archive-restore'
+    'trash':        'noto:wastebasket',
+    'list':         'fluent-color:task-list-square-ltr-24',
+    'grid':         'fluent-color:grid-24',
+    'eye':          'noto:eye',
+    'eye-off':      'fluent-color:eye-off-24',
+    'sparkle':      'noto:sparkles',
+    'trophy':       'noto:trophy',
+    'gift':         'noto:wrapped-gift',
+    'globe':        'noto:globe-showing-europe-africa',
+    'wifi':         'noto:antenna-bars',
+    'wifi-off':     'fluent-color:wifi-off-24',
+    'battery':      'noto:battery',
+    'log-in':       'fluent-color:arrow-enter-24',
+    'log-out':      'fluent-color:arrow-exit-24',
+    'archive':      'noto:card-file-box',
+    'restore':      'fluent-color:folder-arrow-up-24'
   };
 
-  // ── Emoji → Icon-Name Mapping (mit + ohne Variation-Selector U+FE0F) ────
+  // ── Emoji → Icon-Name Mapping ───────────────────────────────────────────
   const EMOJI_MAP_RAW = {
     // Tiere
-    '🐄': 'cow', '🐮': 'cow-face', '🐂': 'bull', '🐑': 'sheep',
+    '🐄': 'cow', '🐮': 'cow-face', '🐂': 'bull', '🐑': 'sheep', '🐐': 'goat',
     // Milch & Käse
     '🥛': 'milk', '🧀': 'cheese', '🧈': 'butter', '💧': 'droplet',
     // Aktionen
     '➕': 'add', '✏': 'edit', '✎': 'edit', '📝': 'memo',
     '🗑': 'trash', '💾': 'save', '❌': 'close', '✕': 'close', '✗': 'close',
     '✅': 'check', '☑': 'check-circle', '✓': 'check',
-    '🔍': 'search', '🔎': 'search', '🔎️': 'search',
+    '🔍': 'search', '🔎': 'search',
     '📥': 'import', '📤': 'export', '📋': 'clipboard', '🖨': 'print', '🔄': 'refresh',
     '⚙': 'settings', '🔧': 'tool', '📎': 'attach', '🔗': 'link',
     // Status
@@ -251,18 +246,19 @@
     '🌐': 'globe', '📡': 'wifi', '🔋': 'battery'
   };
 
-  // Normalisiere: Variation-Selector (U+FE0F) rausstrippen, damit sowohl "🏔" als auch "🏔️" matchen
   const EMOJI_MAP = {};
   Object.keys(EMOJI_MAP_RAW).forEach(k => {
-    const stripped = k.replace(/️/g, '');
-    EMOJI_MAP[stripped] = EMOJI_MAP_RAW[k];
+    EMOJI_MAP[k.replace(/️/g, '')] = EMOJI_MAP_RAW[k];
   });
 
-  // ── hpIcon(name, size, color) → HTML-String ─────────────────────────────
+  // Wichtig: noto-Icons ignorieren currentColor (sie sind selbst-farbig).
+  // Deshalb wird KEIN CSS-Filter oder Color aufgezwungen.
   window.hpIcon = function(name, size, color) {
     const icon = ICONS[name] || (name && name.indexOf(':') > -1 ? name : ICONS['question']);
     const sizeClass = size && size !== 'md' ? ' class="hp-icon-' + size + '"' : '';
-    const style = color ? ' style="color:' + color + '"' : '';
+    // color-Argument NUR bei monochromen Icons anwenden (nicht noto:* / fluent-color:*)
+    const style = (color && !icon.startsWith('noto:') && !icon.startsWith('fluent-color:') && !icon.startsWith('twemoji:') && !icon.startsWith('logos:') && !icon.startsWith('vscode-icons:'))
+      ? ' style="color:' + color + '"' : '';
     return '<iconify-icon icon="' + icon + '"' + sizeClass + style + '></iconify-icon>';
   };
 
@@ -287,15 +283,13 @@
   window.HP_EMOJI_MAP = EMOJI_MAP;
 
   // ═══════════════════════════════════════════════════════════════════════
-  //  AUTO-REPLACER: Emojis in gerendertem DOM zur Laufzeit ersetzen
+  //  AUTO-REPLACER
   // ═══════════════════════════════════════════════════════════════════════
 
-  // Regex, der alle bekannten Emojis matcht (inkl. optionalem Variation-Selector)
-  const emojiKeys = Object.keys(EMOJI_MAP).sort((a,b) => b.length - a.length);  // längste zuerst
+  const emojiKeys = Object.keys(EMOJI_MAP).sort((a,b) => b.length - a.length);
   const escapeRegex = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   const EMOJI_REGEX = new RegExp('(' + emojiKeys.map(escapeRegex).join('|') + ')(\\uFE0F)?', 'g');
 
-  // Tags/Selektoren wo NICHT ersetzt werden darf
   const SKIP_TAGS = { 'INPUT':1, 'TEXTAREA':1, 'SELECT':1, 'OPTION':1, 'SCRIPT':1, 'STYLE':1, 'CODE':1, 'PRE':1, 'IFRAME':1, 'CANVAS':1, 'SVG':1 };
   function shouldSkip(node) {
     let el = node.nodeType === 1 ? node : node.parentElement;
@@ -309,7 +303,6 @@
     return false;
   }
 
-  // Ersetzt Emojis in einem Text-Node durch <iconify-icon>-Elemente
   function replaceInTextNode(textNode) {
     const text = textNode.nodeValue;
     if(!text || text.length < 1) return;
@@ -317,7 +310,6 @@
     if(!EMOJI_REGEX.test(text)) return;
     if(shouldSkip(textNode)) return;
 
-    // Text in Fragmente splitten und Emojis durch echte Elemente ersetzen
     const frag = document.createDocumentFragment();
     let lastIdx = 0;
     EMOJI_REGEX.lastIndex = 0;
@@ -326,18 +318,15 @@
       const emoji = m[1];
       const iconName = EMOJI_MAP[emoji];
       if(!iconName) continue;
-      // Text vor dem Emoji
       if(m.index > lastIdx) {
         frag.appendChild(document.createTextNode(text.slice(lastIdx, m.index)));
       }
-      // Icon-Element
       const iconEl = document.createElement('iconify-icon');
-      iconEl.setAttribute('icon', ICONS[iconName] || 'lucide:help-circle');
+      iconEl.setAttribute('icon', ICONS[iconName] || 'noto:red-question-mark');
       iconEl.setAttribute('data-hp-auto', '1');
       frag.appendChild(iconEl);
       lastIdx = m.index + m[0].length;
     }
-    // Rest
     if(lastIdx < text.length) {
       frag.appendChild(document.createTextNode(text.slice(lastIdx)));
     }
@@ -346,16 +335,13 @@
     }
   }
 
-  // Rekursiv alle Text-Nodes in einem Subtree ersetzen
   function scanSubtree(root) {
     if(!root) return;
     if(root.nodeType === 3) { replaceInTextNode(root); return; }
     if(root.nodeType !== 1) return;
     if(shouldSkip(root)) return;
-    // TreeWalker sammelt alle Text-Nodes vor Modifikation → verhindert Endlosschleife
     const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
       acceptNode: n => {
-        // Text-Nodes ohne Emojis überspringen (Performance)
         EMOJI_REGEX.lastIndex = 0;
         return EMOJI_REGEX.test(n.nodeValue) ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT;
       }
@@ -374,7 +360,6 @@
     pendingRoots.add(root);
     if(scanScheduled) return;
     scanScheduled = true;
-    // requestIdleCallback (Fallback: setTimeout) — verhindert Layout-Thrashing
     const run = () => {
       scanScheduled = false;
       const roots = Array.from(pendingRoots);
@@ -410,11 +395,8 @@
   };
   window.hpIconScanNow = function(root) { scheduleScan(root || document.body); };
 
-  // Auto-Start beim Laden
   function boot() {
-    // Initial-Scan
     scheduleScan(document.body);
-    // Observer für dynamisch generiertes DOM
     startObserver();
   }
 
@@ -424,5 +406,5 @@
     boot();
   }
 
-  console.log('[Icons] Iconify-Helper v' + VERSION + ' geladen — ' + Object.keys(ICONS).length + ' Icons, ' + Object.keys(EMOJI_MAP).length + ' Emojis gemappt (Auto-Replace aktiv)');
+  console.log('[Icons] v' + VERSION + ' — ' + Object.keys(ICONS).length + ' bunte Icons, ' + Object.keys(EMOJI_MAP).length + ' Emojis gemappt');
 })();
