@@ -1,7 +1,30 @@
-const CACHE = 'herdenpro-v318';
+const CACHE = 'herdenpro-v319';
 const SHELL = [
   '/herdenpro/',
-  '/herdenpro/manifest.json'
+  '/herdenpro/index.html',
+  '/herdenpro/manifest.json',
+  '/herdenpro/icon.svg',
+  '/herdenpro/styles.css',
+  '/herdenpro/app.js',
+  '/herdenpro/app-core.js',
+  '/herdenpro/app-icons.js',
+  '/herdenpro/app-auth-refresh.js',
+  '/herdenpro/app-features.js',
+  '/herdenpro/app-views.js',
+  '/herdenpro/app-milch-v2.js',
+  '/herdenpro/app-milch-xlsx.js',
+  '/herdenpro/app-milch-screenshot.js',
+  '/herdenpro/app-milchsperre.js',
+  '/herdenpro/app-milestone.js',
+  '/herdenpro/app-onboarding.js',
+  '/herdenpro/app-suche.js',
+  '/herdenpro/app-sennerei.js',
+  '/herdenpro/app-sennerei-produktion.js',
+  '/herdenpro/app-sennerei-verkauf.js',
+  '/herdenpro/app-saisonabschluss.js',
+  '/herdenpro/app-email-send.js',
+  '/herdenpro/app-env-switch.js',
+  '/herdenpro/app-install.js'
 ];
 
 // Bei jedem Install sofort übernehmen, alte Caches löschen
