@@ -23,6 +23,7 @@ const SHELL_FILES = [
   'app-sennerei-produktion.js',
   'app-sennerei-verkauf.js',
   'app-saisonabschluss.js',
+  'app-saison-archiv.js',
   'app-email-send.js',
   'app-env-switch.js',
   'app-install.js'
@@ -31,7 +32,7 @@ const SCOPE = self.registration.scope;               // z.B. https://sepplkbg.gi
 // v54.22: Cache-Name pro App — beide Almen liegen auf derselben Domain und dürfen sich
 // gegenseitig nicht die Offline-Caches löschen.
 const APP_ID = new URL(SCOPE).pathname.replace(/\W+/g, '_');   // _herdenpro_ / _HerdenPro_Falkaunsalm_
-const CACHE = 'herdenpro-v327' + APP_ID;
+const CACHE = 'herdenpro-v329' + APP_ID;
 const SHELL = SHELL_FILES.map(f => new URL(f, SCOPE).href);
 const INDEX_URL = new URL('index.html', SCOPE).href;
 
