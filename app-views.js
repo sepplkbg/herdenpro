@@ -2200,6 +2200,10 @@ window.showKuhForm=function(id=null){
 window.saveKuh=async function(){
   const nr=document.getElementById('f-nr')?.value.trim();
   if(!nr){alert('Nr Pflicht');return;}
+  // v54.19: doppelte Kuh-Nr warnen (vorher still akzeptiert → zwei #901 in Milchliste)
+  const _dup = Object.entries(window.kuehe || {}).find(([id, k]) =>
+    id !== editId && k && String(k.nr).trim() === nr && k.almStatus !== 'vorzeitig' && k.almStatus !== 'abgetrieben');
+  if(_dup && !confirm('Kuh-Nr ' + nr + ' ist schon vergeben (' + (_dup[1].name || 'ohne Name') + (_dup[1].bauer ? ', ' + _dup[1].bauer : '') + ').\n\nTrotzdem speichern?')) return;
   const bs=document.getElementById('f-bauer')?.value;
   const bauer=bs==='__neu__'?(document.getElementById('f-bauer-text')?.value.trim()||''):bs;
   // Multi-Gruppen aus den Checkboxen einsammeln
@@ -6952,8 +6956,25 @@ function renderBackup() {
     </div>
   `;
 }
-window.exportJSON = function() {
-  const data = { kuehe, behandlungen, besamungen, milchEintraege, weideTage, weiden, bauern, gruppen, saison: saisonInfo, journal, kontakte, exportDatum: new Date().toISOString() };
+// v54.19: Backup enthält ALLE Datenbereiche (vorher nur 11 von 34 — Sennerei-Abrechnungen,
+// Verkäufe, Unterschriften, Milchsperren, Schalmtests, Saison-Archiv … fehlten).
+// Ausgenommen: benutzer (Rollen — Restore könnte aussperren), spielScores.
+window.HP_BACKUP_PFADE_ZUSATZ = ['sennerei','milchSperren','schalmtest','zellzahl','kaese_produktion','saisonArchiv',
+  'lager','wartung','stallplanV','stallplan','zaehlung','zaehlVerlauf','kraftfutter','kfLieferungen','aufgaben',
+  'kalenderTermine','traenkeLog','klauenpflege','almKarteWeiden','fotos','chat'];
+window.exportJSON = async function() {
+  const data = { kuehe, behandlungen, besamungen, milchEintraege, weideTage, weiden, bauern, gruppen, saison: saisonInfo, journal, kontakte, exportDatum: new Date().toISOString(), backupVersion: 2 };
+  const fehlend = [];
+  for(const pfad of window.HP_BACKUP_PFADE_ZUSATZ) {
+    try {
+      const snap = await Promise.race([
+        firebase.database().ref(pfad).once('value'),
+        new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 15000))
+      ]);
+      if(snap.exists()) data[pfad] = snap.val();
+    } catch(e) { fehlend.push(pfad); console.warn('[Backup] ' + pfad + ' nicht lesbar:', e.message); }
+  }
+  if(fehlend.length) data.backupUnvollstaendig = fehlend;
   const blob = new Blob([JSON.stringify(data,null,2)],{type:'application/json'});
   const a=document.createElement('a'); a.href=URL.createObjectURL(blob);
   a.download=`HerdenPro_Backup_${isoDate(new Date())}.json`; a.click();
@@ -8962,13 +8983,21 @@ window.saveAlmEinstellungen = async function() {
 // Wenn Erste Behandlung geändert wird, setze Letzte Behandlung auf denselben Wert
 // (nur falls Ende leer oder identisch mit vorherigem Anfang)
 window.onErsteBehChange = function() {
-  const anfang = document.getElementById('b-datum')?.value;
+  const anfangEl = document.getElementById('b-datum');
+  const anfang = anfangEl?.value;
   const endeEl = document.getElementById('b-datum-ende');
-  if(!endeEl) return;
-  // Wenn Ende leer oder = alter Anfang, dann auf neuen Anfang setzen
-  if(!endeEl.value || endeEl.value < anfang) {
+  if(!endeEl || !anfangEl) return;
+  // Vorheriger Anfang (beim ersten Ändern = Wert beim Öffnen des Formulars)
+  const alterAnfang = anfangEl.dataset.prev || anfangEl.defaultValue || '';
+  // Ende folgt dem Anfang, wenn es leer ist, = alter Anfang (eintägige Behandlung,
+  // Ende nie bewusst geändert) oder davor liegt.
+  // FIX v54.19: vorher fehlte der Fall "= alter Anfang" → beim Nachtragen (Anfang
+  // zurückdatiert) blieb Ende auf HEUTE → falscher Behandlungszeitraum im
+  // Bestandsbuch + Wartezeit zu lang (E2E-Test 23.09.2026).
+  if(!endeEl.value || endeEl.value === alterAnfang || endeEl.value < anfang) {
     endeEl.value = anfang;
   }
+  anfangEl.dataset.prev = anfang;
 };
 
 // Medizin-Quelle toggle (Bauer/Alm)

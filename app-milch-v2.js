@@ -103,14 +103,37 @@ function getMilchEntryKey(datum, zeit) {
   return 'v2_' + iso + '_' + (zeit || 'morgen');
 }
 
+// ── v54.22: Pending/Konflikte PRO FIREBASE-PROJEKT ──────────────────────────
+// Beide Almen laufen auf derselben Domain → gleicher localStorage. Vorher teilten
+// sie 'milchPendingV2': offline erfasste Falkauns-Werte wären beim Öffnen der
+// Nasserein-App in die Nasserein-DB synchronisiert worden.
+function _hpProjektId() { return (window.FIREBASE_CONFIG && window.FIREBASE_CONFIG.projectId) || 'default'; }
+function _hpPendingKey()   { return 'milchPendingV2:' + _hpProjektId(); }
+function _hpKonflikteKey() { return 'milchKonflikteV2:' + _hpProjektId(); }
+// Alte (geteilte) Schlüssel einmalig der Alm zuordnen, die ZULETZT offen war — nichts löschen.
+function _hpMigratePendingKeys() {
+  if(window._hpPendingMigrated) return;
+  window._hpPendingMigrated = true;
+  try {
+    const owner = window._hpPrevProjectId || _hpProjektId();
+    [['milchPendingV2', 'milchPendingV2:'], ['milchKonflikteV2', 'milchKonflikteV2:']].forEach(([alt, neuPrefix]) => {
+      const v = localStorage.getItem(alt);
+      if(v == null) return;
+      const ziel = neuPrefix + owner;
+      if(localStorage.getItem(ziel) == null) localStorage.setItem(ziel, v);
+      localStorage.removeItem(alt);
+    });
+  } catch(e) { console.warn('[Milch] Pending-Migration:', e); }
+}
+
 // ── LocalStorage-Pending-Queue
 // Struktur: { entryKey: { kuhId: {wert, session, userName, ts}, ... } }
 function getPending() {
-  try { return JSON.parse(localStorage.getItem('milchPendingV2') || '{}'); }
+  try { _hpMigratePendingKeys(); return JSON.parse(localStorage.getItem(_hpPendingKey()) || '{}'); }
   catch(e) { return {}; }
 }
 function setPending(data) {
-  try { localStorage.setItem('milchPendingV2', JSON.stringify(data)); }
+  try { localStorage.setItem(_hpPendingKey(), JSON.stringify(data)); }
   catch(e) { console.warn('[Milch v2] Pending save failed:', e); }
 }
 function countPending() {
@@ -123,11 +146,11 @@ window.getMilchPendingCount = countPending;
 
 // ── Konflikt-Speicher
 function getKonflikte() {
-  try { return JSON.parse(localStorage.getItem('milchKonflikteV2') || '[]'); }
+  try { _hpMigratePendingKeys(); return JSON.parse(localStorage.getItem(_hpKonflikteKey()) || '[]'); }
   catch(e) { return []; }
 }
 function setKonflikte(k) {
-  try { localStorage.setItem('milchKonflikteV2', JSON.stringify(k)); }
+  try { localStorage.setItem(_hpKonflikteKey(), JSON.stringify(k)); }
   catch(e) {}
 }
 function addKonflikt(k) {
@@ -1212,7 +1235,7 @@ window.discardMilchPending = function(entryKey, kuhId) {
 // ── Notfall: alle pending löschen ──
 window.clearMilchPending = function() {
   if(!confirm('Wirklich ALLE ' + countPending() + ' ausstehenden Milchwerte VERWERFEN?\n\nDies löscht sie nur lokal — Werte die schon in der Cloud sind bleiben. Fortfahren?')) return;
-  try { localStorage.removeItem('milchPendingV2'); } catch(e) {}
+  try { localStorage.removeItem(_hpPendingKey()); } catch(e) {}
   updateSyncBanner();
   if(window.showSaveToast) window.showSaveToast('✓ Alle Pending gelöscht');
 };

@@ -29,30 +29,29 @@
 ═══════════════════════════════════════════════════════════════════════════ -->
 <script>
 // Force clear cache if version changed
-if(localStorage.getItem('hp_version') !== 'v54.18') {
+// v54.22: (1) nur EIGENEN Service Worker + EIGENE Caches löschen (beide Almen liegen auf
+// derselben Domain — vorher wurde die andere Alm offline-unfähig), (2) erst NACH dem
+// Löschen neu laden (vorher Race → Update griff erst beim übernächsten Start).
+if(localStorage.getItem('hp_version') !== 'v54.23') {
   localStorage.removeItem('mainNav');
   localStorage.removeItem('mehrOrder');
-  localStorage.removeItem('mehrOrder');
-  localStorage.setItem('hp_version','v54.18');
-  // Force SW update
+  localStorage.setItem('hp_version','v54.23');
+  var _hpAppId = location.pathname.replace(/[^\/]*$/, '').replace(/\W+/g, '_');
+  var _hpDone = [];
   if('serviceWorker' in navigator) {
-    navigator.serviceWorker.getRegistrations().then(function(regs) {
-      regs.forEach(function(reg) {
-        reg.update();
-        reg.unregister();
-      });
-    });
-    // Clear all caches
-    if(window.caches) {
-      caches.keys().then(function(keys) {
-        keys.forEach(function(k) { caches.delete(k); });
-      });
-    }
-    // Reload once after clearing
-    if(!sessionStorage.getItem('reloaded_v54_9')) {
-      sessionStorage.setItem('reloaded_v54_9','1');
-      window.location.reload(true);
-    }
+    _hpDone.push(navigator.serviceWorker.getRegistration().then(function(reg) { if(reg) return reg.unregister(); }).catch(function(){}));
+  }
+  if(window.caches) {
+    _hpDone.push(caches.keys().then(function(keys) {
+      return Promise.all(keys.filter(function(k) {
+        return /^herdenpro-v\d+$/.test(k) || k.slice(-_hpAppId.length) === _hpAppId;   // alte (ungeteilte) + eigene
+      }).map(function(k) { return caches.delete(k); }));
+    }).catch(function(){}));
+  }
+  var _hpRk = 'reloaded_' + localStorage.getItem('hp_version');
+  if(!sessionStorage.getItem(_hpRk)) {
+    sessionStorage.setItem(_hpRk, '1');
+    Promise.all(_hpDone).then(function() { window.location.reload(); });
   }
 }
 // Early doLogin – funktioniert auch wenn Hauptscript noch lädt
@@ -211,13 +210,13 @@ window.FIREBASE_CONFIG = (function() {
     const currentProjectId = (window.FIREBASE_CONFIG || {}).projectId;
     if(!currentProjectId) return;
     const storedProjectId = localStorage.getItem('hp_last_projectId');
+    window._hpPrevProjectId = storedProjectId || currentProjectId;   // v54.22: für Pending-Migration (app-milch-v2)
     if(storedProjectId && storedProjectId !== currentProjectId) {
       console.warn('[Multi-App] Projekt-Wechsel erkannt: ' + storedProjectId + ' → ' + currentProjectId + ' · Cache & Auth werden zurückgesetzt');
       // Alle Cache-, Auth- und User-Daten weg
       const keys = Object.keys(localStorage);
       keys.forEach(k => {
-        if(k.startsWith('firebase:') ||
-           k.startsWith('hp_autoauth') ||
+        if(k.startsWith('hp_autoauth') ||
            k.startsWith('cache_') ||
            k === 'lastAuthUid' ||
            k === 'mainNav' ||
@@ -229,17 +228,8 @@ window.FIREBASE_CONFIG = (function() {
           localStorage.removeItem(k);
         }
       });
-      // Service Worker aufräumen damit auch die ausgelieferten Dateien passen
-      if('serviceWorker' in navigator) {
-        navigator.serviceWorker.getRegistrations().then(function(regs) {
-          regs.forEach(function(reg) { try { reg.unregister(); } catch(e){} });
-        }).catch(function(){});
-      }
-      if(window.caches) {
-        caches.keys().then(function(keys) {
-          keys.forEach(function(k) { try { caches.delete(k); } catch(e){} });
-        }).catch(function(){});
-      }
+      // v54.22: Service Worker + Offline-Caches NICHT mehr löschen — sie enthalten nur
+      // Programmdateien (pro Adresse getrennt). Vorher verlor dabei die ANDERE Alm ihren Offline-Cache.
       // Session-Marker damit die Reload-Schleife den Reset nicht dauernd wiederholt
       sessionStorage.setItem('hp_projekt_reset', '1');
       // Sanft neu laden — der Fetch holt frische Dateien
@@ -310,6 +300,7 @@ window.FIREBASE_CONFIG = (function() {
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-storage-compat.js"></script>
+<script src="app-security.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <script>if(typeof pdfjsLib !== 'undefined'){pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';}</script>
