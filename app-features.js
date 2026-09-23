@@ -623,6 +623,8 @@ window.restoreBackup = async function(input) {
       'journal':      data.journal,
       'kontakte':     data.kontakte,
     };
+    // v54.19: zusätzliche Bereiche aus neuen Backups (backupVersion 2) — alte Backups bleiben kompatibel
+    (window.HP_BACKUP_PFADE_ZUSATZ || []).forEach(p => { if(data[p] !== undefined) map[p] = data[p]; });
 
     let restored = 0;
     for(const [pfad, payload] of Object.entries(map)) {
@@ -959,8 +961,12 @@ window.importSaisonstartExcel = async function(input) {
     if(!ws) { alert('Kein Sheet gefunden.'); return; }
 
     // Ab Zeile 8 (Header in Zeile 4, Beispiele 5–7, Daten ab 8)
-    // range:7 ist 0-indexed = Excel-Zeile 8
-    const rows = XLSX.utils.sheet_to_json(ws, {header:1, defval:'', range:7});
+    // v54.21: ab Excel-Zeile 5 lesen (range:4). Vorher Zeile 8 → wer laut Anleitung die
+    // Beispielzeilen 5–7 LÖSCHT (Daten rutschen nach oben), verlor still die ersten 3 Kühe.
+    // Übrig gebliebene Beispielzeilen werden per Marker erkannt und übersprungen.
+    const rows = XLSX.utils.sheet_to_json(ws, {header:1, defval:'', range:4})
+      .filter(r => !/beispiel|muster/i.test(String(r[0]||'') + ' ' + String(r[8]||'')));
+    const _sollProBauer = {}, _istProBauer = {};   // Kontrolle gegen Spalte "Anzahl Kühe"
 
     let bauerCount = 0, kuhCount = 0, bsCount = 0, gruppeCount = 0, skipped = 0;
     let lastBauer = '';
@@ -995,6 +1001,7 @@ window.importSaisonstartExcel = async function(input) {
     }
 
     for(const row of rows) {
+      if(!row || row.every(c => String(c == null ? '' : c).trim() === '')) continue;   // Leerzeile
       const bauerName    = String(row[0]||'').trim();
       const anzahlRaw    = row[1];
       const bioRaw       = String(row[2]||'').trim().toUpperCase();
@@ -1022,7 +1029,7 @@ window.importSaisonstartExcel = async function(input) {
           // Default: nicht-Bio wenn nichts angegeben
           lastBauerBio = false;
         }
-        if(anzahlRaw !== '' && anzahlRaw != null)  bauerData.anzahl     = parseInt(anzahlRaw) || 0;
+        if(anzahlRaw !== '' && anzahlRaw != null)  { bauerData.anzahl = parseInt(anzahlRaw) || 0; _sollProBauer[bauerName] = bauerData.anzahl; }
         if(vButterRaw !== '' && vButterRaw != null) bauerData.verkButter = parseFloat(vButterRaw) || 0;
         if(vKaeseRaw  !== '' && vKaeseRaw  != null) bauerData.verkKase   = parseFloat(vKaeseRaw)  || 0;
         if(adresse) bauerData.adresse = adresse;
@@ -1045,6 +1052,7 @@ window.importSaisonstartExcel = async function(input) {
         continue;
       }
       if(!lastBauer) { skipped++; continue; }
+      _istProBauer[lastBauer] = (_istProBauer[lastBauer] || 0) + 1;
 
       // Gruppen vorberechnen, damit wir sie auch als k.gruppe speichern können
       const gListe = gruppenRaw ? gruppenRaw.split(/[,;\/]/).map(s=>s.trim()).filter(Boolean) : [];
@@ -1106,7 +1114,12 @@ window.importSaisonstartExcel = async function(input) {
                 kuhCount     + ' neue Kühe\n'+
                 gruppeCount  + ' neue Gruppen\n'+
                 bsCount      + ' Besamungen\n'+
-                (skipped>0 ? '\n'+skipped+' Zeilen übersprungen (kein Bauer oder ungültige Kuhnummer)' : '');
+                (skipped>0 ? '\n'+skipped+' Zeilen übersprungen (kein Bauer oder ungültige Kuhnummer)' : '') +
+                (() => {
+                  const abw = Object.entries(_sollProBauer).filter(([b, soll]) => soll > 0 && (_istProBauer[b] || 0) !== soll)
+                    .map(([b, soll]) => '  • ' + b + ': ' + (_istProBauer[b] || 0) + ' statt ' + soll);
+                  return abw.length ? '\n\n⚠ ANZAHL KÜHE STIMMT NICHT:\n' + abw.join('\n') + '\nBitte Excel-Datei prüfen!' : '';
+                })();
     if(statusEl) statusEl.innerHTML = '✓ '+bauerCount+' Bauern · '+kuhCount+' Kühe · '+gruppeCount+' Gruppen · '+bsCount+' Besamungen';
     alert(msg);
 

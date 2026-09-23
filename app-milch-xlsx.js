@@ -16,7 +16,7 @@
 
     const _mW = window.milchWert || function(v){ return typeof v === 'number' ? v : (v && v.wert != null ? parseFloat(v.wert) || 0 : parseFloat(v) || 0); };
     const kuehe = window.kuehe || {};
-    const eintraege = Object.values(window.milchEintraege || {}).filter(e => e && e.datum && e.prokuh);
+    const eintraege = Object.values(window.hpMilchDerSaison ? window.hpMilchDerSaison() : (window.milchEintraege || {})).filter(e => e && e.datum && e.prokuh);  // v54.19: nur aktuelle Saison
     if(!eintraege.length) { alert('Keine Milchdaten vorhanden.'); return; }
     const behandlungen = window.behandlungen || {};
 

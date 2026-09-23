@@ -47,8 +47,16 @@
     if(n == null || isNaN(n)) return '0,00';
     return (Math.round(n * 100) / 100).toFixed(2).replace('.', ',');
   }
+  // v54.19: Betrag exakt in Cent (Gramm × Cent-Preis, nur ganze Zahlen).
+  // Vorher Math.round(kg*preis*100)/100 → 0,35 × 18,90 = 6,6149999… → 6,61 statt 6,62 €.
+  function _eurKg(kg, preisKg) {
+    const gramm = Math.round(kg * 1000);
+    const centProKg = Math.round(preisKg * 100);
+    return Math.round(gramm * centProKg / 1000) / 100;
+  }
   function _esc(s) { return String(s||'').replace(/[<>&"']/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;',"'":'&#39;'})[c]); }
-  function _isoHeute() { return new Date().toISOString().slice(0,10); }
+  // v54.19: lokales Datum (vorher UTC → Verkauf 0–2 Uhr landete am Vortag)
+  function _isoHeute() { const d = new Date(); return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0'); }
   function _tsHeuteStart() { const d = new Date(); d.setHours(0,0,0,0); return d.getTime(); }
   function _tsHeuteEnde()  { const d = new Date(); d.setHours(23,59,59,999); return d.getTime(); }
 
@@ -235,7 +243,7 @@
   async function _svVerkaufMitKg(preisId, p, kg) {
     if(!kg || isNaN(kg) || kg <= 0) return;
     const preisKg = p.preisProKg != null ? p.preisProKg : p.preis;
-    const gesamt = Math.round(kg * preisKg * 100) / 100;
+    const gesamt = _eurKg(kg, preisKg);
     if(window._verkaufWarenkorbAktiv) {
       // In Warenkorb hinzufügen (immer neue Position, weil Gewicht individuell)
       window._verkaufWarenkorb.push({ preisId, name: p.name, preisProKg: preisKg, mengeKg: kg, gesamt });
@@ -378,7 +386,7 @@
     const btn = document.getElementById('kg-frei-btn');
     const info = document.getElementById('kg-berechnung');
     if(!isNaN(kg) && kg > 0) {
-      const gesamt = Math.round(kg * preisKg * 100) / 100;
+      const gesamt = _eurKg(kg, preisKg);
       info.innerHTML =
         '<div class="rechnung">' + _fmtKg(kg) + ' kg × ' + preisKg.toFixed(2).replace('.',',') + ' €/kg</div>' +
         '<div class="betrag">' + _fmtEUR(gesamt) + ' €</div>' +

@@ -90,8 +90,8 @@
 
     const alpungTage = saisonInfo?.auftriebDatum
       ? Math.floor((heute - saisonInfo.auftriebDatum)/86400000) + 1
-      : Object.keys(milchEintraege).length > 0
-        ? Math.floor((heute - Math.min(...Object.values(milchEintraege).map(m => m.datum || heute)))/86400000) + 1
+      : Object.keys(window.hpMilchDerSaison ? window.hpMilchDerSaison() : milchEintraege).length > 0
+        ? Math.floor((heute - Math.min(...Object.values(window.hpMilchDerSaison ? window.hpMilchDerSaison() : milchEintraege).map(m => m.datum || heute)))/86400000) + 1
         : 0;
     const kueheOben = Object.values(kuehe).filter(k => k.almStatus === 'oben').length;
     const kueheAlle = Object.keys(kuehe).length;
@@ -100,7 +100,7 @@
 
     // Rekord-Tagesmilch
     const tagesSum = {};
-    Object.values(milchEintraege).forEach(m => {
+    Object.values(window.hpMilchDerSaison ? window.hpMilchDerSaison() : milchEintraege).forEach(m => {
       if(!m || !m.datum) return;
       const iso = new Date(m.datum).toISOString().slice(0,10);
       let val = 0;
@@ -113,7 +113,7 @@
 
     // Top-3 Kühe
     const kuhSum = {};
-    Object.values(milchEintraege).forEach(m => {
+    Object.values(window.hpMilchDerSaison ? window.hpMilchDerSaison() : milchEintraege).forEach(m => {
       if(m.prokuh) Object.entries(m.prokuh).forEach(([kid, v]) => { kuhSum[kid] = (kuhSum[kid] || 0) + _mW(v); });
     });
     const top3Kuehe = Object.entries(kuhSum).sort((a,b) => b[1]-a[1]).slice(0,3).map(([kid,l]) => ({kuh:kuehe[kid], liter:Math.round(l)}));
@@ -128,7 +128,7 @@
 
     // Fleißigster Melker
     const melkerZahl = {};
-    Object.values(milchEintraege).forEach(m => {
+    Object.values(window.hpMilchDerSaison ? window.hpMilchDerSaison() : milchEintraege).forEach(m => {
       if(!m.meta) return;
       Object.values(m.meta).forEach(mt => { const name = mt?.userName || '?'; if(name && name !== '?') melkerZahl[name] = (melkerZahl[name] || 0) + 1; });
     });

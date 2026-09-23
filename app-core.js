@@ -290,18 +290,49 @@ window.hpIstTrockenstellBehandlung = function(b) {
 // Returns: { gesamt, morgen, abend, tage, molkerei, sennerei, verworfen } — gerundete Zahlen
 // molkerei/sennerei: nur bei Aufruf OHNE Kuh-Filter berechnet (aggregiert per Termin).
 // verworfen: Milch aus WZ/Milchsperre-Tagen (nicht verwertbar), regel "neue Messung gilt"
+// ── Saison-Zeitraum (v54.19) ────────────────────────────────────────────────
+// Milchdaten alter Saisons bleiben in der DB (Historie/Backup), dürfen aber NICHT
+// in Summen/Hochrechnungen der aktuellen Saison einfließen. Sonst: letzte Werte
+// vom Herbst werden über den Winter fortgeschrieben (E2E-Test: 9 Messungen 2026
+// → 16.516 L Phantom-Milch am 1.7.2027).
+// Untergrenze = Auftrieb − 30 Tage Toleranz (falls vor dem eingetragenen Auftrieb
+// schon gemessen wurde). Ohne Auftriebsdatum: kein Filter (altes Verhalten).
+window.hpSaisonVonTs = function() {
+  const a = window.saisonInfo && window.saisonInfo.auftriebDatum;
+  if(!a) return -Infinity;
+  const d = new Date(a); d.setHours(0,0,0,0);
+  return d.getTime() - 30 * 86400000;
+};
+window.hpImSaisonZeitraum = function(ts) { return ts != null && ts >= window.hpSaisonVonTs(); };
+window.hpMilchDerSaison = function() {
+  const von = window.hpSaisonVonTs();
+  const alle = window.milchEintraege || {};
+  if(von === -Infinity) return alle;
+  const out = {};
+  for(const k in alle) { const e = alle[k]; if(e && e.datum >= von) out[k] = e; }
+  return out;
+};
+
 window.computeCarryForwardGesamt = function(kueheIdsFilter) {
   const _mW = window.milchWert || function(v){ return typeof v === 'number' ? v : (v && v.wert != null ? parseFloat(v.wert) || 0 : parseFloat(v) || 0); };
   const kuehe = window.kuehe || {};
   const ids = kueheIdsFilter
     ? (kueheIdsFilter instanceof Set ? [...kueheIdsFilter] : [...kueheIdsFilter])
     : Object.keys(kuehe);
-  const eintraege = Object.values(window.milchEintraege || {})
+  const eintraege = Object.values(window.hpMilchDerSaison ? window.hpMilchDerSaison() : (window.milchEintraege || {}))
     .filter(e => e && e.datum && e.prokuh);
   if(!ids.length || !eintraege.length) return { gesamt: 0, morgen: 0, abend: 0, tage: 0, molkerei: 0, sennerei: 0, verworfen: 0 };
 
   // Wenn Saison offiziell abgeschlossen: nur bis Saisonende-Datum rechnen
   const saisonEndeTs = (window.saisonInfo && window.saisonInfo.saisonEndeDatum) || null;
+
+  // Rückwirkungs-Schutz für den Phantom-Milch-Stopp (v54.22):
+  // Saisons, die VOR Einführung des Fixes abgeschlossen wurden, behalten die alte Rechnung
+  // (Abrechnung mit den Bauern evtl. schon erfolgt). Admin kann es bewusst einschalten:
+  //   saison/phantomFixRueckwirkend = true
+  const _PHANTOM_FIX_AB = new Date('2026-09-23T00:00:00').getTime();
+  const _stoppAktiv = !saisonEndeTs || saisonEndeTs >= _PHANTOM_FIX_AB ||
+                      (window.saisonInfo && window.saisonInfo.phantomFixRueckwirkend === true);
   const heute = new Date(); heute.setHours(23,59,59,999);
   const heuteTs = saisonEndeTs && saisonEndeTs < heute.getTime() ? saisonEndeTs : heute.getTime();
   let sumMorgen = 0, sumAbend = 0;
@@ -371,6 +402,29 @@ window.computeCarryForwardGesamt = function(kueheIdsFilter) {
       morgens.length ? morgens[0].ts : Infinity,
       abends.length ? abends[0].ts : Infinity
     );
+
+    // ── Ende von Laktation / Alm-Aufenthalt: Carry-Forward STOPPEN (v54.19) ──
+    // Trockenstellen beendet die Laktation, vorzeitiger Abtrieb den Alm-Aufenthalt.
+    // Ohne diesen Stopp wurde der letzte Messwert bis heute fortgeschrieben →
+    // Phantom-Milch in Saison-, Bauern- und Molkerei-Abrechnung (E2E-Test 23.09.2026).
+    // Eine NEUE Messung nach dem Stopp (z.B. neue Laktation) zählt wieder normal.
+    const _stopps = [];
+    Object.values(_behandlungen).forEach(b => {
+      if(!b || b.kuhId !== kid || !b.datum) return;
+      if(!(window.hpIstTrockenstellBehandlung && window.hpIstTrockenstellBehandlung(b))) return;
+      const d0 = new Date(b.datum); d0.setHours(0,0,0,0);
+      // morgens trockengestellt → Morgenmelkung zählt noch; abends → ab nächstem Morgen
+      _stopps.push(d0.getTime() + (b.behandlungZeit === 'abend' ? 20 : 8) * 3600000);
+    });
+    const _vz = kuehe[kid] && kuehe[kid].vorzeitigAbtrieb;
+    if(_vz && _vz.datum) {
+      const d0 = new Date(_vz.datum); d0.setHours(0,0,0,0);
+      _stopps.push(d0.getTime() + 8 * 3600000); // Morgenmelkung am Abtriebstag zählt noch
+    }
+    const _normMelk = (ts, zeit) => { const d = new Date(ts); d.setHours(0,0,0,0); return d.getTime() + (zeit === 'abend' ? 18 : 6) * 3600000; };
+    let _letzteMessung = -Infinity;
+    const _istBeendet = melkTs => _stoppAktiv && _stopps.length > 0 && _stopps.some(s => s <= melkTs && s > _letzteMessung);
+
     const iter = new Date(firstKuhTs); iter.setHours(0,0,0,0);
     let mIdx = 0, aIdx = 0;
     let lastM = 0, lastA = 0;
@@ -384,12 +438,14 @@ window.computeCarryForwardGesamt = function(kueheIdsFilter) {
         lastM = morgens[mIdx].wert;
         const iso = new Date(morgens[mIdx].ts).toISOString().slice(0,10);
         lastMolkM = !!molkereiProTermin[iso + '_morgen'];
+        _letzteMessung = Math.max(_letzteMessung, _normMelk(morgens[mIdx].ts, 'morgen'));
         mIdx++;
       }
       while(aIdx < abends.length && abends[aIdx].ts <= dayTs) {
         lastA = abends[aIdx].wert;
         const iso = new Date(abends[aIdx].ts).toISOString().slice(0,10);
         lastMolkA = !!molkereiProTermin[iso + '_abend'];
+        _letzteMessung = Math.max(_letzteMessung, _normMelk(abends[aIdx].ts, 'abend'));
         aIdx++;
       }
       // Separate Prüfung für Morgen- (06:00) und Abend-Melkzeit (18:00)
@@ -406,6 +462,7 @@ window.computeCarryForwardGesamt = function(kueheIdsFilter) {
         const naechster = morgens.find(m => m.ts >= dayStartTs);
         if(naechster) wertM = naechster.wert;
       }
+      if(_istBeendet(morgenTs)) wertM = 0;   // trockengestellt / vorzeitig abgetrieben
       if(wertM > 0) {
         sumMorgen += wertM;
         tageSet.add(iter.toISOString().slice(0,10) + '_m');
@@ -419,6 +476,7 @@ window.computeCarryForwardGesamt = function(kueheIdsFilter) {
         const naechster = abends.find(a => a.ts >= dayStartTs);
         if(naechster) wertA = naechster.wert;
       }
+      if(_istBeendet(abendTs)) wertA = 0;    // trockengestellt / vorzeitig abgetrieben
       if(wertA > 0) {
         sumAbend += wertA;
         tageSet.add(iter.toISOString().slice(0,10) + '_a');
