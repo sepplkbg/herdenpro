@@ -313,6 +313,24 @@ window.hpMilchDerSaison = function() {
   return out;
 };
 
+// ── Neue Rechenregeln (v54.22+) nur für laufende/neue Saisons ─────────────────
+// Abgeschlossene Saisons VOR dem 23.09.2026 behalten die alte Rechnung (Abrechnung
+// evtl. schon erfolgt) — außer Admin setzt saison/phantomFixRueckwirkend = true.
+window.hpNeueRegelnAktiv = function() {
+  const s = window.saisonInfo || {};
+  const ende = s.saisonEndeDatum || null;
+  return !ende || ende >= new Date('2026-09-23T00:00:00').getTime() || s.phantomFixRueckwirkend === true;
+};
+// ── Wartezeit-Beginn (v54.25): behandelt wird NACH dem Melken ─────────────────
+// "morgens" → Morgenmilch des Behandlungstags zählt noch, verworfen ab Abendmelkung.
+// "abends"  → Abendmilch zählt noch, verworfen ab nächster Morgenmelkung.
+window.hpWzStartTs = function(b) {
+  if(!b || !b.datum) return null;
+  if(!window.hpNeueRegelnAktiv()) return b.datum;
+  const d0 = new Date(b.datum); d0.setHours(0,0,0,0);
+  return d0.getTime() + (b.behandlungZeit === 'abend' ? 20 : 8) * 3600000;
+};
+
 window.computeCarryForwardGesamt = function(kueheIdsFilter) {
   const _mW = window.milchWert || function(v){ return typeof v === 'number' ? v : (v && v.wert != null ? parseFloat(v.wert) || 0 : parseFloat(v) || 0); };
   const kuehe = window.kuehe || {};
@@ -330,9 +348,7 @@ window.computeCarryForwardGesamt = function(kueheIdsFilter) {
   // Saisons, die VOR Einführung des Fixes abgeschlossen wurden, behalten die alte Rechnung
   // (Abrechnung mit den Bauern evtl. schon erfolgt). Admin kann es bewusst einschalten:
   //   saison/phantomFixRueckwirkend = true
-  const _PHANTOM_FIX_AB = new Date('2026-09-23T00:00:00').getTime();
-  const _stoppAktiv = !saisonEndeTs || saisonEndeTs >= _PHANTOM_FIX_AB ||
-                      (window.saisonInfo && window.saisonInfo.phantomFixRueckwirkend === true);
+  const _stoppAktiv = window.hpNeueRegelnAktiv();
   const heute = new Date(); heute.setHours(23,59,59,999);
   const heuteTs = saisonEndeTs && saisonEndeTs < heute.getTime() ? saisonEndeTs : heute.getTime();
   let sumMorgen = 0, sumAbend = 0;
@@ -361,8 +377,8 @@ window.computeCarryForwardGesamt = function(kueheIdsFilter) {
     if(!wzEnde) return;
     // Trockenstell-Behandlung ausschließen
     if(window.hpIstTrockenstellBehandlung && window.hpIstTrockenstellBehandlung(b)) return;
-    // Start: ab erster Behandlung — sonst rückrechnen aus wzMilchTage
-    let wzStart = b.datum || null;
+    // Start: nach der Melkung der ersten Behandlung (v54.25) — sonst rückrechnen aus wzMilchTage
+    let wzStart = window.hpWzStartTs ? window.hpWzStartTs(b) : (b.datum || null);
     if(!wzStart && b.wzMilchTage) wzStart = wzEnde - (b.wzMilchTage) * 86400000;
     if(!wzStart || wzEnde <= wzStart) return;
     if(!wzPerKuh[b.kuhId]) wzPerKuh[b.kuhId] = [];
@@ -531,7 +547,7 @@ window.computeKuhWartezeiten = function(kuhId) {
   Object.values(behandlungen).forEach(b => {
     if(!b || b.kuhId !== kuhId || !b.wzMilchEnde) return;
     if(window.hpIstTrockenstellBehandlung && window.hpIstTrockenstellBehandlung(b)) return;
-    let wzStart = b.datum || null;
+    let wzStart = window.hpWzStartTs ? window.hpWzStartTs(b) : (b.datum || null);   // v54.25: nach dem Melken
     if(!wzStart && b.wzMilchTage) wzStart = b.wzMilchEnde - b.wzMilchTage * 86400000;
     if(!wzStart || b.wzMilchEnde <= wzStart) return;
     perioden.push({

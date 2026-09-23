@@ -32,10 +32,10 @@
 // v54.22: (1) nur EIGENEN Service Worker + EIGENE Caches löschen (beide Almen liegen auf
 // derselben Domain — vorher wurde die andere Alm offline-unfähig), (2) erst NACH dem
 // Löschen neu laden (vorher Race → Update griff erst beim übernächsten Start).
-if(localStorage.getItem('hp_version') !== 'v54.24') {
+if(localStorage.getItem('hp_version') !== 'v54.25') {
   localStorage.removeItem('mainNav');
   localStorage.removeItem('mehrOrder');
-  localStorage.setItem('hp_version','v54.24');
+  localStorage.setItem('hp_version','v54.25');
   var _hpAppId = location.pathname.replace(/[^\/]*$/, '').replace(/\W+/g, '_');
   var _hpDone = [];
   if('serviceWorker' in navigator) {
@@ -294,13 +294,13 @@ window.FIREBASE_CONFIG = (function() {
   };
 </script>
 
-<link rel="stylesheet" href="styles.css?v=54.24"/>
+<link rel="stylesheet" href="styles.css?v=54.25"/>
 <!-- Firebase Compat SDK -->
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-storage-compat.js"></script>
-<script src="app-security.js?v=54.24"></script>
+<script src="app-security.js?v=54.25"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <script>if(typeof pdfjsLib !== 'undefined'){pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';}</script>
@@ -521,25 +521,25 @@ window.FIREBASE_CONFIG = (function() {
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
-<script src="app-icons.js?v=54.24"></script>
-<script src="app-core.js?v=54.24"></script>
-<script src="app-views.js?v=54.24"></script>
-<script src="app-features.js?v=54.24"></script>
-<script src="app-milch-v2.js?v=54.24"></script>
-<script src="app-milch-screenshot.js?v=54.24"></script>
-<script src="app-email-send.js?v=54.24"></script>
-<script src="app-auth-refresh.js?v=54.24"></script>
-<script src="app-sennerei.js?v=54.24"></script>
-<script src="app-saisonabschluss.js?v=54.24"></script>
-<script src="app-milestone.js?v=54.24"></script>
-<script src="app-milch-xlsx.js?v=54.24"></script>
-<script src="app-milchsperre.js?v=54.24"></script>
-<script src="app-install.js?v=54.24"></script>
-<script src="app-sennerei-produktion.js?v=54.24"></script>
-<script src="app-sennerei-verkauf.js?v=54.24"></script>
-<script src="app-onboarding.js?v=54.24"></script>
-<script src="app-suche.js?v=54.24"></script>
-<script src="app-env-switch.js?v=54.24"></script>
+<script src="app-icons.js?v=54.25"></script>
+<script src="app-core.js?v=54.25"></script>
+<script src="app-views.js?v=54.25"></script>
+<script src="app-features.js?v=54.25"></script>
+<script src="app-milch-v2.js?v=54.25"></script>
+<script src="app-milch-screenshot.js?v=54.25"></script>
+<script src="app-email-send.js?v=54.25"></script>
+<script src="app-auth-refresh.js?v=54.25"></script>
+<script src="app-sennerei.js?v=54.25"></script>
+<script src="app-saisonabschluss.js?v=54.25"></script>
+<script src="app-milestone.js?v=54.25"></script>
+<script src="app-milch-xlsx.js?v=54.25"></script>
+<script src="app-milchsperre.js?v=54.25"></script>
+<script src="app-install.js?v=54.25"></script>
+<script src="app-sennerei-produktion.js?v=54.25"></script>
+<script src="app-sennerei-verkauf.js?v=54.25"></script>
+<script src="app-onboarding.js?v=54.25"></script>
+<script src="app-suche.js?v=54.25"></script>
+<script src="app-env-switch.js?v=54.25"></script>
 <script>
 document.addEventListener('DOMContentLoaded', function() {
   var mb = document.getElementById('nav-mehr');

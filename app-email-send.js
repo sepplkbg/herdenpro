@@ -133,7 +133,7 @@
         if(!b || b.kuhId !== kuhId || !b.wzMilchEnde) return;
         // Trockenstellen ist keine Wartezeit-Milch
         if(window.hpIstTrockenstellBehandlung && window.hpIstTrockenstellBehandlung(b)) return;
-        let wzStart = b.datum || null;
+        let wzStart = window.hpWzStartTs ? window.hpWzStartTs(b) : (b.datum || null);   // v54.25: nach dem Melken
         if(!wzStart && b.wzMilchTage) wzStart = b.wzMilchEnde - b.wzMilchTage * 86400000;
         if(!wzStart) return;
         if(b.wzMilchEnde >= wocheStartTs && wzStart <= referenzTs) {

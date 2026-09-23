@@ -50,7 +50,7 @@
       if(!b || !b.kuhId || !b.wzMilchEnde) return;
       // Trockenstellen ist keine Wartezeit-Milch (Laktation-Ende, kein „Verwerfen")
       if(window.hpIstTrockenstellBehandlung && window.hpIstTrockenstellBehandlung(b)) return;
-      let wzStart = b.datum || null;
+      let wzStart = window.hpWzStartTs ? window.hpWzStartTs(b) : (b.datum || null);   // v54.25: nach dem Melken
       if(!wzStart && b.wzMilchTage) wzStart = b.wzMilchEnde - b.wzMilchTage * 86400000;
       if(!wzStart || b.wzMilchEnde <= wzStart) return;
       if(!wzPerKuh[b.kuhId]) wzPerKuh[b.kuhId] = [];
