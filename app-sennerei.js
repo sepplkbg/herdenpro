@@ -17,9 +17,12 @@
   }
 
   function isoWochenId(datum) {
-    // ISO week number, format YYYY-Www
+    // v54.25: Woche läuft SONNTAG–SAMSTAG (wie Sennerei-Abholungsliste:
+    // "Woche 38 (13.09.–19.09.)" = So–Sa). Nummer = ISO-Woche des Montags danach.
+    // Format YYYY-Www (gleich wie bisher → bestehende Einträge bleiben gültig)
     const d = new Date(datum || Date.now());
     d.setHours(0,0,0,0);
+    d.setDate(d.getDate() - d.getDay() + 1);   // Sonntag der Woche + 1 Tag = Montag
     // Donnerstag der aktuellen Woche (ISO 8601 Wochendef.)
     d.setDate(d.getDate() + 3 - ((d.getDay() + 6) % 7));
     const yearStart = new Date(d.getFullYear(), 0, 4);
