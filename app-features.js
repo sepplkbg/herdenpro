@@ -2828,7 +2828,7 @@ window.renderWizard = function() {
 
   const d = window._wizardData;
   const kuhListe = Object.entries(kuehe).sort((a,b)=>(parseInt(a[1].nr)||0)-(parseInt(b[1].nr)||0));
-  const schritte = ['Alminfos','Kühe & Bauern','Behandlungen','Zusammenfassung'];
+  const schritte = ['Alminfos','Alte Saison','Start'];   // v54.26: Neue Saison = ALLES NEU
 
   // Progress bar
   const progressHTML = `
@@ -2868,96 +2868,60 @@ window.renderWizard = function() {
       </div>`;
   }
 
-  // ── Schritt 2: Kühe & Bauern ──
+  // ── Schritt 2: Alte Saison archivieren (v54.26) ──
   else if(d.schritt === 2) {
-    const bauernListe = [...new Set(kuhListe.map(([,k])=>k.bauer).filter(Boolean))].sort();
+    const hat = window.hpHatSaisonDaten ? window.hpHatSaisonDaten() : false;
+    const u = window.hpArchivUebersicht ? window.hpArchivUebersicht() : {};
+    const altJahr = (saisonInfo && saisonInfo.jahr) || '';
+    const offen = hat && saisonInfo && saisonInfo.aktiv !== false;
     inhalt = `
-      <h3 style="color:var(--gold);margin-bottom:.2rem">🐄 Schritt 2: Kühe & Bauern</h3>
-      <p style="font-size:.78rem;color:var(--text2);margin-bottom:.5rem">Welche Kühe kommen auf die Alm? Alle sind vorausgewählt.</p>
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.5rem">
-        <span style="font-size:.78rem;color:var(--gold);font-weight:600">${d.ausgewaehlteKuehe.size} / ${kuhListe.length} ausgewählt</span>
-        <div style="display:flex;gap:.3rem">
-          <button class="btn-xs" onclick="wizardAlleKuehe(true)">Alle</button>
-          <button class="btn-xs" onclick="wizardAlleKuehe(false)">Keine</button>
+      <h3 style="color:var(--gold);margin-bottom:.2rem">📦 Schritt 2: Alte Saison</h3>
+      ${!hat ? `
+        <div style="background:rgba(77,184,78,.08);border:1px solid rgba(77,184,78,.3);border-radius:var(--radius-sm);padding:.7rem .9rem;font-size:.82rem;color:var(--green)">
+          ✓ Keine Daten vorhanden – die neue Saison startet leer.
+        </div>` : `
+        <p style="font-size:.78rem;color:var(--text2);margin-bottom:.6rem">Neue Saison = <b>alles neu</b>. Diese Daten der Saison ${altJahr} werden ins <b>Archiv</b> verschoben:</p>
+        <div class="card-section" style="margin-bottom:.6rem">
+          <div class="info-row"><span>Kühe</span><b>${u.kuehe||0}</b></div>
+          <div class="info-row"><span>Bauern</span><b>${u.bauern||0}</b></div>
+          <div class="info-row"><span>Milcheinträge</span><b>${u.milch||0}</b></div>
+          <div class="info-row"><span>Behandlungen</span><b>${u.behandlungen||0}</b></div>
+          <div class="info-row"><span>Besamungen</span><b>${u.besamungen||0}</b></div>
+          <div class="info-row"><span>Sennerei-Verkäufe</span><b>${u.verkaeufe||0}</b></div>
+          <div class="info-row"><span>+ Sennerei, Journal, Kraftfutter, Gruppen, Fotos, Chat …</span><b></b></div>
         </div>
-      </div>
-      ${bauernListe.length ? `<div style="display:flex;gap:.3rem;flex-wrap:wrap;margin-bottom:.5rem">
-        ${bauernListe.map(b=>`<button class="filter-chip" onclick="wizardFilterBauer('${b}',this)" style="font-size:.7rem">${b.split(' ').pop()}</button>`).join('')}
-      </div>` : ''}
-      <div style="max-height:300px;overflow-y:auto;border:1px solid var(--border);border-radius:var(--radius-sm)">
-        ${kuhListe.map(([id,k])=>`
-          <label style="display:flex;align-items:center;gap:.6rem;padding:.45rem .7rem;border-bottom:1px solid var(--border);cursor:pointer" id="wiz-kuh-row-${id}">
-            <input type="checkbox" id="wiz-kuh-${id}" ${d.ausgewaehlteKuehe.has(id)?'checked':''} onchange="wizardToggleKuh('${id}',this.checked)" style="width:16px;height:16px;accent-color:var(--green);flex-shrink:0" />
-            <span class="nr-badge" style="flex-shrink:0">#${k.nr}</span>
-            <div style="flex:1;min-width:0">
-              <div style="font-size:.83rem;font-weight:600">${k.name||'–'}</div>
-              <div style="font-size:.68rem;color:var(--text3)">${k.bauer||''}${k.rasse?' · '+k.rasse:''}</div>
-            </div>
-          </label>`).join('')}
-      </div>
+        <div style="font-size:.76rem;color:var(--text2);margin-bottom:.6rem">
+          <b style="color:var(--green)">Bleibt erhalten:</b> Kontakte, Weiden/Weidekarte, Maschinen, Lager, Benutzer.<br>
+          Das Archiv bleibt unter <b>Backup → Archivierte Saisons</b> ansehbar (Bestandsbuch drucken, Datei speichern).
+        </div>
+        ${offen ? `
+          <div style="background:rgba(200,60,40,.1);border:1px solid rgba(200,60,40,.35);border-radius:var(--radius-sm);padding:.7rem .9rem;font-size:.8rem;color:var(--red);margin-bottom:.4rem">
+            ⚠ Die Saison ${altJahr} ist noch <b>nicht abgeschlossen</b>. Bitte zuerst den Saisonabschluss machen (Milchsumme &amp; Kennzahlen werden dabei gespeichert).
+          </div>
+          <button class="btn-secondary btn-block" onclick="document.getElementById('saison-wizard-ov').remove();window.saisonAbschlussEndgueltig&&window.saisonAbschlussEndgueltig()">Saison ${altJahr} jetzt abschließen</button>` : ''}
+      `}
       <div class="form-actions" style="margin-top:1rem">
         <button class="btn-secondary" onclick="window._wizardData.schritt=1;renderWizard()">← Zurück</button>
-        <button class="btn-primary" onclick="wizardWeiter2()">Weiter →</button>
+        <button class="btn-primary" ${offen ? 'disabled style="opacity:.4"' : ''} onclick="wizardWeiter2()">Weiter →</button>
       </div>`;
   }
 
-  // ── Schritt 3: Offene Behandlungen ──
+  // ── Schritt 3: Start ──
   else if(d.schritt === 3) {
-    const offeneBeh = Object.entries(behandlungen).filter(([,b])=>b.aktiv && b.wzMilchEnde && b.wzMilchEnde > Date.now());
+    const hat = window.hpHatSaisonDaten ? window.hpHatSaisonDaten() : false;
     inhalt = `
-      <h3 style="color:var(--gold);margin-bottom:.2rem">⚕ Schritt 3: Behandlungen</h3>
-      <p style="font-size:.78rem;color:var(--text2);margin-bottom:.8rem">Aktive Wartezeiten die beim Saisonstart noch laufen.</p>
-      ${offeneBeh.length ? `
-        <div style="background:rgba(200,120,0,.08);border:1px solid rgba(200,120,0,.25);border-radius:var(--radius-sm);padding:.6rem .8rem;margin-bottom:.6rem">
-          <div style="font-size:.75rem;color:var(--orange);font-weight:700;margin-bottom:.4rem">⚠ ${offeneBeh.length} aktive Wartezeit${offeneBeh.length>1?'en':''}</div>
-          ${offeneBeh.map(([,b])=>{
-            const k=kuehe[b.kuhId];
-            const endeDate=new Date(b.wzMilchEnde);endeDate.setHours(0,0,0,0);
-            const heute=new Date();heute.setHours(0,0,0,0);
-            const diff=Math.round((endeDate.getTime()-heute.getTime())/86400000);
-            return `<div style="font-size:.8rem;color:var(--text2);padding:.25rem 0;border-bottom:1px solid var(--border2)">
-              #${k?.nr||''} ${k?.name||''} · ${b.medikament||'–'} · noch <b style="color:var(--orange)">${diff} Tage</b>
-            </div>`;
-          }).join('')}
-        </div>
-        <p style="font-size:.75rem;color:var(--text3)">Diese Kühe dürfen trotzdem aufgetrieben werden – die Wartezeit läuft weiter. Dashboard zeigt Alerts.</p>
-      ` : `
-        <div style="background:rgba(77,184,78,.08);border:1px solid rgba(77,184,78,.25);border-radius:var(--radius-sm);padding:.7rem .9rem;text-align:center">
-          <div style="font-size:1.2rem">✓</div>
-          <div style="font-size:.82rem;color:var(--green);margin-top:.2rem">Keine offenen Wartezeiten</div>
-        </div>`}
-      <div class="form-actions" style="margin-top:1rem">
-        <button class="btn-secondary" onclick="window._wizardData.schritt=2;renderWizard()">← Zurück</button>
-        <button class="btn-primary" onclick="window._wizardData.schritt=4;renderWizard()">Weiter →</button>
-      </div>`;
-  }
-
-  // ── Schritt 4: Zusammenfassung & Start ──
-  else if(d.schritt === 4) {
-    const ausgewaehlteKueheListe = kuhListe.filter(([id])=>d.ausgewaehlteKuehe.has(id));
-    const bauernMap = {};
-    ausgewaehlteKueheListe.forEach(([,k])=>{ if(k.bauer) bauernMap[k.bauer]=(bauernMap[k.bauer]||0)+1; });
-    inhalt = `
-      <h3 style="color:var(--gold);margin-bottom:.2rem">🚀 Schritt 4: Zusammenfassung</h3>
-      <p style="font-size:.78rem;color:var(--text2);margin-bottom:.8rem">Alles korrekt? Dann Saison starten!</p>
+      <h3 style="color:var(--gold);margin-bottom:.2rem">🚀 Schritt 3: Saison starten</h3>
       <div class="card-section" style="margin-bottom:.6rem">
         <div class="info-row"><span>Alm</span><b>${d.alm}</b></div>
         <div class="info-row"><span>Jahr</span><b>${d.jahr}</b></div>
         <div class="info-row"><span>Auftrieb</span><b>${new Date(d.auftrieb+'T12:00').toLocaleDateString('de-AT',{weekday:'long',day:'numeric',month:'long'})}</b></div>
-        <div class="info-row"><span>Kühe</span><b style="color:var(--green)">${d.ausgewaehlteKuehe.size} von ${kuhListe.length}</b></div>
-        <div class="info-row"><span>Bauern</span><b>${Object.keys(bauernMap).length}</b></div>
+        <div class="info-row"><span>Alte Saison</span><b>${hat ? 'wird archiviert' : '–'}</b></div>
       </div>
-      ${Object.entries(bauernMap).length ? `
-        <div class="section-label" style="margin-bottom:.3rem">KÜHE PRO BAUER</div>
-        ${Object.entries(bauernMap).sort().map(([b,n])=>`
-          <div style="display:flex;justify-content:space-between;font-size:.8rem;color:var(--text2);padding:.2rem 0">
-            <span>${b}</span><span style="color:var(--gold)">${n} Kuh${n>1?'e':''}</span>
-          </div>`).join('')}` : ''}
-      <div style="background:rgba(77,184,78,.08);border:1px solid rgba(77,184,78,.3);border-radius:var(--radius-sm);padding:.6rem .9rem;margin-top:.6rem;font-size:.78rem;color:var(--green)">
-        ▲ Mit Klick auf „Saison starten" werden alle gewählten Kühe auf Status „Auf der Alm" gesetzt.
+      <div style="background:rgba(77,184,78,.08);border:1px solid rgba(77,184,78,.3);border-radius:var(--radius-sm);padding:.6rem .9rem;font-size:.78rem;color:var(--green)">
+        Danach ist die App leer. Nächster Schritt: Kühe &amp; Bauern per <b>Excel-Import (Saisonstart-Vorlage)</b> oder einzeln anlegen.
       </div>
       <div class="form-actions" style="margin-top:1rem">
-        <button class="btn-secondary" onclick="window._wizardData.schritt=3;renderWizard()">← Zurück</button>
+        <button class="btn-secondary" onclick="window._wizardData.schritt=2;renderWizard()">← Zurück</button>
         <button class="btn-primary" style="background:var(--green);border-color:var(--green)" onclick="wizardStartSaison()">▲ Saison starten</button>
       </div>`;
   }
@@ -2989,9 +2953,8 @@ window.wizardWeiter1 = function() {
 };
 
 window.wizardWeiter2 = function() {
-  if(window._wizardData.ausgewaehlteKuehe.size === 0) {
-    alert('Bitte mindestens eine Kuh auswählen');
-    return;
+  if(window.hpHatSaisonDaten && window.hpHatSaisonDaten() && saisonInfo && saisonInfo.aktiv !== false) {
+    alert('Bitte zuerst die alte Saison abschließen.'); return;
   }
   window._wizardData.schritt = 3;
   renderWizard();
@@ -3028,10 +2991,17 @@ window.wizardFilterBauer = function(bauer, btn) {
 window.wizardStartSaison = async function() {
   const d = window._wizardData;
   const btn = document.querySelector('#saison-wizard-ov .btn-primary:last-child');
-  if(btn) { btn.disabled=true; btn.textContent='Starte…'; }
+  const hat = window.hpHatSaisonDaten ? window.hpHatSaisonDaten() : false;
+  const altJahr = (saisonInfo && saisonInfo.jahr) || null;
+  if(hat && !confirm('Neue Saison ' + d.jahr + ' starten?\n\nAlle Daten der Saison ' + (altJahr || '') + ' (Kühe, Bauern, Milch, Behandlungen, Sennerei …) werden ins Archiv verschoben.\nKontakte bleiben erhalten.\n\nDas Archiv bleibt unter Backup ansehbar.')) return;
+  if(btn) { btn.disabled=true; btn.textContent= hat ? 'Archiviere…' : 'Starte…'; }
 
   try {
-    // 1. Saison setzen
+    // 1. Alte Saison archivieren (v54.26: ALLES NEU) — bricht bei fehlender Berechtigung VOR jeder Änderung ab
+    let archiv = null;
+    if(hat) archiv = await window.hpSaisonArchivieren(altJahr || (d.jahr - 1));
+
+    // 2. Neue Saison setzen
     await set(ref(db,'saison'), {
       aktiv: true,
       alm: d.alm,
@@ -3039,16 +3009,9 @@ window.wizardStartSaison = async function() {
       auftriebDatum: new Date(d.auftrieb+'T06:00').getTime(),
     });
 
-    // 2. Ausgewählte Kühe → oben, Rest → unten
-    const updates = {};
-    Object.keys(kuehe).forEach(id => {
-      updates['kuehe/'+id+'/almStatus'] = d.ausgewaehlteKuehe.has(id) ? 'oben' : 'unten';
-    });
-    await update(ref(db), updates);
-
     // Wizard schließen
     document.getElementById('saison-wizard-ov')?.remove();
-    showSaveToast && showSaveToast('Saison '+d.jahr+' gestartet · '+d.ausgewaehlteKuehe.size+' Kühe auf der Alm');
+    showSaveToast && showSaveToast('Saison '+d.jahr+' gestartet' + (archiv ? ' · Saison ' + archiv.key + ' archiviert' : '') + ' · jetzt Kühe & Bauern importieren');
     navigate('saison');
   } catch(e) {
     alert('Fehler: '+e.message);
@@ -5649,221 +5612,7 @@ window.showAbtriebbForm=function(){
   else alert('Saisonende-Dialog nicht verfügbar. Bitte App neu laden.');
 };
 
-window.startSaison=async function(){const alm=document.getElementById('s-alm')?.value.trim();const datum=document.getElementById('s-datum')?.value;await set(ref(db,'saison'),{aktiv:true,alm,auftriebDatum:datum?new Date(datum).getTime():Date.now(),jahr:new Date().getFullYear()});};
-
-window.showBauerForm=function(){document.getElementById('bauer-overlay').style.display='flex';};
-
-window.deleteBauer=async id=>{if(confirm('Bauer löschen?'))await remove(ref(db,'bauern/'+id));};
-
-// ══════════════════════════════════════════════════════════════════════════════
-//  HERDE
-// ══════════════════════════════════════════════════════════════════════════════
-
-window.showWeideForm=function(){document.getElementById('weide-overlay').style.display='flex';};
-
-window.saveWeide=async function(){
-  const name=document.getElementById('w-name')?.value.trim();
-  if(!name){alert('Weide-Name eingeben');return;}
-  const data = {
-    name,
-    ha:parseFloat(document.getElementById('w-ha')?.value)||null,
-    notiz:document.getElementById('w-notiz')?.value.trim()
-  };
-  try {
-    const pushRef = firebase.database().ref('weiden').push(data);
-    const newId = pushRef.key;
-    await pushRef;
-    // Lokal sofort eintragen für sofortiges UI-Update
-    try { window.weiden = window.weiden || {}; window.weiden[newId] = data; if(typeof weiden !== 'undefined') weiden[newId] = data; } catch(x) {}
-    window.showSaveToast && showSaveToast('✓ Weide „'+name+'" angelegt');
-    closeForm('weide-overlay');
-    setTimeout(() => { try { render(); } catch(e){} }, 50);
-  } catch(e) {
-    console.error('saveWeide:', e);
-    alert('Fehler beim Speichern: '+(e.message||e));
-  }
-};
-
-window.deleteWeide=async id=>{if(confirm('Weide löschen?'))await remove(ref(db,'weiden/'+id));};
-
-window.showWeideTagForm=function(){
-  const ov=document.getElementById('weidetag-overlay');
-  if(!ov){navigate('weide');setTimeout(()=>showWeideTagForm(),150);return;}
-  ov.style.display='flex';
-  // Filter setzen: Standardmäßig "Melkkühe" wenn vorhanden, sonst "Alle"
-  setTimeout(()=>{
-    const melkChip = ov.querySelector('.filter-chip[data-wf="Melkkühe"]') ||
-                     ov.querySelector('.filter-chip[data-wf="Melkkuehe"]');
-    if(melkChip) {
-      setWeideFilter(melkChip.dataset.wf, melkChip);
-      // Nur sichtbare (Melkkühe) automatisch ankreuzen, Rest abwählen
-      ov.querySelectorAll('.kuh-select-chip').forEach(chip => {
-        const cb = chip.querySelector('.kuh-cb');
-        if(!cb) return;
-        cb.checked = chip.style.display !== 'none';
-      });
-    } else {
-      const allChip = ov.querySelector('.filter-chip[data-wf=""]');
-      if(allChip) setWeideFilter('', allChip);
-    }
-    updateWeideCount();
-  }, 30);
-};
-
-// Gruppen-Filter im Weidetag-Erfassdialog
-window.setWeideFilter = function(gName, btn) {
-  const ov = document.getElementById('weidetag-overlay');
-  if(!ov) return;
-  // Chip-Highlight
-  ov.querySelectorAll('.filter-chip[data-wf]').forEach(c=>c.classList.remove('active'));
-  if(btn) btn.classList.add('active');
-  // Kuh-Chips ein/ausblenden
-  ov.querySelectorAll('.kuh-select-chip').forEach(chip=>{
-    if(!gName) { chip.style.display = ''; return; }
-    const gList = (chip.dataset.gruppen||'').split('|').filter(Boolean);
-    const kuhId = chip.dataset.kuhId;
-    // Fallback über gruppen.mitglieder
-    let inMit = false;
-    if(window.gruppen) {
-      for(const g of Object.values(window.gruppen)) {
-        if(g && g.name === gName && g.mitglieder && g.mitglieder[kuhId]) { inMit = true; break; }
-      }
-    }
-    chip.style.display = (gList.includes(gName) || inMit) ? '' : 'none';
-  });
-  updateWeideCount();
-};
-
-// Live-Counter „X von Y ausgewählt"
-window.updateWeideCount = function() {
-  const ov = document.getElementById('weidetag-overlay');
-  if(!ov) return;
-  const sichtbar = [...ov.querySelectorAll('.kuh-select-chip')].filter(c=>c.style.display!=='none');
-  const checked = sichtbar.filter(c=>c.querySelector('.kuh-cb')?.checked).length;
-  const cnt = document.getElementById('wt-cb-count');
-  if(cnt) cnt.textContent = checked + ' / ' + sichtbar.length + ' ausgewählt';
-};
-
-window.saveWeideTag=async function(){
-  const datum=document.getElementById('wt-datum')?.value;
-  if(!datum){alert('Datum eingeben');return;}
-  const wv=document.getElementById('wt-weide')?.value;
-  const kuhIds = [...document.querySelectorAll('#weidetag-overlay .kuh-cb:checked')].map(c=>c.value);
-  const data = {
-    datum,
-    weideId: wv && wv!=='__text__' ? wv : '',
-    weideText: wv==='__text__' ? (document.getElementById('wt-freitext')?.value.trim()||'') : '',
-    kuhIds,
-    notiz: document.getElementById('wt-notiz')?.value.trim(),
-    createdAt: Date.now()
-  };
-  try {
-    // Mit Auto-Retry — bei PERMISSION_DENIED: Token refresh + Auto-Login + Retry
-    const _retry = window.withAuthRetry || (async fn => await fn());
-    const pushRef = firebase.database().ref('weideTage').push();
-    const newId = pushRef.key;
-    await _retry(() => pushRef.set(data));
-    // Lokal sofort eintragen — UI zeigt Eintrag sofort ohne auf Listener zu warten
-    try { window.weideTage = window.weideTage || {}; window.weideTage[newId] = data; if(typeof weideTage !== 'undefined') weideTage[newId] = data; } catch(x) {}
-    window.showSaveToast && showSaveToast('✓ Weidegang gespeichert');
-    closeForm('weidetag-overlay');
-    setTimeout(() => { try { render(); } catch(e){} }, 50);
-  } catch(e) {
-    console.error('saveWeideTag:', e);
-    alert('Fehler beim Speichern: '+(e.message||e));
-  }
-};
-
-window.deleteWeideTag=async id=>{
-  if(!confirm('Eintrag löschen?')) return;
-  try {
-    await remove(ref(db,'weideTage/'+id));
-    try { if(window.weideTage?.[id]) delete window.weideTage[id]; if(typeof weideTage !== 'undefined' && weideTage[id]) delete weideTage[id]; } catch(x) {}
-    setTimeout(() => { try { render(); } catch(e){} }, 50);
-  } catch(e) { alert('Fehler beim Löschen: '+(e.message||e)); }
-};
-
-// Detail-Popup für einen Weidegang-Eintrag: zeigt Datum, Weide, Notiz, alle Tiere
-window.showWeideTagDetail = function(id) {
-  const wt = weideTage[id];
-  if(!wt) return;
-  const weideName = weiden[wt.weideId]?.name || wt.weideText || '–';
-  const weideHa   = weiden[wt.weideId]?.ha ? ' ('+weiden[wt.weideId].ha+' ha)' : '';
-  const datumStr  = new Date(wt.datum+'T12:00').toLocaleDateString('de-AT',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
-  const kuhIds    = Array.isArray(wt.kuhIds) ? wt.kuhIds : [];
-
-  // Kühe mit Details holen und sortiert nach Nummer
-  const kuhListe = kuhIds
-    .map(kid => ({ id: kid, k: kuehe[kid] }))
-    .sort((a,b) => (parseInt(a.k?.nr)||0) - (parseInt(b.k?.nr)||0));
-
-  // Gruppieren nach Bauer für bessere Übersicht
-  const nachBauer = {};
-  kuhListe.forEach(({id: kid, k}) => {
-    if(!k) return;
-    const bauer = k.bauer || '(kein Bauer)';
-    if(!nachBauer[bauer]) nachBauer[bauer] = [];
-    nachBauer[bauer].push({ id: kid, k });
-  });
-
-  const fehlend = kuhListe.filter(x => !x.k).length;
-
-  const kuhHtml = Object.entries(nachBauer)
-    .sort((a,b) => a[0].localeCompare(b[0]))
-    .map(([bauer, list]) => `
-      <div style="margin-top:.5rem">
-        <div style="font-size:.68rem;color:var(--text3);font-weight:700;letter-spacing:.5px;text-transform:uppercase;margin-bottom:.3rem">${bauer} · ${list.length}</div>
-        <div style="display:flex;flex-wrap:wrap;gap:.3rem">
-          ${list.map(({id: kid, k}) => `
-            <div onclick="closePopup();showKuhDetail('${kid}')" style="background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:.3rem .55rem;font-size:.78rem;cursor:pointer;display:inline-flex;align-items:center;gap:.35rem;transition:background .15s">
-              <span class="nr-badge" style="min-width:auto;padding:1px 6px;font-size:.7rem">#${k.nr}</span>
-              <span>${k.name || '–'}</span>
-            </div>`).join('')}
-        </div>
-      </div>`).join('');
-
-  window.showPopupHTML(
-    '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:.6rem;gap:.6rem">' +
-      '<div>' +
-        '<div style="font-weight:bold;font-size:1rem">' + datumStr + '</div>' +
-        '<div style="font-size:.85rem;color:var(--green);font-weight:600;margin-top:.2rem">🌿 ' + weideName + weideHa + '</div>' +
-      '</div>' +
-      '<div style="font-size:1.3rem;color:var(--gold);font-weight:bold;text-align:right">' +
-        (kuhListe.length || 0) + '<div style="font-size:.65rem;color:var(--text3);font-weight:400">Tiere</div>' +
-      '</div>' +
-    '</div>' +
-    (wt.notiz ? '<div style="background:var(--bg2);border-radius:8px;padding:.5rem .7rem;font-size:.85rem;margin:.5rem 0;white-space:pre-wrap;color:var(--text)">📝 ' + wt.notiz.replace(/</g,'&lt;') + '</div>' : '') +
-    (kuhListe.length ? kuhHtml : '<div style="color:var(--text3);font-size:.85rem;padding:.5rem 0">Keine Tiere zugewiesen</div>') +
-    (fehlend ? '<div style="color:var(--text3);font-size:.72rem;margin-top:.4rem">Hinweis: ' + fehlend + ' Kuh-IDs konnten nicht mehr in der Herde gefunden werden (evtl. gelöscht)</div>' : '') +
-    '<div style="display:flex;gap:.5rem;margin-top:1rem">' +
-      '<button class="btn-secondary" style="flex:1" onclick="closePopup()">Schließen</button>' +
-      '<button class="btn-xs-danger" onclick="closePopup();deleteWeideTag(\'' + id + '\')">Löschen</button>' +
-    '</div>'
-  );
-};
-
-// ══════════════════════════════════════════════════════════════════════════════
-//  BESTANDSBUCH
-// ══════════════════════════════════════════════════════════════════════════════
-
-window.alleKueheWeide=function(an){
-  // Nur sichtbare Tiere (respektiert den Gruppen-Filter)
-  document.querySelectorAll('#weidetag-overlay .kuh-select-chip').forEach(chip=>{
-    if(chip.style.display === 'none') return;
-    const cb = chip.querySelector('.kuh-cb');
-    if(cb) cb.checked = an;
-  });
-  updateWeideCount && updateWeideCount();
-};
-
-// Hilfsfunktion: Zahl mit Komma als Dezimaltrennzeichen formatieren (DE-Locale).
-// Punkt-Werte werden in Excel-DE sonst als Datum interpretiert (8.3 \u2192 8. M\u00e4rz).
-function _csvNum(v) {
-  if(v === '' || v == null) return '';
-  const n = parseFloat(v);
-  if(isNaN(n)) return '';
-  return String(n).replace('.', ',');
-}
+window.startSaison=function(){ return window.showSaisonWizard(); };  // v54.26: immer über Assistent (Archivierung)
 // CSV-sicher: Komma \u2192 wird Quotes brauchen damit der Wert nicht als Separator z\u00e4hlt
 function _csvCell(v) {
   const s = String(v == null ? '' : v);
