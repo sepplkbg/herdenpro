@@ -1,37 +1,45 @@
-const CACHE = 'herdenpro-v319';
-const SHELL = [
-  '/herdenpro/',
-  '/herdenpro/index.html',
-  '/herdenpro/manifest.json',
-  '/herdenpro/icon.svg',
-  '/herdenpro/styles.css',
-  '/herdenpro/app.js',
-  '/herdenpro/app-core.js',
-  '/herdenpro/app-icons.js',
-  '/herdenpro/app-auth-refresh.js',
-  '/herdenpro/app-features.js',
-  '/herdenpro/app-views.js',
-  '/herdenpro/app-milch-v2.js',
-  '/herdenpro/app-milch-xlsx.js',
-  '/herdenpro/app-milch-screenshot.js',
-  '/herdenpro/app-milchsperre.js',
-  '/herdenpro/app-milestone.js',
-  '/herdenpro/app-onboarding.js',
-  '/herdenpro/app-suche.js',
-  '/herdenpro/app-sennerei.js',
-  '/herdenpro/app-sennerei-produktion.js',
-  '/herdenpro/app-sennerei-verkauf.js',
-  '/herdenpro/app-saisonabschluss.js',
-  '/herdenpro/app-email-send.js',
-  '/herdenpro/app-env-switch.js',
-  '/herdenpro/app-install.js'
-];
+const CACHE = 'herdenpro-v320';
 
-// Bei jedem Install sofort übernehmen, alte Caches löschen
+// Relative Pfade → funktioniert unter /herdenpro/ UND /HerdenPro-Falkaunsalm/
+const SHELL_FILES = [
+  './',
+  'index.html',
+  'manifest.json',
+  'icon.svg',
+  'styles.css',
+  'app-core.js',
+  'app-icons.js',
+  'app-auth-refresh.js',
+  'app-features.js',
+  'app-views.js',
+  'app-milch-v2.js',
+  'app-milch-xlsx.js',
+  'app-milch-screenshot.js',
+  'app-milchsperre.js',
+  'app-milestone.js',
+  'app-onboarding.js',
+  'app-suche.js',
+  'app-sennerei.js',
+  'app-sennerei-produktion.js',
+  'app-sennerei-verkauf.js',
+  'app-saisonabschluss.js',
+  'app-email-send.js',
+  'app-env-switch.js',
+  'app-install.js'
+];
+const SCOPE = self.registration.scope;               // z.B. https://sepplkbg.github.io/herdenpro/
+const SHELL = SHELL_FILES.map(f => new URL(f, SCOPE).href);
+const INDEX_URL = new URL('index.html', SCOPE).href;
+
+// Install: jede Datei EINZELN cachen — eine fehlende Datei darf nicht alles abbrechen
 self.addEventListener('install', e => {
   self.skipWaiting();
   e.waitUntil(
-    caches.open(CACHE).then(c => c.addAll(SHELL).catch(() => null))
+    caches.open(CACHE).then(c =>
+      Promise.allSettled(SHELL.map(url =>
+        fetch(url, { cache: 'no-store' }).then(r => { if(r && r.ok) return c.put(url, r); })
+      ))
+    )
   );
 });
 
@@ -45,28 +53,20 @@ self.addEventListener('activate', e => {
 
 self.addEventListener('fetch', e => {
   const url = e.request.url;
+  if(e.request.method !== 'GET') return;
 
-  // Firebase Realtime DB (WebSocket) und Auth-API: NIE cachen — braucht Live-Verbindung
+  // Firebase Realtime DB + Auth: NIE cachen
   if(
     url.includes('firebaseio.com') ||
     url.includes('firebasedatabase.app') ||
     url.includes('identitytoolkit.googleapis.com') ||
     url.includes('securetoken.googleapis.com')
-  ) {
-    return;  // Browser default-handling
-  }
+  ) return;
 
-  // Wetter-API und QR-Code-Generator: nicht cachen (Live-Daten)
-  if(
-    url.includes('openmeteo') ||
-    url.includes('open-meteo') ||
-    url.includes('qrserver')
-  ) {
-    return;
-  }
+  // Live-Daten: nicht cachen
+  if(url.includes('openmeteo') || url.includes('open-meteo') || url.includes('qrserver')) return;
 
-  // Firebase SDK JS (gstatic.com/firebasejs) + externe Libraries (Leaflet, jsQR):
-  // stale-while-revalidate → offline verfügbar
+  // Externe Libraries + Iconify: stale-while-revalidate
   if(
     url.includes('gstatic.com/firebasejs') ||
     url.includes('unpkg.com/leaflet') ||
@@ -92,20 +92,22 @@ self.addEventListener('fetch', e => {
     return;
   }
 
-  // App-Kern-Dateien: network-first mit Cache-Fallback (auch für Offline-Nutzung!)
-  const isCritical = /\/(index\.html|app-[a-z0-9\-]+\.js|styles\.css|sw\.js|manifest\.json)$/i.test(url) || url.endsWith('/herdenpro/');
+  // App-Kern-Dateien: network-first, Cache als Offline-Fallback
+  const isCritical = /\/(index\.html|app[a-z0-9\-]*\.js|styles\.css|sw\.js|manifest\.json)(\?.*)?$/i.test(url) || url === SCOPE || url.startsWith(SCOPE + '?');
   if(isCritical) {
     e.respondWith(
       fetch(e.request, { cache: 'no-store' })
         .then(response => {
-          // Frische Version im Cache speichern für Offline-Fallback
           if(response && response.status === 200) {
             const clone = response.clone();
             caches.open(CACHE).then(c => c.put(e.request, clone));
           }
           return response;
         })
-        .catch(() => caches.match(e.request).then(r => r || caches.match('/herdenpro/index.html') || caches.match('/herdenpro/')))
+        .catch(() =>
+          caches.match(e.request, { ignoreSearch: true })
+            .then(r => r || caches.match(INDEX_URL) || caches.match(SCOPE))
+        )
     );
     return;
   }
@@ -125,7 +127,6 @@ self.addEventListener('fetch', e => {
   );
 });
 
-// Erlaube manuelles Skip-Waiting via postMessage (für Debug)
 self.addEventListener('message', e => {
   if(e.data === 'skipWaiting') self.skipWaiting();
 });
