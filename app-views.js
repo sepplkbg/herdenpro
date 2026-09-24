@@ -2204,6 +2204,15 @@ window.saveKuh=async function(){
   const _dup = Object.entries(window.kuehe || {}).find(([id, k]) =>
     id !== editId && k && String(k.nr).trim() === nr && k.almStatus !== 'vorzeitig' && k.almStatus !== 'abgetrieben');
   if(_dup && !confirm('Kuh-Nr ' + nr + ' ist schon vergeben (' + (_dup[1].name || 'ohne Name') + (_dup[1].bauer ? ', ' + _dup[1].bauer : '') + ').\n\nTrotzdem speichern?')) return;
+  // v54.29: Ohrmarke prüfen + einheitlich schreiben (AT 12 3456 789)
+  const _omEl = document.getElementById('f-ohrmarke');
+  if(_omEl && _omEl.value.trim()) {
+    const _om = _omEl.value.toUpperCase().replace(/[\s\-\.]/g, '');
+    if(/^AT\d{9}$/.test(_om)) _omEl.value = 'AT ' + _om.slice(2, 4) + ' ' + _om.slice(4, 8) + ' ' + _om.slice(8);
+    else if(!confirm('Die Ohrmarke „' + _omEl.value.trim() + '“ entspricht nicht dem österreichischen Format (AT + 9 Ziffern, z. B. AT 12 3456 789).\n\nTrotzdem speichern?')) return;
+    const _omDup = Object.entries(window.kuehe || {}).find(([id, k]) => id !== editId && k && String(k.ohrmarke || '').toUpperCase().replace(/[\s\-\.]/g, '') === _om);
+    if(_omDup && !confirm('Diese Ohrmarke ist schon bei Kuh #' + _omDup[1].nr + ' eingetragen.\n\nTrotzdem speichern?')) return;
+  }
   const bs=document.getElementById('f-bauer')?.value;
   const bauer=bs==='__neu__'?(document.getElementById('f-bauer-text')?.value.trim()||''):bs;
   // Multi-Gruppen aus den Checkboxen einsammeln
