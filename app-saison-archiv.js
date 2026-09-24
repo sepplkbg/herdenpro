@@ -3,7 +3,7 @@
 //  ------------------------------------------------------------------
 //  Beim Start einer neuen Saison werden alle Daten der alten Saison atomar nach
 //  saisonArchivDaten/<jahr>/ verschoben. Die App startet leer. Übernommen werden
-//  nur Kontakte + Alm-Infrastruktur (Weiden/Weidekarte, Maschinen, Lager).
+//  nur Kontakte, Maschinen und Lager (Weidekarte wird mit archiviert).
 //  Das Archiv bleibt ansehbar (Bestandsbuch drucken, Datei speichern) —
 //  Behandlungsnachweise unterliegen einer mehrjährigen Aufbewahrungspflicht.
 // ══════════════════════════════════════════════════════════════════════════════
@@ -14,8 +14,8 @@
   const ARCHIV_PFADE = ['kuehe','bauern','milch','behandlungen','besamungen','weideTage','gruppen','journal',
     'sennerei','milchSperren','schalmtest','zellzahl','kaese_produktion','zaehlung','zaehlVerlauf',
     'kraftfutter','kfLieferungen','aufgaben','kalenderTermine','traenkeLog','klauenpflege',
-    'stallplan','stallplanV','fotos','chat'];
-  // Was bleibt: kontakte, benutzer, saisonArchiv (Kennzahlen), weiden, almKarteWeiden, wartung, lager, spielScores
+    'stallplan','stallplanV','fotos','chat','weiden','almKarteWeiden'];
+  // Was bleibt: kontakte, benutzer, saisonArchiv (Kennzahlen), wartung (Maschinen), lager, spielScores
   window.HP_ARCHIV_PFADE = ARCHIV_PFADE;
 
   const ARCHIV_ROOT = 'saisonArchivDaten';

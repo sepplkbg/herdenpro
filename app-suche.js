@@ -27,7 +27,16 @@
   }
 
   // ── Overlay öffnen ──
+  // v54.28: EINE Suche — Lupe oben öffnet Mehr → Suche (alle Bereiche dort vereint)
   window.hpSuche = function() {
+    if(typeof window.navigate === 'function') {
+      window.navigate('suche');
+      setTimeout(() => { const i = document.getElementById('suche-input'); if(i) i.focus(); }, 300);
+      return;
+    }
+    return window._hpSucheOverlayAlt();
+  };
+  window._hpSucheOverlayAlt = function() {
     document.getElementById('sc-overlay')?.remove();
     _injectStyles();
     window._sucheQuery = '';
