@@ -967,6 +967,7 @@ window.importSaisonstartExcel = async function(input) {
     const rows = XLSX.utils.sheet_to_json(ws, {header:1, defval:'', range:4})
       .filter(r => !/beispiel|muster/i.test(String(r[0]||'') + ' ' + String(r[8]||'')));
     const _sollProBauer = {}, _istProBauer = {};   // Kontrolle gegen Spalte "Anzahl Kühe"
+    const _omUngueltig = [];                        // v54.29: Ohrmarken mit falschem Format
 
     let bauerCount = 0, kuhCount = 0, bsCount = 0, gruppeCount = 0, skipped = 0;
     let lastBauer = '';
@@ -1008,7 +1009,10 @@ window.importSaisonstartExcel = async function(input) {
       const vButterRaw   = row[3];
       const vKaeseRaw    = row[4];
       const adresse      = String(row[5]||'').trim();
-      const ohrmarke     = String(row[6]||'').trim();
+      let ohrmarke       = String(row[6]||'').trim();
+      { const _om = ohrmarke.toUpperCase().replace(/[\s\-\.]/g, '');   // v54.29: Format prüfen/vereinheitlichen
+        if(/^AT\d{9}$/.test(_om)) ohrmarke = 'AT ' + _om.slice(2, 4) + ' ' + _om.slice(4, 8) + ' ' + _om.slice(8);
+        else if(ohrmarke) _omUngueltig.push(String(row[7]||'?') + ': ' + ohrmarke); }
       const kuhNrRaw     = row[7];
       const kuhName      = String(row[8]||'').trim();
       const gruppenRaw   = String(row[9]||'').trim();
@@ -1119,7 +1123,8 @@ window.importSaisonstartExcel = async function(input) {
                   const abw = Object.entries(_sollProBauer).filter(([b, soll]) => soll > 0 && (_istProBauer[b] || 0) !== soll)
                     .map(([b, soll]) => '  • ' + b + ': ' + (_istProBauer[b] || 0) + ' statt ' + soll);
                   return abw.length ? '\n\n⚠ ANZAHL KÜHE STIMMT NICHT:\n' + abw.join('\n') + '\nBitte Excel-Datei prüfen!' : '';
-                })();
+                })() +
+                (_omUngueltig.length ? '\n\n⚠ OHRMARKE UNGEWÖHNLICH (Kuh-Nr: Ohrmarke):\n  • ' + _omUngueltig.slice(0, 10).join('\n  • ') + (_omUngueltig.length > 10 ? '\n  … und ' + (_omUngueltig.length - 10) + ' weitere' : '') : '');
     if(statusEl) statusEl.innerHTML = '✓ '+bauerCount+' Bauern · '+kuhCount+' Kühe · '+gruppeCount+' Gruppen · '+bsCount+' Besamungen';
     alert(msg);
 

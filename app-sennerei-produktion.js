@@ -82,12 +82,13 @@
   //   summiert und angezeigt, NIEMALS für andere Berechnungen (Carry-Forward, Molkerei, etc.)
   //   weiterverarbeitet.
   function _summen(eintraege) {
-    let sumKaese = 0, sumButter = 0, sumKesselmilch = 0;
+    let sumKaese = 0, sumButter = 0, sumKesselmilch = 0, ausbKm = 0, ausbKaese = 0;
     const spezMap = {};   // { 'Graukäse|kg': gesamtMenge }
     eintraege.forEach(e => {
       sumKaese += parseFloat(e.kaeseKg) || 0;
       sumButter += parseFloat(e.butterKg) || 0;
       sumKesselmilch += parseFloat(e.kesselmilchL) || 0;
+      if((parseFloat(e.kesselmilchL) || 0) > 0 && (parseFloat(e.kaeseKg) || 0) > 0) { ausbKm += parseFloat(e.kesselmilchL); ausbKaese += parseFloat(e.kaeseKg); }
       (e.spezialitaeten || []).forEach(s => {
         if(!s || !s.name) return;
         const key = s.name + '|' + (s.einheit || 'kg');
@@ -98,7 +99,7 @@
       const [name, einheit] = k.split('|');
       return { name, einheit, menge: m };
     }).sort((a, b) => a.name.localeCompare(b.name));
-    return { kaese: sumKaese, butter: sumButter, kesselmilch: sumKesselmilch, spezialitaeten: spezArr, tage: eintraege.length };
+    return { ausbKm, ausbKaese, kaese: sumKaese, butter: sumButter, kesselmilch: sumKesselmilch, spezialitaeten: spezArr, tage: eintraege.length };
   }
 
   // ── HAUPT-VIEW: Übersichts-Seite ──
@@ -145,6 +146,7 @@
       <div style="background:linear-gradient(90deg,rgba(122,203,255,.12),rgba(122,203,255,.04));border:1px solid rgba(122,203,255,.35);border-radius:10px;padding:.7rem .9rem;margin-bottom:.6rem;text-align:center">
         <div style="font-size:.72rem;color:#7acbff;letter-spacing:.08em;font-weight:700">🥛 KESSELMILCH GESAMT</div>
         <div style="font-size:1.9rem;color:#7acbff;font-weight:900;line-height:1.1">${_fmtZahl(summ.kesselmilch)} <span style="font-size:.85rem;color:rgba(122,203,255,.6);font-weight:400">L</span></div>
+        ${(summ.ausbKm > 0 && summ.ausbKaese > 0) ? `<div style="font-size:.8rem;color:#7acbff;margin-top:.25rem">🧀 Käse-Ausbeute: <b>${_fmtZahl(Math.round(summ.ausbKm / summ.ausbKaese * 10) / 10)} L Milch pro kg Käse</b> · ${_fmtZahl(Math.round(summ.ausbKaese / summ.ausbKm * 1000) / 10)} kg aus 100 L</div>` : ''}
       </div>
 
       <!-- Summen Käse + Butter -->
@@ -179,7 +181,7 @@
                 e.butterCharge ? '🧈 ['+_esc(e.butterCharge)+']' : ''
               ].filter(Boolean).join(' · ');
               const kmText = (e.kesselmilchL != null && e.kesselmilchL > 0)
-                ? `<div style="font-size:.75rem;color:#7acbff;font-weight:600;margin-bottom:.1rem">🥛 Kesselmilch: ${_fmtZahl(e.kesselmilchL)} L</div>`
+                ? `<div style="font-size:.75rem;color:#7acbff;font-weight:600;margin-bottom:.1rem">🥛 Kesselmilch: ${_fmtZahl(e.kesselmilchL)} L${(e.kaeseKg > 0) ? ' · Ausbeute ' + _fmtZahl(Math.round(e.kesselmilchL / e.kaeseKg * 10) / 10) + ' L/kg' : ''}</div>`
                 : '';
               return `
               <div class="list-card" style="cursor:pointer" onclick="_prodBearbeiten('${e.id}')">
