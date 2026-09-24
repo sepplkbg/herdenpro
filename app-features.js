@@ -1542,7 +1542,7 @@ function renderSuche() {
   return `
     <div class="page-header"><h2>🔍 Suche</h2></div>
     <div class="search-bar" style="margin-bottom:.6rem">
-      <input id="suche-input" class="search-inp" placeholder="Kühe, Bauern, Behandlungen, Journal…"
+      <input id="suche-input" class="search-inp" placeholder="Kuh, Bauer, Behandlung, Charge, Weide…"
         oninput="globalSearch(this.value)" autofocus
         style="font-size:1rem;padding:.65rem .9rem" />
     </div>
@@ -1550,7 +1550,7 @@ function renderSuche() {
       <div style="text-align:center;color:var(--text3);font-size:.85rem;margin-top:2rem;padding:1rem">
         <div style="font-size:2rem;margin-bottom:.5rem">🔍</div>
         Suchbegriff eingeben…<br>
-        <span style="font-size:.75rem">Kühe · Bauern · Behandlungen · Besamungen · Milch · Journal · Kontakte</span>
+        <span style="font-size:.75rem">Kühe · Bauern · Behandlungen · Besamungen · Gruppen · Kontakte · Milch · Weiden · Sennerei · Verkäufe · Kraftfutter · Journal</span>
       </div>
     </div>
   `;
@@ -1680,8 +1680,51 @@ window.globalSearch = function(q) {
     });
   });
 
+  // ── v54.28: weitere Bereiche (vorher nur im separaten Such-Fenster) ──
+  const _d = ts => ts ? new Date(ts).toLocaleDateString('de-AT', {day:'2-digit', month:'2-digit', year:'2-digit'}) : '';
+  // Weiden
+  Object.entries((typeof weiden !== 'undefined' && weiden) || {}).forEach(([id, w]) => {
+    const score = matchScore(q, [w.name, w.notiz]);
+    if(score > 0) results.push({ type:'weide', score, id, title: w.name || 'Weide', sub: w.notiz || 'Weide', icon:'🌿', action:`navigate('weide')`, tag:null });
+  });
+  // Sennerei-Produktion (Chargen, Spezialitäten, Datum, Notiz)
+  Object.entries(window.sennereiProduktion || {}).forEach(([id, pr]) => {
+    const felder = [pr.kaeseCharge, pr.butterCharge, pr.notiz, pr.datum].concat((pr.spezialitaeten || []).flatMap(x => [x.name, x.charge]));
+    const score = matchScore(q, felder);
+    if(score > 0) {
+      const teile = [];
+      if(pr.kaeseKg) teile.push('Käse ' + pr.kaeseKg + ' kg');
+      if(pr.butterKg) teile.push('Butter ' + pr.butterKg + ' kg');
+      if(pr.kaeseCharge) teile.push('K: ' + pr.kaeseCharge);
+      if(pr.butterCharge) teile.push('B: ' + pr.butterCharge);
+      results.push({ type:'produktion', score, id, title: 'Produktion ' + _d(pr.datumTs || Date.parse((pr.datum||'') + 'T12:00')), sub: teile.join(' · '), icon:'🧀', action:`navigate('sennerei_produktion')`, tag:null });
+    }
+  });
+  // Sennerei-Verkäufe (Produkte)
+  Object.entries(window.sennereiVerkaeufe || {}).forEach(([id, v]) => {
+    const score = matchScore(q, (v.positionen || []).map(x => x.name));
+    if(score > 0) results.push({ type:'verkauf', score, id,
+      title: (v.summe != null ? Number(v.summe).toFixed(2).replace('.', ',') + ' €' : 'Verkauf'),
+      sub: (v.positionen || []).map(x => x.name + (x.mengeKg ? ' ' + x.mengeKg + ' kg' : '')).join(', ') + ' · ' + _d(v.datumTs),
+      icon:'💰', action:`navigate('sennerei_verkauf')`, tag:null });
+  });
+  // Kraftfutter
+  Object.entries((typeof kraftfutter !== 'undefined' && kraftfutter) || {}).forEach(([id, f]) => {
+    const kuh = kuehe[f.kuhId] || {};
+    const score = matchScore(q, [f.futter, f.notiz]);
+    if(score > 0) results.push({ type:'kraftfutter', score, id,
+      title: (f.futter || 'Kraftfutter') + ' · ' + (f.menge || '') + ' ' + (f.einheit || 'kg'),
+      sub: '#' + (kuh.nr || '?') + ' ' + (kuh.name || '') + ' · ' + _d(f.datum),
+      icon:'🌾', action: f.kuhId ? `showKuhDetail('${f.kuhId}')` : `navigate('kraftfutter')`, tag:null });
+  });
+  // Gruppen
+  Object.entries(window.gruppen || {}).forEach(([id, g]) => {
+    const score = matchScore(q, [g.name]);
+    if(score > 0) results.push({ type:'gruppe', score, id, title: g.name || 'Gruppe', sub: Object.keys(g.mitglieder || {}).length + ' Kühe', icon:'📦', action:`navigate('gruppen')`, tag:null });
+  });
+
   // Sortieren: Bauer zuerst wenn gesucht, dann Kühe des gefundenen Bauers, dann Rest
-  const typePrio = {bauer:1,kuh:2,behandlung:3,besamung:4,kontakt:5,milch:6,journal:7};
+  const typePrio = {bauer:1,kuh:2,behandlung:3,besamung:4,kontakt:5,milch:6,journal:7,weide:8,produktion:9,verkauf:10,kraftfutter:11,gruppe:12};
   results.sort((a,b) => {
     // Bauer immer ganz oben
     if(a.type==='bauer' && b.type!=='bauer') return -1;
@@ -1697,7 +1740,7 @@ window.globalSearch = function(q) {
 
   if(results.length === 0) {
     el.innerHTML = `<div style="text-align:center;color:var(--text3);font-size:.85rem;margin-top:2rem">
-      Keine Ergebnisse für „${q}"
+      Keine Ergebnisse für „${window.hpEsc ? window.hpEsc(q) : q}"
     </div>`;
     return;
   }
@@ -1719,8 +1762,8 @@ window.globalSearch = function(q) {
     groups[r.type].push(r);
   });
 
-  const typeLabels = {bauer:'Bauern',bauer_kuehe:'Kühe',kuh:'Kühe',behandlung:'Behandlungen',besamung:'Besamungen',milch:'Milch',kontakt:'Kontakte',journal:'Journal'};
-  const typeOrder = ['bauer','bauer_kuehe','kuh','behandlung','besamung','kontakt','milch','journal'];
+  const typeLabels = {bauer:'Bauern',bauer_kuehe:'Kühe',kuh:'Kühe',behandlung:'Behandlungen',besamung:'Besamungen',milch:'Milch',kontakt:'Kontakte',journal:'Journal',gruppe:'Gruppen',weide:'Weiden',produktion:'Sennerei-Produktion',verkauf:'Verkäufe',kraftfutter:'Kraftfutter'};
+  const typeOrder = ['bauer','bauer_kuehe','kuh','behandlung','besamung','gruppe','kontakt','milch','weide','produktion','verkauf','kraftfutter','journal'];
   const orderedGroups = typeOrder.map(t => [t, groups[t]]).filter(([,v])=>v&&v.length);
 
   el.innerHTML = orderedGroups.map(([type, items]) => `
@@ -2888,10 +2931,10 @@ window.renderWizard = function() {
           <div class="info-row"><span>Behandlungen</span><b>${u.behandlungen||0}</b></div>
           <div class="info-row"><span>Besamungen</span><b>${u.besamungen||0}</b></div>
           <div class="info-row"><span>Sennerei-Verkäufe</span><b>${u.verkaeufe||0}</b></div>
-          <div class="info-row"><span>+ Sennerei, Journal, Kraftfutter, Gruppen, Fotos, Chat …</span><b></b></div>
+          <div class="info-row"><span>+ Sennerei, Weidekarte, Journal, Kraftfutter, Gruppen, Fotos, Chat …</span><b></b></div>
         </div>
         <div style="font-size:.76rem;color:var(--text2);margin-bottom:.6rem">
-          <b style="color:var(--green)">Bleibt erhalten:</b> Kontakte, Weiden/Weidekarte, Maschinen, Lager, Benutzer.<br>
+          <b style="color:var(--green)">Bleibt erhalten:</b> Kontakte, Maschinen, Lager, Benutzer.<br>
           Das Archiv bleibt unter <b>Backup → Archivierte Saisons</b> ansehbar (Bestandsbuch drucken, Datei speichern).
         </div>
         ${offen ? `
@@ -3242,9 +3285,8 @@ function renderEinstellungen() {
 
     <!-- Tutorial + Suche -->
     <div class="card-section" style="margin-bottom:.8rem">
-      <div class="section-label" style="margin-bottom:.6rem">HILFE & SUCHE</div>
-      <button class="btn-secondary" style="width:100%;margin-bottom:.4rem" onclick="hpZeigeOnboarding()">📚 Tutorial anzeigen</button>
-      <button class="btn-secondary" style="width:100%" onclick="hpSuche()">🔍 Globale Suche öffnen</button>
+      <div class="section-label" style="margin-bottom:.6rem">HILFE</div>
+      <button class="btn-secondary" style="width:100%" onclick="hpZeigeOnboarding()">📚 Tutorial anzeigen</button>
     </div>
 
     <!-- Env-Switch (Prod ↔ Test) -->

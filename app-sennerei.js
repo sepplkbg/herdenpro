@@ -652,10 +652,11 @@
           <div style="padding:.4rem .5rem;border-bottom:${idx < abholungen.length-1 ? '1px solid var(--border)' : 'none'};font-size:.83rem">
             <div style="display:flex;justify-content:space-between;color:var(--text3);font-size:.72rem;margin-bottom:.2rem">
               <span>${new Date(a.ts).toLocaleString('de-AT',{weekday:'short',day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})}</span>
-              <span>${a.signaturPng ? '✍ signiert' : ''}</span>
+              <span>${a.signaturPng ? '✍ signiert' : '<span style="color:var(--orange)">ohne Unterschrift</span>'}</span>
             </div>
             ${(a.kaese && a.kaese.abgeholt) ? `<div>🧀 ${a.kaese.abgeholt} kg${a.kaese.naturalrAbgeholt?' (+ '+a.kaese.naturalrAbgeholt+' Natur)':''}${(a.kaese.chargen||[]).length?' · '+a.kaese.chargen.join(', '):''}</div>` : ''}
             ${(a.butter && a.butter.abgeholt) ? `<div>🧈 ${a.butter.abgeholt} kg${a.butter.naturalrAbgeholt?' (+ '+a.butter.naturalrAbgeholt+' Natur)':''}${(a.butter.chargen||[]).length?' · '+a.butter.chargen.join(', '):''}</div>` : ''}
+            ${a.signaturPng ? `<img src="${a.signaturPng}" alt="Unterschrift" style="display:block;max-height:44px;max-width:180px;margin-top:.3rem;background:#fff;border-radius:4px;padding:2px">` : ''}
           </div>`).join('')}
       </div>` : '';
 
@@ -1239,7 +1240,16 @@
       const chargen = (k.chargen || []).join(', ');
       const kaeseGesamt = (k.abgeholt||0) + (k.naturalrAbgeholt||0);
       const butterGesamt = (bt.abgeholt||0) + (bt.naturalrAbgeholt||0);
-      const sigImg = b.unterschriftPng ? '<img src="' + b.unterschriftPng + '" style="max-height:35px;max-width:110px;object-fit:contain">' : '';
+      // v54.28: ALLE Unterschriften (jede Abholung einzeln quittiert), sonst letzte (Altdaten)
+      const _abh = (b.abholungen || []).filter(a => a && a.signaturPng);
+      const _kg = (x) => x ? String(Math.round(x * 10) / 10).replace('.', ',') : '';
+      const sigImg = _abh.length
+        ? _abh.map(a => {
+            const d = new Date(a.ts).toLocaleString('de-AT', {weekday:'short', day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit'});
+            const m = [a.kaese && a.kaese.abgeholt ? 'K ' + _kg(a.kaese.abgeholt) : '', a.butter && a.butter.abgeholt ? 'B ' + _kg(a.butter.abgeholt) : ''].filter(Boolean).join(' · ');
+            return '<div class="sig-e"><img src="' + a.signaturPng + '" style="max-height:30px;max-width:110px;object-fit:contain"><span>' + escapeHtml(d) + (m ? ' · ' + m + ' kg' : '') + '</span></div>';
+          }).join('')
+        : (b.unterschriftPng ? '<img src="' + b.unterschriftPng + '" style="max-height:35px;max-width:110px;object-fit:contain">' : '');
       rows += `
         <tr class="bauer-erste">
           <td rowspan="2" class="bauer">${escapeHtml(b.name)}</td>
@@ -1303,6 +1313,9 @@
   td.gesamt { background: #e6f4d8; font-weight: 700; }
   td.sig { text-align: center; padding: 2pt; background: #fafafa; }
   td.sig img { display: block; margin: 0 auto; }
+  td.sig .sig-e { border-bottom: .5pt dotted #bbb; padding: 1pt 0; }
+  td.sig .sig-e:last-child { border-bottom: none; }
+  td.sig .sig-e span { display: block; font-size: 6pt; color: #555; }
   .bauer-erste td { border-bottom: none; }
   .bauer-zweite td { border-top: none; padding-top: 0; }
   .footer { margin-top: 8pt; padding-top: 4pt; border-top: 1pt solid #999; display: flex; justify-content: space-between; font-size: 8pt; color: #666; }

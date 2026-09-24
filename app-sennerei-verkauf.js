@@ -327,6 +327,10 @@
         #sv-kg-popup .kg-cancel { flex:1; background:rgba(255,255,255,.08); color:var(--text,#eee); }
         #sv-kg-popup .kg-save { flex:2; background:var(--gold,#d4a84b); color:#000; }
         #sv-kg-popup .kg-save:disabled { opacity:.4; cursor:not-allowed; }
+        /* v54.28: Knöpfe passen immer in die Breite (Speichern-Knopf war rechts abgeschnitten) */
+        #sv-kg-popup .kg-foot button { min-width:0; box-sizing:border-box; padding-left:.5rem; padding-right:.5rem; font-size:min(1.05rem, 4.8vw); }
+        #sv-kg-popup .kg-foot .kg-cancel { flex:0 0 40%; }
+        #sv-kg-popup .kg-foot .kg-save { flex:1 1 0; }
       `;
       document.head.appendChild(st);
     }
