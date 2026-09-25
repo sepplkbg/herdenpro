@@ -960,6 +960,9 @@ function render() {
     milchqualitaet: function(){return renderMilchqualitaet();},
     darstellung:  function(){return renderDarstellung();},
     spiel:        function(){return renderSpiel();},
+    datencheck:   function(){return (window.renderDatenCheck||renderDashboard)();},
+    papierkorb:   function(){return (window.renderPapierkorb||renderDashboard)();},
+    wiederherstellung: function(){return (window.renderWiederherstellung||renderDashboard)();},
   };
   main.innerHTML = (map[currentView]||renderDashboard)();
   attachListeners();

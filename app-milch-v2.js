@@ -2112,7 +2112,8 @@ window.resetMilchAutoSaveState = function() {
 //  Direkter Firebase-Listener für Bestätigung (unabhängig von render-Hook)
 // ══════════════════════════════════════════════════════════════
 (function attachOwnListener() {
-  if(typeof firebase === 'undefined' || !firebase.database || !firebase.auth) {
+  // v54.31: auch warten bis initializeApp gelaufen ist (sonst "No Firebase App" → Listener fehlte)
+  if(typeof firebase === 'undefined' || !firebase.database || !firebase.auth || !firebase.apps || !firebase.apps.length) {
     setTimeout(attachOwnListener, 500);
     return;
   }
