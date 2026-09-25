@@ -39,29 +39,29 @@
     'check':        'noto:check-mark-button',
     'check-circle': 'noto:check-mark-button',
     'search':       'noto:magnifying-glass-tilted-left',
-    'filter':       'fluent-color:filter-24',
+    'filter':       'noto:control-knobs',
     'export':       'noto:down-arrow',
     'import':       'noto:up-arrow',
-    'copy':         'fluent-color:copy-24',
+    'copy':         'noto:clipboard',
     'print':        'noto:printer',
-    'share':        'fluent-color:share-24',
+    'share':        'noto:outbox-tray',
     'refresh':      'fluent-color:arrow-clockwise-dashes-24',
     'sync':         'fluent-color:arrow-sync-24',
     'settings':     'noto:gear',
-    'menu':         'fluent-color:list-24',
-    'back':         'fluent-color:arrow-left-24',
-    'forward':      'fluent-color:arrow-right-24',
+    'menu':         'noto:spiral-notepad',
+    'back':         'noto:left-arrow',
+    'forward':      'noto:right-arrow',
     'up':           'noto:up-arrow',
     'down':         'noto:down-arrow',
     'send':         'noto:incoming-envelope',
     'attach':       'noto:paperclip',
     'link':         'noto:link',
-    'external':     'fluent-color:open-24',
+    'external':     'noto:globe-with-meridians',
 
     // Status (mit Farb-Codierung: rot/gelb/grün)
     'warning':      'noto:warning',
     'error':        'fluent-color:error-circle-24',
-    'info':         'fluent-color:info-24',
+    'info':         'noto:information',
     'success':      'noto:check-mark-button',
     'question':     'noto:red-question-mark',
     'lock':         'noto:locked',
@@ -77,7 +77,7 @@
 
     // Zeit & Kalender
     'calendar':     'noto:calendar',
-    'calendar-add': 'fluent-color:calendar-add-24',
+    'calendar-add': 'noto:calendar',
     'clock':        'noto:mantelpiece-clock',
     'time':         'noto:mantelpiece-clock',
     'sunrise':      'noto:sunrise',
@@ -113,7 +113,7 @@
     // Ort & Weide
     'map':          'noto:world-map',
     'pin':          'noto:round-pushpin',
-    'gps':          'fluent-color:location-24',
+    'gps':          'noto:round-pushpin',
     'meadow':       'noto:evergreen-tree',
     'herb':         'noto:herb',
     'grain':        'noto:sheaf-of-rice',
@@ -164,7 +164,7 @@
     // Kraftfutter & Lager
     'feed':         'noto:ear-of-corn',
     'package':      'noto:package',
-    'warehouse':    'fluent-color:building-factory-24',
+    'warehouse':    'noto:factory',
     'truck':        'noto:articulated-lorry',
     'label':        'noto:label',
 
@@ -177,8 +177,8 @@
     'pdf':          'vscode-icons:file-type-pdf2',
     'image':        'noto:framed-picture',
     'camera':       'noto:camera',
-    'qr':           'fluent-color:scan-object-24',
-    'barcode':      'fluent-color:barcode-scanner-24',
+    'qr':           'noto:camera-with-flash',
+    'barcode':      'noto:label',
     'clipboard':    'noto:clipboard',
     'memo':         'noto:memo',
 
@@ -197,21 +197,21 @@
 
     // Sonstiges
     'trash':        'noto:wastebasket',
-    'list':         'fluent-color:task-list-square-ltr-24',
-    'grid':         'fluent-color:grid-24',
+    'list':         'noto:spiral-notepad',
+    'grid':         'noto:input-symbols',
     'eye':          'noto:eye',
-    'eye-off':      'fluent-color:eye-off-24',
+    'eye-off':      'noto:see-no-evil-monkey',
     'sparkle':      'noto:sparkles',
     'trophy':       'noto:trophy',
     'gift':         'noto:wrapped-gift',
     'globe':        'noto:globe-showing-europe-africa',
     'wifi':         'noto:antenna-bars',
-    'wifi-off':     'fluent-color:wifi-off-24',
+    'wifi-off':     'fluent-color:wifi-warning-24',
     'battery':      'noto:battery',
-    'log-in':       'fluent-color:arrow-enter-24',
-    'log-out':      'fluent-color:arrow-exit-24',
+    'log-in':       'noto:key',
+    'log-out':      'noto:door',
     'archive':      'noto:card-file-box',
-    'restore':      'fluent-color:folder-arrow-up-24'
+    'restore':      'noto:inbox-tray'
   };
 
   // ── Emoji → Icon-Name Mapping ───────────────────────────────────────────

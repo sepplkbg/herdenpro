@@ -12,6 +12,17 @@
   // ═══ A13: Was ist neu ═══════════════════════════════════════════════════
   // Neueste Version oben. Nur Punkte, die Nutzer merken.
   const CHANGELOG = [
+    { v: 'v54.31', punkte: [
+      'Selbsttest: AA-Menü oben rechts → 🧪 Selbsttest (Bericht kann an den Admin geschickt werden)',
+      'Alle Programmteile und Symbole kommen jetzt direkt von der App – schnellerer Start, besser offline'
+    ]},
+    { v: 'v54.30', punkte: [
+      'Papierkorb: Gelöschtes 30 Tage zurückholbar (Backup → Daten-Sicherheit)',
+      'Daten-Check findet Unstimmigkeiten (fehlender Bauer, doppelte Nummer, Ohrmarke …)',
+      'Behandlung: häufige Behandlungen mit einem Tipp übernehmen',
+      'Saisonstart-Vorlage mit Auswahllisten, auf Wunsch mit Bauern & Kühen von heuer',
+      'Admin: wöchentliche Wiederherstellungspunkte'
+    ]},
     { v: 'v54.29', punkte: [
       'Sonnenmodus: helle Ansicht für draußen (AA-Menü oben rechts)',
       'Neben dem Verbindungspunkt siehst du, wie viele Milchwerte noch auf Internet warten',
@@ -33,8 +44,12 @@
     const gesehen = localStorage.getItem('hp_whatsnew_seen');
     if(!force && gesehen === aktuell) return;
     if(!force && !gesehen) { localStorage.setItem('hp_whatsnew_seen', aktuell); return; } // Erstinstallation: nichts zeigen
-    const eintrag = CHANGELOG.find(c => c.v === aktuell) || CHANGELOG[0];
-    if(!eintrag) return;
+    // alle Einträge seit der zuletzt gesehenen Version (neueste zuerst)
+    let neu = [];
+    for(const c of CHANGELOG) { if(!force && c.v === gesehen) break; neu.push(c); if(force) break; }
+    if(!neu.length) { localStorage.setItem('hp_whatsnew_seen', aktuell); return; }   // nur Fehlerbehebungen
+    const eintrag = { v: neu.length > 1 ? neu[neu.length - 1].v + ' – ' + neu[0].v : neu[0].v, punkte: [].concat.apply([], neu.map(c => c.punkte)) };
+    if(!eintrag.punkte.length) return;
     localStorage.setItem('hp_whatsnew_seen', aktuell);
     document.getElementById('hp-whatsnew')?.remove();
     const ov = document.createElement('div');

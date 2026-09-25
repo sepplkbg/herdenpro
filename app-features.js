@@ -665,7 +665,7 @@ window.importRohdatenExcel = async function(input) {
   // Need SheetJS
   if(typeof XLSX === 'undefined') {
     const s=document.createElement('script');
-    s.src='https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
+    s.src='lib/xlsx.full.min.js';
     s.onload = () => importRohdatenExcel(input);
     document.head.appendChild(s);
     return;
@@ -942,7 +942,7 @@ window.importSaisonstartExcel = async function(input) {
 
   if(typeof XLSX === 'undefined') {
     const s = document.createElement('script');
-    s.src = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
+    s.src = 'lib/xlsx.full.min.js';
     s.onload = () => importSaisonstartExcel(input);
     document.head.appendChild(s);
     return;
@@ -1948,218 +1948,7 @@ window._milchEditFill = function() {
 
 // saveMilch – bulletproof: try/catch, anti-race mit Auto-Save, klare Erfolgs/Fehler-Anzeige
 window._milchSaveInProgress = false;
-window.saveMilch = async function() {
-  // ── 0. Re-Entry-Guard: verhindert dass Doppelklick Duplikate erzeugt ──
-  if(window._milchSaveInProgress) {
-    console.warn('[saveMilch] Bereits in Bearbeitung, Doppelklick ignoriert');
-    return;
-  }
-  window._milchSaveInProgress = true;
-  console.log('[saveMilch] START');
-
-  // ── 1. Auto-Save sofort anhalten (Race-Schutz) ──
-  if(window._milchAutoSaveTimer) {
-    clearTimeout(window._milchAutoSaveTimer);
-    window._milchAutoSaveTimer = null;
-  }
-  // Auto-Save-Flags freigeben (Auto-Save schreibt nicht mehr in Firebase, kein Warten nötig)
-  window._milchAutoSaveInFlight = false;
-
-  // Save-Button visuell sperren während des Speicherns
-  const saveBtn = document.querySelector('#milch-form-overlay .btn-primary[onclick*="saveMilch"]');
-  const origLabel = saveBtn ? saveBtn.textContent : null;
-  if(saveBtn) { saveBtn.disabled = true; saveBtn.textContent = '⏳ Speichere…'; saveBtn.style.opacity = '.7'; }
-
-  const restoreBtn = () => { if(saveBtn) { saveBtn.disabled = false; saveBtn.textContent = origLabel || '💾 Speichern'; saveBtn.style.opacity = ''; } };
-
-  try {
-    // ── 2. Form-Werte einsammeln ──
-    const datum = document.getElementById('m-datum')?.value;
-    if(!datum) { alert('Datum fehlt'); restoreBtn(); return; }
-    const prokuhBlock = document.getElementById('m-prokuh-block');
-    const modus = prokuhBlock && prokuhBlock.style.display !== 'none' ? 'prokuh' : 'gesamt';
-    const zeit = document.getElementById('m-zeit')?.value || 'morgen';
-    const molkerei = document.getElementById('m-molkerei')?.checked || false;
-    const notiz = document.getElementById('m-notiz')?.value.trim() || '';
-
-    let gesamt = 0, prokuh = {};
-    if(modus === 'prokuh') {
-      document.querySelectorAll('.kuh-liter').forEach(inp => {
-        const l = parseFloat((inp.value||'').replace(',','.')) || 0;
-        if(l > 0) { prokuh[inp.dataset.id] = l; gesamt += l; }
-      });
-      if(Object.keys(prokuh).length === 0) {
-        alert('Bitte mindestens eine Kuh eintragen');
-        restoreBtn(); return;
-      }
-    } else {
-      gesamt = parseFloat((document.getElementById('m-gesamt')?.value||'').replace(',','.')) || 0;
-      if(!gesamt) { alert('Bitte Menge eingeben'); restoreBtn(); return; }
-    }
-    gesamt = Math.round(gesamt * 10) / 10;
-    const datumTs = new Date(datum + 'T12:00').getTime();
-
-    console.log('[saveMilch] Werte:', {datum, zeit, modus, gesamt, kuhCount: Object.keys(prokuh).length});
-
-    // ── 3. Persistieren ──
-    // WICHTIG: Original-Gruppen-Key wird SEPARAT getrackt, damit der Auto-Save
-    // ihn nicht überschreiben kann. Bei Gruppen-Edits werden alle Original-Einträge
-    // sicher gelöscht und durch genau EINEN neuen Eintrag ersetzt.
-    const editMilchId = document.getElementById('m-edit-id')?.value;
-    const originalGroupKey = window._milchOriginalGroupKey;
-    let savedKey = null;
-
-    // ── FIRE-AND-FORGET: Firebase-Writes werden NICHT geawaited ──
-    // Grund: offline hängt Firebase's Promise unendlich. Der Firebase-Client
-    // hat automatische Offline-Persistierung – Daten sind sofort lokal gesichert
-    // und werden synchronisiert wenn wieder online. Die Promise resolvt erst nach
-    // Server-Bestätigung, was uns nicht interessiert.
-    // .key auf push() ist SYNCHRON verfügbar (ThenableReference).
-    if(originalGroupKey || (editMilchId && editMilchId.startsWith('group:'))) {
-      // Gruppen-Edit
-      const newRef = push(ref(db, 'milch'), {
-        datum: datumTs, art: modus, zeit, gesamt,
-        prokuh: modus==='prokuh' ? prokuh : null,
-        molkerei, notiz,
-        createdAt: Date.now(), quelle: 'merged_edit'
-      });
-      savedKey = newRef.key;
-      // Wenn erfolgreich (online): Server bestätigt später
-      Promise.resolve(newRef).then(()=>console.log('[saveMilch] Group-Edit Server-Bestätigt', savedKey))
-        .catch(e => console.warn('[saveMilch] Group-Edit sync später:', e));
-
-      // Alte Einträge löschen – auch fire-and-forget
-      const key = originalGroupKey || editMilchId.slice(6);
-      const g = window._milchGruppen && window._milchGruppen[key];
-      if(g && Array.isArray(g.ids)) {
-        for(const oldId of g.ids) {
-          if(oldId === savedKey) continue;
-          remove(ref(db, 'milch/' + oldId))
-            .then(()=>console.log('[saveMilch] Alt-Eintrag gelöscht:', oldId))
-            .catch(x => console.warn('[saveMilch] Lösch-Fehler '+oldId+':', x));
-        }
-      }
-      window._milchOriginalGroupKey = null;
-    } else if(editMilchId) {
-      // Single-Edit
-      const payload = {
-        datum: datumTs, art: modus, zeit, gesamt,
-        prokuh: modus==='prokuh' ? prokuh : null,
-        molkerei, notiz, updatedAt: Date.now()
-      };
-      update(ref(db, 'milch/' + editMilchId), payload)
-        .then(()=>console.log('[saveMilch] Update Server-Bestätigt', editMilchId))
-        .catch(e => console.warn('[saveMilch] Update sync später:', e));
-      savedKey = editMilchId;
-    } else {
-      // ── MULTI-MELKER-SICHER: Eigene Session-Einträge updaten ──
-      const sessionId = getMilchSessionId();
-      const startTag = new Date(datumTs); startTag.setHours(0,0,0,0);
-      const endeTag  = startTag.getTime() + 86400000;
-      const existingEntry = Object.entries(milchEintraege||{}).find(([id, e]) =>
-        e && e.datum >= startTag.getTime() && e.datum < endeTag &&
-        (e.zeit||'morgen') === zeit &&
-        e._session === sessionId
-      );
-      const cu = window._currentUser || {};
-      const userName = cu.name || cu.displayName || (cu.email ? cu.email.split('@')[0] : '') || 'Unbekannt';
-      if(existingEntry) {
-        const payload = {
-          datum: datumTs, art: modus, zeit, gesamt,
-          prokuh: modus==='prokuh' ? prokuh : null,
-          molkerei, notiz, updatedAt: Date.now(),
-          _session: sessionId, _userName: userName
-        };
-        update(ref(db, 'milch/' + existingEntry[0]), payload)
-          .then(()=>console.log('[saveMilch] Session-Update Server-Bestätigt', existingEntry[0]))
-          .catch(e => console.warn('[saveMilch] Session-Update sync später:', e));
-        savedKey = existingEntry[0];
-      } else {
-        const newRef = push(ref(db, 'milch'), {
-          datum: datumTs, art: modus, zeit, gesamt,
-          prokuh: modus==='prokuh' ? prokuh : null,
-          molkerei, notiz, createdAt: Date.now(),
-          _session: sessionId, _userName: userName
-        });
-        savedKey = newRef.key;
-        Promise.resolve(newRef).then(()=>console.log('[saveMilch] Push Server-Bestätigt', savedKey))
-          .catch(e => console.warn('[saveMilch] Push sync später:', e));
-      }
-    }
-
-    // Kurze Pause, damit Firebase die lokale Persistierung fertig hat
-    await new Promise(r => setTimeout(r, 150));
-
-    // ── 4. SUCCESS – Form-State + UI bereinigen ──
-    const eid = document.getElementById('m-edit-id'); if(eid) eid.value='';
-    const titleEl = document.getElementById('m-form-title'); if(titleEl) titleEl.textContent='🥛 Milch erfassen';
-    if(window.resetMilchAutoSaveState) window.resetMilchAutoSaveState();
-
-    // Warnsystem
-    if(modus === 'prokuh') {
-      const prozent = parseInt(localStorage.getItem('milchWarnProzent'))||50;
-      const warnungen = [];
-      Object.entries(prokuh).forEach(([kuhId, liter]) => {
-        const k = kuehe[kuhId];
-        if(k?.laktation === 'trocken' || k?.laktation === 'trockengestellt') return;
-        const schnitt = window.getMilchDurchschnitt(kuhId);
-        if(schnitt === null) return;
-        const unter = schnitt * (1 - prozent/100);
-        const ober  = schnitt * (1 + prozent/100);
-        if(liter < unter) warnungen.push({kuhId, kuhNr:k?.nr, kuhName:k?.name, liter, schnitt, typ:'wenig'});
-        if(liter > ober)  warnungen.push({kuhId, kuhNr:k?.nr, kuhName:k?.name, liter, schnitt, typ:'viel'});
-      });
-      if(warnungen.length > 0) {
-        localStorage.setItem('milchWarnungen', JSON.stringify({datum: datumTs, warnungen}));
-      } else {
-        localStorage.removeItem('milchWarnungen');
-      }
-    }
-
-    // ── 5. Klare Erfolgs-Bestätigung ──
-    window.showSaveToast && showSaveToast('✓ Milch gespeichert: '+gesamt+'L, '+Object.keys(prokuh).length+' Kühe');
-    if(navigator.vibrate) navigator.vibrate([30,10,30]);
-    console.log('[saveMilch] DONE', savedKey);
-
-    // Notnetz-Entwurf löschen nach erfolgreichem Save
-    try { localStorage.removeItem('milchEntwurf'); } catch(e) {}
-
-    // Datum + Zeit für Bericht merken
-    const berichtDatumTs = datumTs;
-    const berichtZeit = zeit;
-
-    restoreBtn();
-    closeForm('milch-form-overlay');
-    // Doppel-Absicherung: Form-Overlay explizit verstecken, falls closeForm scheitert
-    setTimeout(()=>{
-      const ov = document.getElementById('milch-form-overlay');
-      if(ov && ov.style.display !== 'none') {
-        console.warn('[saveMilch] Force-Hide nach Save');
-        ov.style.display = 'none';
-        if(typeof render === 'function') { try { render(); } catch(e){} }
-      }
-    }, 100);
-    // Bericht automatisch anzeigen (nach kurzer Pause damit Firebase-Listener nachzieht)
-    setTimeout(() => {
-      if(window.showMilchBericht) {
-        try { showMilchBericht(berichtDatumTs, berichtZeit); }
-        catch(e) { console.warn('Bericht-Anzeige fehlgeschlagen:', e); }
-      }
-    }, 700);
-  } catch(err) {
-    // ── FEHLER: Form OFFEN lassen, Fehler zeigen ──
-    console.error('[saveMilch] FEHLER:', err);
-    restoreBtn();
-    alert('⚠ SPEICHERN FEHLGESCHLAGEN!\n\n'+
-          'Fehler: '+(err && err.message ? err.message : String(err))+'\n\n'+
-          'Die Werte sind NOCH IM FORMULAR. Bitte:\n'+
-          '1. Internet-Verbindung prüfen\n'+
-          '2. Nochmal auf "Speichern" tippen\n'+
-          '3. Falls weiterhin Fehler: Screenshot machen und Werte abschreiben');
-  } finally {
-    window._milchSaveInProgress = false;
-  }
-};
+/* v54.31: alte, überschriebene Fassung von window.saveMilch entfernt (toter Code) */
 
 window.loescheAlleDaten = async function() {
   // Triple confirmation
@@ -4443,6 +4232,7 @@ window.ladeWetterPrognose = async function() {
   const WMO_ICONS2 = {0:'☀️',1:'🌤️',2:'⛅',3:'☁️',45:'🌫️',48:'🌫️',51:'🌦️',53:'🌦️',55:'🌦️',61:'🌧️',63:'🌧️',65:'🌧️',71:'🌨️',73:'🌨️',75:'❄️',80:'🌦️',81:'🌧️',82:'⛈️',95:'⛈️',99:'⛈️'};
   const WMO_DESC2 = {0:'Klar',1:'Klar',2:'Teils bewölkt',3:'Bedeckt',45:'Nebel',48:'Nebel',51:'Nieselregen',53:'Nieselregen',55:'Nieselregen',61:'Leichter Regen',63:'Regen',65:'Starker Regen',71:'Leichter Schnee',73:'Schnee',75:'Starker Schnee',80:'Schauer',81:'Schauer',82:'Starke Schauer',95:'Gewitter',99:'Gewitter'};
   
+  const ort = localStorage.getItem('wetterOrt') || 'Innsbruck';   // v54.31: fehlte → Prognose lud nie
   const coords = ORTE[ort];
   if(!coords) return;
   
@@ -4783,37 +4573,7 @@ window.onWzBeachtet = function(cb) {
   }
 };
 
-window.onMilchInput = function(inp) {
-  const row = inp.closest('.milch-kuh-row');
-  const val = parseFloat(inp.value)||0;
-  if(row) {
-    row.style.background = val > 0 ? 'rgba(77,184,78,.08)' : '';
-    const badge = row.querySelector('.nr-badge');
-    if(badge) badge.style.background = val > 0 ? 'var(--green)' : '';
-  }
-  let sum = 0, count = 0;
-  document.querySelectorAll('.kuh-liter').forEach(i => { const v=parseFloat(i.value)||0; if(v>0){sum+=v;count++;} });
-  const sumEl=document.getElementById('m-summe'); if(sumEl) sumEl.textContent=Math.round(sum*10)/10;
-  const cntEl=document.getElementById('m-count'); if(cntEl) cntEl.textContent=count;
-
-  // ── LocalStorage Notnetz: SOFORTIGE lokale Persistierung (kein Debounce!) ──
-  // Auch ohne Internet/Firebase landen die Werte auf dem Gerät.
-  try {
-    const datum = document.getElementById('m-datum')?.value || '';
-    const zeit  = document.getElementById('m-zeit')?.value || 'morgen';
-    const all = {};
-    document.querySelectorAll('.kuh-liter').forEach(i => {
-      const v = parseFloat((i.value||'').replace(',','.')) || 0;
-      if(v > 0) all[i.dataset.id] = v;
-    });
-    localStorage.setItem('milchEntwurf', JSON.stringify({
-      datum, zeit, prokuh: all, ts: Date.now()
-    }));
-  } catch(e) { console.warn('LocalStorage Notnetz fehlgeschlagen:', e); }
-
-  // ── Firebase Auto-Save (debounced) ──
-  scheduleMilchAutoSave();
-};
+/* v54.31: alte, überschriebene Fassung von window.onMilchInput entfernt (toter Code) */
 
 // ══════════════════════════════════════════════════════════════
 //  MILCH AUTO-SAVE – kein Datenverlust mehr durch vergessenen Speichern-Klick
@@ -4835,56 +4595,7 @@ function getMilchSessionId() {
 
 // ── Kollisions-Warnung: zeigt bei jeder Kuh ob ein ANDERER Melker (andere Session)
 //    in derselben Schicht bereits einen Wert eingetragen hat. Live aktualisiert. ──
-window.updateAndereMelkerHinweise = function() {
-  const formOv = document.getElementById('milch-form-overlay');
-  if(!formOv || formOv.style.display !== 'flex') return;
-
-  const mySession = getMilchSessionId();
-  const datum = document.getElementById('m-datum')?.value;
-  if(!datum) return;
-  const datumTs = new Date(datum + 'T12:00').getTime();
-  const startTag = new Date(datumTs); startTag.setHours(0,0,0,0);
-  const endeTag = startTag.getTime() + 86400000;
-  const zeit = document.getElementById('m-zeit')?.value || 'morgen';
-
-  // Werte aller anderen Sessions für diese Schicht sammeln
-  const andereSessionWerte = {}; // kuhId → wert (letzter gewinnt falls mehrere fremde Sessions denselben Wert haben)
-  Object.values(milchEintraege || {}).forEach(e => {
-    if(!e || !e.datum) return;
-    if(e.datum < startTag.getTime() || e.datum >= endeTag) return;
-    if((e.zeit || 'morgen') !== zeit) return;
-    if(e._session === mySession) return; // eigene Session überspringen
-    if(!e.prokuh) return;
-    Object.entries(e.prokuh).forEach(([kuhId, l]) => {
-      const v = parseFloat(l) || 0;
-      if(v > 0) andereSessionWerte[kuhId] = v;
-    });
-  });
-
-  // DOM aktualisieren – pro Kuh-Zeile Hinweis ergänzen oder entfernen
-  document.querySelectorAll('.milch-kuh-row').forEach(row => {
-    const input = row.querySelector('.kuh-liter');
-    if(!input) return;
-    const kuhId = input.dataset.id;
-    let hinweis = row.querySelector('.andere-melker-hinweis');
-    const fremdWert = andereSessionWerte[kuhId];
-
-    if(fremdWert) {
-      if(!hinweis) {
-        hinweis = document.createElement('div');
-        hinweis.className = 'andere-melker-hinweis';
-        hinweis.style.cssText = 'background:rgba(230,126,34,.14);border:1px solid rgba(230,126,34,.40);border-radius:6px;padding:.3rem .55rem;margin-top:.25rem;font-size:.7rem;color:#e67e22;font-weight:600;display:flex;align-items:center;gap:.4rem';
-        row.appendChild(hinweis);
-      }
-      hinweis.innerHTML = '👥 Anderer Melker: <b style="color:#e67e22">'+(Math.round(fremdWert*10)/10)+' L</b>';
-      // Visueller Border am Input
-      input.style.borderColor = '#e67e22';
-    } else if(hinweis) {
-      hinweis.remove();
-      input.style.borderColor = '';
-    }
-  });
-};
+/* v54.31: alte, überschriebene Fassung von window.updateAndereMelkerHinweise entfernt (toter Code) */
 
 function setMilchAutoSaveStatus(text, color) {
   const el = document.getElementById('milch-autosave-indicator');
@@ -4940,14 +4651,7 @@ async function doMilchAutoSave() {
 }
 
 // Reset wenn Form geöffnet/geschlossen wird
-window.resetMilchAutoSaveState = function() {
-  window._milchAutoSaveDraftId = null;
-  window._milchOriginalGroupKey = null;
-  window._milchSaveInProgress = false;       // ← Save-Lock immer freigeben
-  window._milchAutoSaveInFlight = false;     // ← Auto-Save-Lock auch
-  if(window._milchAutoSaveTimer) { clearTimeout(window._milchAutoSaveTimer); window._milchAutoSaveTimer = null; }
-  setMilchAutoSaveStatus('', 'var(--text3)');
-};
+/* v54.31: alte, überschriebene Fassung von window.resetMilchAutoSaveState entfernt (toter Code) */
 
 window.selectMilchZeit = function(zeit, btn) {
   document.getElementById('m-zeit').value = zeit;

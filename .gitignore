@@ -25,3 +25,8 @@ desktop.ini
 # Sync-Script logs
 sync-*.log
 
+
+# Excel mit echten Daten nie ins Repo
+*.xlsx
+*.xlsm
+.~lock.*

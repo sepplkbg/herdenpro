@@ -3479,9 +3479,7 @@ window.uploadFoto = function(kuhId, input) {
     await set(ref(db,'fotos/'+kuhId), { data, updatedAt: Date.now() });
   });
 };
-window.deleteFoto = async function(kuhId) {
-  if(confirm('Foto löschen?')) await remove(ref(db,'fotos/'+kuhId));
-};
+/* v54.31: alte, überschriebene Fassung von window.deleteFoto entfernt (toter Code) */
 
 // ══════════════════════════════════════════════════════════════
 //  KALENDER
@@ -6879,9 +6877,13 @@ function renderBackup() {
       <p style="font-size:.82rem;color:var(--text2);margin-bottom:.8rem;line-height:1.6">
         Schnelle Erfassung zum Saisonstart: Eine Excel‑Zeile pro Kuh.<br>
         <b>Bauer</b> (Name, Anzahl, BIO, Verkauf%, Adresse) · <b>Kuh</b> (Ohrmarke, Nr, Name, Gruppen, Notiz, Besamungsdatum).
-        Vorlage <a href="Saisonstart_Vorlage.xlsx" download style="color:var(--gold)">hier herunterladen</a>.
+        Vorlage mit Auswahllisten (JA/NEIN, Bauern, Gruppen) hier erstellen:
       </p>
       <div style="display:flex;flex-direction:column;gap:.5rem">
+        <div style="display:flex;gap:.5rem;flex-wrap:wrap">
+          <button class="btn-secondary" style="flex:1;min-width:140px" onclick="hpSaisonVorlage(false)">📄 Leere Vorlage</button>
+          <button class="btn-secondary" style="flex:1;min-width:140px" onclick="hpSaisonVorlage(true)">📋 Vorlage mit Bauern &amp; Kühen von heuer</button>
+        </div>
         <label style="cursor:pointer;display:block">
           <span class="btn-primary" style="display:block;text-align:center;padding:.6rem;border-radius:var(--radius-sm);cursor:pointer;background:linear-gradient(135deg,var(--gold),var(--gold2))">
             🌱 Saisonstart Excel importieren
@@ -7481,7 +7483,7 @@ window.exportMolkereiExcel = function() {
   if(typeof XLSX === 'undefined') {
     alert('Bibliothek wird geladen, bitte nochmal tippen...');
     const s=document.createElement('script');
-    s.src='https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
+    s.src='lib/xlsx.full.min.js';
     s.onload=()=>exportMolkereiExcel();
     document.head.appendChild(s);
     return;
@@ -8874,27 +8876,7 @@ window.deleteKraftfutter = async function(id, kuhId) {
 //  HIRTEN-ANIMATION bei Zählung
 // ══════════════════════════════════════════════════════════════
 let _zaehlungAnimShown = false;
-window._showZaehlungAnim = function() {
-  if(_zaehlungAnimShown) return;
-  _zaehlungAnimShown = true;
-  const overlay = document.createElement('div');
-  overlay.style.cssText = 'position:fixed;inset:0;background:var(--bg);z-index:500;display:flex;flex-direction:column;align-items:center;justify-content:center;animation:fadeIn .3s ease';
-  overlay.innerHTML = `
-    
-    <div style="font-size:.9rem;color:var(--text3);margin-bottom:1rem;animation:fadeInAnim .5s ease">Zählung wird gestartet…</div>
-    <div class="hirte-scene">
-      <div class="kuh">🐄</div>
-      <div class="hirte">🧑‍🌾</div>
-      <div class="grass"></div>
-    </div>
-    <div style="font-size:1.8rem;margin-top:1rem">✓</div>
-  `;
-  document.body.appendChild(overlay);
-  setTimeout(()=>{
-    overlay.style.animation='fadeOutAnim .4s ease forwards';
-    setTimeout(()=>{overlay.remove();_zaehlungAnimShown=false;},400);
-  }, 2000);
-};
+/* v54.31: alte, überschriebene Fassung von window._showZaehlungAnim entfernt (toter Code) */
 
 // Hook into navigate for zaehlung
 const _origNavigate = window.navigate;

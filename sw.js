@@ -25,15 +25,37 @@ const SHELL_FILES = [
   'app-saisonabschluss.js',
   'app-saison-archiv.js',
   'app-extras.js',
+  'app-daten.js',
   'app-email-send.js',
   'app-env-switch.js',
-  'app-install.js'
+  'app-install.js',
+  // v54.31: Bibliotheken lokal (keine fremden Server beim Start)
+  'lib/firebase-app-compat.js',
+  'lib/firebase-database-compat.js',
+  'lib/firebase-auth-compat.js',
+  'lib/firebase-storage-compat.js',
+  'lib/html2canvas.min.js',
+  'lib/pdf.min.js',
+  'lib/pdf.worker.min.js',
+  'lib/exceljs.min.js',
+  'lib/leaflet.js',
+  'lib/leaflet.css',
+  'lib/jsQR.js',
+  'lib/iconify-icon.min.js',
+  'lib/icons-data.js',
+  'lib/email.min.js',
+  'lib/xlsx.full.min.js',
+  'lib/images/marker-icon.png',
+  'lib/images/marker-icon-2x.png',
+  'lib/images/marker-shadow.png',
+  'lib/images/layers.png',
+  'lib/images/layers-2x.png'
 ];
 const SCOPE = self.registration.scope;               // z.B. https://sepplkbg.github.io/herdenpro/
 // v54.22: Cache-Name pro App — beide Almen liegen auf derselben Domain und dürfen sich
 // gegenseitig nicht die Offline-Caches löschen.
 const APP_ID = new URL(SCOPE).pathname.replace(/\W+/g, '_');   // _herdenpro_ / _HerdenPro_Falkaunsalm_
-const CACHE = 'herdenpro-v332' + APP_ID;
+const CACHE = 'herdenpro-v335' + APP_ID;
 const SHELL = SHELL_FILES.map(f => new URL(f, SCOPE).href);
 const INDEX_URL = new URL('index.html', SCOPE).href;
 
