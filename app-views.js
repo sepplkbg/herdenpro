@@ -6972,7 +6972,7 @@ function renderBackup() {
 // Verkäufe, Unterschriften, Milchsperren, Schalmtests, Saison-Archiv … fehlten).
 // Ausgenommen: benutzer (Rollen — Restore könnte aussperren), spielScores.
 window.HP_BACKUP_PFADE_ZUSATZ = ['sennerei','milchSperren','schalmtest','zellzahl','kaese_produktion','saisonArchiv',
-  'lager','wartung','stallplanV','stallplan','zaehlung','zaehlVerlauf','kraftfutter','kfLieferungen','aufgaben',
+  'lager','wartung','stallplanV2','stallplan','zaehlung','zaehlVerlauf','kraftfutter','kfLieferungen','aufgaben',
   'kalenderTermine','traenkeLog','klauenpflege','almKarteWeiden','fotos','chat','saisonArchivDaten'];
 window.exportJSON = async function() {
   const data = { kuehe, behandlungen, besamungen, milchEintraege, weideTage, weiden, bauern, gruppen, saison: saisonInfo, journal, kontakte, exportDatum: new Date().toISOString(), backupVersion: 2 };

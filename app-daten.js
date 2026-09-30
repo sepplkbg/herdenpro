@@ -57,7 +57,8 @@
       if(/^milch\//.test(pfad) && (!val.prokuh || !Object.keys(val.prokuh).length)) return;   // leere Milch-Termine
       if(JSON.stringify(val).length > PK_MAX_BYTES) return;
       // nicht awaiten: offline landet der Eintrag in der Warteschlange, VOR dem Löschen
-      firebase.database().ref('papierkorb').push({ pfad, daten: val, zeit: Date.now(), von: wer() })
+      const pr = firebase.database().ref('papierkorb').push();
+      pr.set({ pfad, daten: val, zeit: Date.now(), von: wer() })
         .catch(e => console.warn('[Papierkorb] nicht gesichert:', e && e.message));
     } catch(e) { console.warn('[Papierkorb]', e && e.message); }
   }
@@ -197,10 +198,13 @@
     if(!istAdmin()) throw new Error('Nur für Admin');
     const daten = {};
     for(const p of whPfade()) {
-      const snap = await Promise.race([
-        firebase.database().ref(p).once('value'),
-        new Promise((_, rej) => setTimeout(() => rej(new Error('Zeitüberschreitung bei ' + p)), 20000))
-      ]);
+      let snap;
+      try {
+        snap = await Promise.race([
+          firebase.database().ref(p).once('value'),
+          new Promise((_, rej) => setTimeout(() => rej(new Error('Zeitüberschreitung bei ' + p)), 20000))
+        ]);
+      } catch(e) { if(/permission/i.test(e.message)) continue; throw e; }   // nicht lesbar → nicht sichern, beim Zurücksetzen nicht anfassen
       daten[p] = snap.exists() ? snap.val() : null;
     }
     const text = JSON.stringify(daten);
