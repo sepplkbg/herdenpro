@@ -100,7 +100,7 @@
       @keyframes onb-fade { from{opacity:0} to{opacity:1} }
       #onb-overlay .onb-bg { position:absolute; inset:0; transition:background .6s ease; }
       #onb-overlay .onb-content { position:relative; z-index:2; flex:1; display:flex; flex-direction:column; padding:1.5rem 1.2rem 1rem; overflow-y:auto; }
-      #onb-overlay .onb-skip { position:absolute; top:1rem; right:1rem; background:rgba(255,255,255,.08); border:none; color:#fff; padding:.55rem 1rem; border-radius:20px; font-size:.82rem; cursor:pointer; font-family:inherit; }
+      #onb-overlay .onb-skip { position:absolute; z-index:10; top:calc(1rem + env(safe-area-inset-top, 0px)); right:1rem; background:rgba(255,255,255,.08); border:none; color:#fff; padding:.55rem 1rem; border-radius:20px; font-size:.82rem; cursor:pointer; font-family:inherit; }
       #onb-overlay .onb-skip:hover { background:rgba(255,255,255,.15); }
 
       #onb-overlay .onb-slide { flex:1; display:flex; flex-direction:column; justify-content:center; text-align:center; max-width:520px; margin:0 auto; padding:1.5rem 0; }
