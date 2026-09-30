@@ -2560,86 +2560,7 @@ function renderMilch() {
             </div>
             <div id="m-kuh-liste">
               ${kueheOben.map(([id,k])=>{
-                // ── Wartezeit-Check für Milch ──
-                const heute = Date.now();
-                const wocheZurueck = heute - 7 * 86400000;
-                // Trockenstell-Behandlungen NICHT als WZ zählen (Laktation-Ende, keine „Verwerfen"-Regel)
-                const _istTs = (b) => window.hpIstTrockenstellBehandlung && window.hpIstTrockenstellBehandlung(b);
-                const aktiveWzBeh = Object.values(behandlungen||{}).find(b =>
-                  b && b.aktiv !== false && b.kuhId === id &&
-                  b.wzMilchEnde && b.wzMilchEnde > heute && !_istTs(b)
-                );
-                // Auch: WZ war irgendwann in den letzten 7 Tagen aktiv (vergangene WZ diese Woche)
-                const vergangeneWzBeh = !aktiveWzBeh ? Object.values(behandlungen||{}).find(b =>
-                  b && b.kuhId === id &&
-                  b.wzMilchEnde && b.wzMilchEnde <= heute && b.wzMilchEnde >= wocheZurueck && !_istTs(b)
-                ) : null;
-                // ── Milchsperre-Check (aus milchSperren) ──
-                // Nur relevant wenn KEINE aktive Behandlungs-WZ (die versteckt den Button)
-                const messTsFuerSperre = heute;
-                const aktSperre = (!aktiveWzBeh && typeof window.milchSperreFuerKuh === 'function')
-                  ? window.milchSperreFuerKuh(id, messTsFuerSperre) : null;
-                let wzHinweis = '';
-                let rowStyle = 'display:flex;flex-direction:column;padding:.35rem 0;border-bottom:1px solid var(--border)';
-                if(aktiveWzBeh) {
-                  const tageRest = Math.ceil((aktiveWzBeh.wzMilchEnde - heute) / 86400000);
-                  const restText = tageRest === 1 ? '1 Tag' : tageRest+' Tage';
-                  rowStyle += ';border-left:4px solid #e67e22;padding-left:.4rem';
-                  wzHinweis = `
-                    <div class="wz-hinweis" style="display:flex;align-items:center;gap:.5rem;background:rgba(230,126,34,.12);border:1px solid rgba(230,126,34,.35);border-radius:6px;padding:.35rem .55rem;margin:.3rem 0 .1rem;font-size:.75rem">
-                      <span style="font-size:.95rem">⚠</span>
-                      <span style="color:#e67e22;font-weight:700;flex:1">${restText} keine Milch (Wartezeit)</span>
-                      <label style="display:inline-flex;align-items:center;gap:.3rem;font-size:.72rem;color:var(--text2);cursor:pointer;white-space:nowrap">
-                        <input type="checkbox" class="wz-beachtet-cb" data-kuh="${id}"
-                          onchange="onWzBeachtet(this)"
-                          style="width:18px;height:18px;accent-color:var(--green);cursor:pointer" />
-                        <span>Beachtet</span>
-                      </label>
-                    </div>
-                  `;
-                } else if(vergangeneWzBeh) {
-                  // Vergangene WZ diese Woche: rote Info (Milch dieser Woche wird als verworfen gezählt)
-                  const wzStart = vergangeneWzBeh.datum || (vergangeneWzBeh.wzMilchEnde - (vergangeneWzBeh.wzMilchTage||0)*86400000);
-                  const dt = (ts) => new Date(ts).toLocaleDateString('de-AT',{day:'2-digit',month:'2-digit'});
-                  const tageWz = Math.max(1, Math.ceil((vergangeneWzBeh.wzMilchEnde - wzStart) / 86400000));
-                  rowStyle += ';border-left:4px solid var(--red);padding-left:.4rem';
-                  wzHinweis = `
-                    <div class="wz-hinweis-vergangen" style="display:flex;align-items:center;gap:.5rem;background:rgba(220,60,60,.12);border:1px solid rgba(220,60,60,.35);border-radius:6px;padding:.35rem .55rem;margin:.3rem 0 .1rem;font-size:.72rem">
-                      <span style="font-size:.9rem">⚠</span>
-                      <span style="color:var(--red);font-weight:700;flex:1">WZ ${dt(wzStart)}–${dt(vergangeneWzBeh.wzMilchEnde)} (${tageWz} Tage) — Milch dieser Woche wird als verworfen gezählt</span>
-                    </div>
-                  `;
-                } else if(aktSperre) {
-                  // Milchsperre aktiv (rote Zeile + Info)
-                  const dt = (ts) => new Date(ts).toLocaleDateString('de-AT',{day:'2-digit',month:'2-digit'});
-                  rowStyle += ';border-left:4px solid var(--red);padding-left:.4rem';
-                  wzHinweis = `
-                    <div class="msp-hinweis" style="display:flex;align-items:center;gap:.5rem;background:rgba(220,60,60,.12);border:1px solid rgba(220,60,60,.35);border-radius:6px;padding:.35rem .55rem;margin:.3rem 0 .1rem;font-size:.72rem">
-                      <span style="font-size:.9rem">⚠</span>
-                      <span style="color:var(--red);font-weight:700;flex:1">Milchsperre ${dt(aktSperre.vonTs)}–${dt(aktSperre.bisTs)} (${aktSperre.tage} Tage · ${aktSperre.grund})${aktSperre.notiz?' · '+aktSperre.notiz:''}</span>
-                    </div>
-                  `;
-                }
-                // Button-Anzeige: NUR wenn keine aktive Behandlungs-WZ (User-Wunsch)
-                const sperreBtn = !aktiveWzBeh ? `
-                    <button type="button" class="msp-btn" onclick="showMilchSperrePopup('${id}')" style="align-self:flex-start;margin-top:.3rem;padding:.28rem .6rem;font-size:.7rem;background:${aktSperre?'rgba(220,60,60,.15)':'rgba(255,255,255,.05)'};border:1px solid ${aktSperre?'rgba(220,60,60,.5)':'var(--border)'};color:${aktSperre?'var(--red)':'var(--text3)'};border-radius:6px;cursor:pointer;font-family:inherit">${aktSperre?('⚠ Sperre '+aktSperre.tage+'T ('+aktSperre.grund+')'):'⚠ außergew. WZ erfassen'}</button>
-                ` : '';
-                return `
-                <div class="milch-kuh-row" data-kid="${id}" data-bauer="${k.bauer||''}" data-wz="${aktiveWzBeh?'1':'0'}" style="${rowStyle}">
-                  <div style="display:flex;align-items:center;gap:.5rem">
-                    <span class="nr-badge" style="min-width:38px;text-align:center">#${k.nr}</span>
-                    <div style="flex:1;min-width:0">
-                      <div style="font-size:.85rem;font-weight:bold;color:var(--text)">${k.name||'–'}</div>
-                      <div style="font-size:.7rem;color:var(--text3)">${k.bauer||''}</div>
-                    </div>
-                    <div style="display:flex;align-items:center">
-                      <input class="inp kuh-liter" data-id="${id}" data-nr="${k.nr}" data-name="${k.name||''}" placeholder="L" inputmode="decimal" style="width:6rem;min-width:6rem;text-align:center;font-size:1.05rem;font-weight:bold;padding:.5rem .4rem" oninput="onMilchInput(this);checkMilchWert(this,'${id}')" onfocus="this.select()" />
-                    </div>
-                  </div>
-                  ${wzHinweis}
-                  ${sperreBtn}
-                  <div id="milch-warn-${id}" style="display:none;font-size:.68rem;font-weight:600;padding:.1rem .5rem .1rem 42px;animation:kd-in .2s ease both"></div>
-                </div>`;
+                return _hpMilchKuhZeile(id, k);
               }).join('')}
             </div>
             <div style="display:flex;justify-content:space-between;align-items:center;margin-top:.6rem;padding-top:.5rem;border-top:1px solid var(--border2)">
@@ -3646,6 +3567,92 @@ window.setAlpTab = function(tab, btn) {
 };
 
 // Neue View: Milch erfassen als richtige Seite (kein Popup)
+// v54.44: EINE Funktion für die Kuh-Zeile in der Milchliste. Vorher hatte die Milch-Seite eine
+// abgespeckte Kopie ohne Hinweis auf vergangene Wartezeit, ohne Milchsperre und ohne Trockenstell-Ausnahme.
+function _hpMilchKuhZeile(id, k) {
+                // ── Wartezeit-Check für Milch ──
+                const heute = Date.now();
+                const wocheZurueck = heute - 7 * 86400000;
+                // Trockenstell-Behandlungen NICHT als WZ zählen (Laktation-Ende, keine „Verwerfen"-Regel)
+                const _istTs = (b) => window.hpIstTrockenstellBehandlung && window.hpIstTrockenstellBehandlung(b);
+                // v54.44: Hinweis IMMER bis zum Ende der Wartezeit – auch wenn die Behandlung schon abgeschlossen ist
+                const aktiveWzBeh = Object.values(behandlungen||{}).find(b =>
+                  b && b.kuhId === id &&
+                  b.wzMilchEnde && b.wzMilchEnde > heute && !_istTs(b)
+                );
+                // Auch: WZ war irgendwann in den letzten 7 Tagen aktiv (vergangene WZ diese Woche)
+                const vergangeneWzBeh = !aktiveWzBeh ? Object.values(behandlungen||{}).find(b =>
+                  b && b.kuhId === id &&
+                  b.wzMilchEnde && b.wzMilchEnde <= heute && b.wzMilchEnde >= wocheZurueck && !_istTs(b)
+                ) : null;
+                // ── Milchsperre-Check (aus milchSperren) ──
+                // Nur relevant wenn KEINE aktive Behandlungs-WZ (die versteckt den Button)
+                const messTsFuerSperre = heute;
+                const aktSperre = (!aktiveWzBeh && typeof window.milchSperreFuerKuh === 'function')
+                  ? window.milchSperreFuerKuh(id, messTsFuerSperre) : null;
+                let wzHinweis = '';
+                let rowStyle = 'display:flex;flex-direction:column;padding:.35rem 0;border-bottom:1px solid var(--border)';
+                if(aktiveWzBeh) {
+                  const tageRest = Math.ceil((aktiveWzBeh.wzMilchEnde - heute) / 86400000);
+                  const restText = tageRest === 1 ? '1 Tag' : tageRest+' Tage';
+                  rowStyle += ';border-left:4px solid #e67e22;padding-left:.4rem';
+                  wzHinweis = `
+                    <div class="wz-hinweis" style="display:flex;align-items:center;gap:.5rem;background:rgba(230,126,34,.12);border:1px solid rgba(230,126,34,.35);border-radius:6px;padding:.35rem .55rem;margin:.3rem 0 .1rem;font-size:.75rem">
+                      <span style="font-size:.95rem">⚠</span>
+                      <span style="color:#e67e22;font-weight:700;flex:1">${restText} keine Milch (Wartezeit)</span>
+                      <label style="display:inline-flex;align-items:center;gap:.3rem;font-size:.72rem;color:var(--text2);cursor:pointer;white-space:nowrap">
+                        <input type="checkbox" class="wz-beachtet-cb" data-kuh="${id}"
+                          onchange="onWzBeachtet(this)"
+                          style="width:18px;height:18px;accent-color:var(--green);cursor:pointer" />
+                        <span>Beachtet</span>
+                      </label>
+                    </div>
+                  `;
+                } else if(vergangeneWzBeh) {
+                  // Vergangene WZ diese Woche: rote Info (Milch dieser Woche wird als verworfen gezählt)
+                  const wzStart = vergangeneWzBeh.datum || (vergangeneWzBeh.wzMilchEnde - (vergangeneWzBeh.wzMilchTage||0)*86400000);
+                  const dt = (ts) => new Date(ts).toLocaleDateString('de-AT',{day:'2-digit',month:'2-digit'});
+                  const tageWz = Math.max(1, Math.ceil((vergangeneWzBeh.wzMilchEnde - wzStart) / 86400000));
+                  rowStyle += ';border-left:4px solid var(--red);padding-left:.4rem';
+                  wzHinweis = `
+                    <div class="wz-hinweis-vergangen" style="display:flex;align-items:center;gap:.5rem;background:rgba(220,60,60,.12);border:1px solid rgba(220,60,60,.35);border-radius:6px;padding:.35rem .55rem;margin:.3rem 0 .1rem;font-size:.72rem">
+                      <span style="font-size:.9rem">⚠</span>
+                      <span style="color:var(--red);font-weight:700;flex:1">WZ ${dt(wzStart)}–${dt(vergangeneWzBeh.wzMilchEnde)} (${tageWz} Tage) — Milch dieser Woche wird als verworfen gezählt</span>
+                    </div>
+                  `;
+                } else if(aktSperre) {
+                  // Milchsperre aktiv (rote Zeile + Info)
+                  const dt = (ts) => new Date(ts).toLocaleDateString('de-AT',{day:'2-digit',month:'2-digit'});
+                  rowStyle += ';border-left:4px solid var(--red);padding-left:.4rem';
+                  wzHinweis = `
+                    <div class="msp-hinweis" style="display:flex;align-items:center;gap:.5rem;background:rgba(220,60,60,.12);border:1px solid rgba(220,60,60,.35);border-radius:6px;padding:.35rem .55rem;margin:.3rem 0 .1rem;font-size:.72rem">
+                      <span style="font-size:.9rem">⚠</span>
+                      <span style="color:var(--red);font-weight:700;flex:1">Milchsperre ${dt(aktSperre.vonTs)}–${dt(aktSperre.bisTs)} (${aktSperre.tage} Tage · ${aktSperre.grund})${aktSperre.notiz?' · '+aktSperre.notiz:''}</span>
+                    </div>
+                  `;
+                }
+                // Button-Anzeige: NUR wenn keine aktive Behandlungs-WZ (User-Wunsch)
+                const sperreBtn = !aktiveWzBeh ? `
+                    <button type="button" class="msp-btn" onclick="showMilchSperrePopup('${id}')" style="align-self:flex-start;margin-top:.3rem;padding:.28rem .6rem;font-size:.7rem;background:${aktSperre?'rgba(220,60,60,.15)':'rgba(255,255,255,.05)'};border:1px solid ${aktSperre?'rgba(220,60,60,.5)':'var(--border)'};color:${aktSperre?'var(--red)':'var(--text3)'};border-radius:6px;cursor:pointer;font-family:inherit">${aktSperre?('⚠ Sperre '+aktSperre.tage+'T ('+aktSperre.grund+')'):'⚠ außergew. WZ erfassen'}</button>
+                ` : '';
+                return `
+                <div class="milch-kuh-row" data-kid="${id}" data-bauer="${k.bauer||''}" data-wz="${aktiveWzBeh?'1':'0'}" style="${rowStyle}">
+                  <div style="display:flex;align-items:center;gap:.5rem">
+                    <span class="nr-badge" style="min-width:38px;text-align:center">#${k.nr}</span>
+                    <div style="flex:1;min-width:0">
+                      <div style="font-size:.85rem;font-weight:bold;color:var(--text)">${k.name||'–'}</div>
+                      <div style="font-size:.7rem;color:var(--text3)">${k.bauer||''}</div>
+                    </div>
+                    <div style="display:flex;align-items:center">
+                      <input class="inp kuh-liter" data-id="${id}" data-nr="${k.nr}" data-name="${k.name||''}" placeholder="L" inputmode="decimal" style="width:6rem;min-width:6rem;text-align:center;font-size:1.05rem;font-weight:bold;padding:.5rem .4rem" oninput="onMilchInput(this);checkMilchWert(this,'${id}')" onfocus="this.select()" />
+                    </div>
+                  </div>
+                  ${wzHinweis}
+                  ${sperreBtn}
+                  <div id="milch-warn-${id}" style="display:none;font-size:.68rem;font-weight:600;padding:.1rem .5rem .1rem 42px;animation:kd-in .2s ease both"></div>
+                </div>`;
+}
+
 window.renderMilchErfassen = function() {
   // Nur Kühe die aktuell AUF DER ALM sind (almStatus='oben'). Abgetriebene ausschließen.
   const alleKueheSorted = Object.entries(kuehe)
@@ -3702,31 +3709,7 @@ window.renderMilchErfassen = function() {
       </div>
       <div id="m-kuh-liste">
         ${kueheOben.map(([id,k])=>{
-          const heute = Date.now();
-          const aktiveWzBeh = Object.values(behandlungen||{}).find(b =>
-            b && b.aktiv !== false && b.kuhId === id &&
-            b.wzMilchEnde && b.wzMilchEnde > heute
-          );
-          let wzHinweis = '';
-          let rowStyle = 'display:flex;flex-direction:column;padding:.35rem 0;border-bottom:1px solid var(--border)';
-          if(aktiveWzBeh) {
-            const tageRest = Math.ceil((aktiveWzBeh.wzMilchEnde - heute) / 86400000);
-            const restText = tageRest === 1 ? '1 Tag' : tageRest+' Tage';
-            rowStyle += ';border-left:4px solid #e67e22;padding-left:.4rem';
-            wzHinweis = `<div class="wz-hinweis" style="display:flex;align-items:center;gap:.5rem;background:rgba(230,126,34,.12);border:1px solid rgba(230,126,34,.35);border-radius:6px;padding:.35rem .55rem;margin:.3rem 0 .1rem;font-size:.75rem"><span style="font-size:.95rem">⚠</span><span style="color:#e67e22;font-weight:700;flex:1">${restText} keine Milch (Wartezeit)</span><label style="display:inline-flex;align-items:center;gap:.3rem;font-size:.72rem;color:var(--text2);cursor:pointer;white-space:nowrap"><input type="checkbox" class="wz-beachtet-cb" data-kuh="${id}" onchange="onWzBeachtet(this)" style="width:18px;height:18px;accent-color:var(--green);cursor:pointer" /><span>Beachtet</span></label></div>`;
-          }
-          return `<div class="milch-kuh-row" data-bauer="${k.bauer||''}" data-wz="${aktiveWzBeh?'1':'0'}" style="${rowStyle}">
-            <div style="display:flex;align-items:center;gap:.5rem">
-              <span class="nr-badge" style="min-width:38px;text-align:center">#${k.nr}</span>
-              <div style="flex:1;min-width:0">
-                <div style="font-size:.85rem;font-weight:bold;color:var(--text)">${k.name||'–'}</div>
-                <div style="font-size:.7rem;color:var(--text3)">${k.bauer||''}</div>
-              </div>
-              <input class="inp kuh-liter" data-id="${id}" data-nr="${k.nr}" data-name="${k.name||''}" placeholder="L" inputmode="decimal" style="width:6rem;min-width:6rem;text-align:center;font-size:1.05rem;font-weight:bold;padding:.5rem .4rem" oninput="onMilchInput(this);checkMilchWert(this,'${id}')" onfocus="this.select()" />
-            </div>
-            ${wzHinweis}
-            <div id="milch-warn-${id}" style="display:none;font-size:.68rem;font-weight:600;padding:.1rem .5rem .1rem 42px;animation:kd-in .2s ease both"></div>
-          </div>`;
+          return _hpMilchKuhZeile(id, k);   // v54.44: gleiche Zeile wie überall (WZ, vergangene WZ, Milchsperre, Trockenstellen)
         }).join('')}
       </div>
       <div style="display:flex;justify-content:space-between;align-items:center;margin-top:.6rem;padding-top:.5rem;border-top:1px solid var(--border2)">
