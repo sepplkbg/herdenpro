@@ -5364,6 +5364,221 @@ window.showAbtriebbForm=function(){
 };
 
 window.startSaison=function(){ return window.showSaisonWizard(); };  // v54.26: immer über Assistent (Archivierung)
+// v54.33: versehentlich in v54.26 gelöschter Block wiederhergestellt (Molkerei-Export _csvNum, Weide-Funktionen, Bauer-Formular)
+
+window.showBauerForm=function(){document.getElementById('bauer-overlay').style.display='flex';};
+
+window.deleteBauer=async id=>{if(confirm('Bauer löschen?'))await remove(ref(db,'bauern/'+id));};
+
+// ══════════════════════════════════════════════════════════════════════════════
+//  HERDE
+// ══════════════════════════════════════════════════════════════════════════════
+
+window.showWeideForm=function(){document.getElementById('weide-overlay').style.display='flex';};
+
+window.saveWeide=async function(){
+  const name=document.getElementById('w-name')?.value.trim();
+  if(!name){alert('Weide-Name eingeben');return;}
+  const data = {
+    name,
+    ha:parseFloat(document.getElementById('w-ha')?.value)||null,
+    notiz:document.getElementById('w-notiz')?.value.trim()
+  };
+  try {
+    const pushRef = firebase.database().ref('weiden').push(data);
+    const newId = pushRef.key;
+    await pushRef;
+    // Lokal sofort eintragen für sofortiges UI-Update
+    try { window.weiden = window.weiden || {}; window.weiden[newId] = data; if(typeof weiden !== 'undefined') weiden[newId] = data; } catch(x) {}
+    window.showSaveToast && showSaveToast('✓ Weide „'+name+'" angelegt');
+    closeForm('weide-overlay');
+    setTimeout(() => { try { render(); } catch(e){} }, 50);
+  } catch(e) {
+    console.error('saveWeide:', e);
+    alert('Fehler beim Speichern: '+(e.message||e));
+  }
+};
+
+window.deleteWeide=async id=>{if(confirm('Weide löschen?'))await remove(ref(db,'weiden/'+id));};
+
+window.showWeideTagForm=function(){
+  const ov=document.getElementById('weidetag-overlay');
+  if(!ov){navigate('weide');setTimeout(()=>showWeideTagForm(),150);return;}
+  ov.style.display='flex';
+  // Filter setzen: Standardmäßig "Melkkühe" wenn vorhanden, sonst "Alle"
+  setTimeout(()=>{
+    const melkChip = ov.querySelector('.filter-chip[data-wf="Melkkühe"]') ||
+                     ov.querySelector('.filter-chip[data-wf="Melkkuehe"]');
+    if(melkChip) {
+      setWeideFilter(melkChip.dataset.wf, melkChip);
+      // Nur sichtbare (Melkkühe) automatisch ankreuzen, Rest abwählen
+      ov.querySelectorAll('.kuh-select-chip').forEach(chip => {
+        const cb = chip.querySelector('.kuh-cb');
+        if(!cb) return;
+        cb.checked = chip.style.display !== 'none';
+      });
+    } else {
+      const allChip = ov.querySelector('.filter-chip[data-wf=""]');
+      if(allChip) setWeideFilter('', allChip);
+    }
+    updateWeideCount();
+  }, 30);
+};
+
+// Gruppen-Filter im Weidetag-Erfassdialog
+window.setWeideFilter = function(gName, btn) {
+  const ov = document.getElementById('weidetag-overlay');
+  if(!ov) return;
+  // Chip-Highlight
+  ov.querySelectorAll('.filter-chip[data-wf]').forEach(c=>c.classList.remove('active'));
+  if(btn) btn.classList.add('active');
+  // Kuh-Chips ein/ausblenden
+  ov.querySelectorAll('.kuh-select-chip').forEach(chip=>{
+    if(!gName) { chip.style.display = ''; return; }
+    const gList = (chip.dataset.gruppen||'').split('|').filter(Boolean);
+    const kuhId = chip.dataset.kuhId;
+    // Fallback über gruppen.mitglieder
+    let inMit = false;
+    if(window.gruppen) {
+      for(const g of Object.values(window.gruppen)) {
+        if(g && g.name === gName && g.mitglieder && g.mitglieder[kuhId]) { inMit = true; break; }
+      }
+    }
+    chip.style.display = (gList.includes(gName) || inMit) ? '' : 'none';
+  });
+  updateWeideCount();
+};
+
+// Live-Counter „X von Y ausgewählt"
+window.updateWeideCount = function() {
+  const ov = document.getElementById('weidetag-overlay');
+  if(!ov) return;
+  const sichtbar = [...ov.querySelectorAll('.kuh-select-chip')].filter(c=>c.style.display!=='none');
+  const checked = sichtbar.filter(c=>c.querySelector('.kuh-cb')?.checked).length;
+  const cnt = document.getElementById('wt-cb-count');
+  if(cnt) cnt.textContent = checked + ' / ' + sichtbar.length + ' ausgewählt';
+};
+
+window.saveWeideTag=async function(){
+  const datum=document.getElementById('wt-datum')?.value;
+  if(!datum){alert('Datum eingeben');return;}
+  const wv=document.getElementById('wt-weide')?.value;
+  const kuhIds = [...document.querySelectorAll('#weidetag-overlay .kuh-cb:checked')].map(c=>c.value);
+  const data = {
+    datum,
+    weideId: wv && wv!=='__text__' ? wv : '',
+    weideText: wv==='__text__' ? (document.getElementById('wt-freitext')?.value.trim()||'') : '',
+    kuhIds,
+    notiz: document.getElementById('wt-notiz')?.value.trim(),
+    createdAt: Date.now()
+  };
+  try {
+    // Mit Auto-Retry — bei PERMISSION_DENIED: Token refresh + Auto-Login + Retry
+    const _retry = window.withAuthRetry || (async fn => await fn());
+    const pushRef = firebase.database().ref('weideTage').push();
+    const newId = pushRef.key;
+    await _retry(() => pushRef.set(data));
+    // Lokal sofort eintragen — UI zeigt Eintrag sofort ohne auf Listener zu warten
+    try { window.weideTage = window.weideTage || {}; window.weideTage[newId] = data; if(typeof weideTage !== 'undefined') weideTage[newId] = data; } catch(x) {}
+    window.showSaveToast && showSaveToast('✓ Weidegang gespeichert');
+    closeForm('weidetag-overlay');
+    setTimeout(() => { try { render(); } catch(e){} }, 50);
+  } catch(e) {
+    console.error('saveWeideTag:', e);
+    alert('Fehler beim Speichern: '+(e.message||e));
+  }
+};
+
+window.deleteWeideTag=async id=>{
+  if(!confirm('Eintrag löschen?')) return;
+  try {
+    await remove(ref(db,'weideTage/'+id));
+    try { if(window.weideTage?.[id]) delete window.weideTage[id]; if(typeof weideTage !== 'undefined' && weideTage[id]) delete weideTage[id]; } catch(x) {}
+    setTimeout(() => { try { render(); } catch(e){} }, 50);
+  } catch(e) { alert('Fehler beim Löschen: '+(e.message||e)); }
+};
+
+// Detail-Popup für einen Weidegang-Eintrag: zeigt Datum, Weide, Notiz, alle Tiere
+window.showWeideTagDetail = function(id) {
+  const wt = weideTage[id];
+  if(!wt) return;
+  const weideName = weiden[wt.weideId]?.name || wt.weideText || '–';
+  const weideHa   = weiden[wt.weideId]?.ha ? ' ('+weiden[wt.weideId].ha+' ha)' : '';
+  const datumStr  = new Date(wt.datum+'T12:00').toLocaleDateString('de-AT',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
+  const kuhIds    = Array.isArray(wt.kuhIds) ? wt.kuhIds : [];
+
+  // Kühe mit Details holen und sortiert nach Nummer
+  const kuhListe = kuhIds
+    .map(kid => ({ id: kid, k: kuehe[kid] }))
+    .sort((a,b) => (parseInt(a.k?.nr)||0) - (parseInt(b.k?.nr)||0));
+
+  // Gruppieren nach Bauer für bessere Übersicht
+  const nachBauer = {};
+  kuhListe.forEach(({id: kid, k}) => {
+    if(!k) return;
+    const bauer = k.bauer || '(kein Bauer)';
+    if(!nachBauer[bauer]) nachBauer[bauer] = [];
+    nachBauer[bauer].push({ id: kid, k });
+  });
+
+  const fehlend = kuhListe.filter(x => !x.k).length;
+
+  const kuhHtml = Object.entries(nachBauer)
+    .sort((a,b) => a[0].localeCompare(b[0]))
+    .map(([bauer, list]) => `
+      <div style="margin-top:.5rem">
+        <div style="font-size:.68rem;color:var(--text3);font-weight:700;letter-spacing:.5px;text-transform:uppercase;margin-bottom:.3rem">${bauer} · ${list.length}</div>
+        <div style="display:flex;flex-wrap:wrap;gap:.3rem">
+          ${list.map(({id: kid, k}) => `
+            <div onclick="closePopup();showKuhDetail('${kid}')" style="background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:.3rem .55rem;font-size:.78rem;cursor:pointer;display:inline-flex;align-items:center;gap:.35rem;transition:background .15s">
+              <span class="nr-badge" style="min-width:auto;padding:1px 6px;font-size:.7rem">#${k.nr}</span>
+              <span>${k.name || '–'}</span>
+            </div>`).join('')}
+        </div>
+      </div>`).join('');
+
+  window.showPopupHTML(
+    '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:.6rem;gap:.6rem">' +
+      '<div>' +
+        '<div style="font-weight:bold;font-size:1rem">' + datumStr + '</div>' +
+        '<div style="font-size:.85rem;color:var(--green);font-weight:600;margin-top:.2rem">🌿 ' + weideName + weideHa + '</div>' +
+      '</div>' +
+      '<div style="font-size:1.3rem;color:var(--gold);font-weight:bold;text-align:right">' +
+        (kuhListe.length || 0) + '<div style="font-size:.65rem;color:var(--text3);font-weight:400">Tiere</div>' +
+      '</div>' +
+    '</div>' +
+    (wt.notiz ? '<div style="background:var(--bg2);border-radius:8px;padding:.5rem .7rem;font-size:.85rem;margin:.5rem 0;white-space:pre-wrap;color:var(--text)">📝 ' + wt.notiz.replace(/</g,'&lt;') + '</div>' : '') +
+    (kuhListe.length ? kuhHtml : '<div style="color:var(--text3);font-size:.85rem;padding:.5rem 0">Keine Tiere zugewiesen</div>') +
+    (fehlend ? '<div style="color:var(--text3);font-size:.72rem;margin-top:.4rem">Hinweis: ' + fehlend + ' Kuh-IDs konnten nicht mehr in der Herde gefunden werden (evtl. gelöscht)</div>' : '') +
+    '<div style="display:flex;gap:.5rem;margin-top:1rem">' +
+      '<button class="btn-secondary" style="flex:1" onclick="closePopup()">Schließen</button>' +
+      '<button class="btn-xs-danger" onclick="closePopup();deleteWeideTag(\'' + id + '\')">Löschen</button>' +
+    '</div>'
+  );
+};
+
+// ══════════════════════════════════════════════════════════════════════════════
+//  BESTANDSBUCH
+// ══════════════════════════════════════════════════════════════════════════════
+
+window.alleKueheWeide=function(an){
+  // Nur sichtbare Tiere (respektiert den Gruppen-Filter)
+  document.querySelectorAll('#weidetag-overlay .kuh-select-chip').forEach(chip=>{
+    if(chip.style.display === 'none') return;
+    const cb = chip.querySelector('.kuh-cb');
+    if(cb) cb.checked = an;
+  });
+  updateWeideCount && updateWeideCount();
+};
+
+// Hilfsfunktion: Zahl mit Komma als Dezimaltrennzeichen formatieren (DE-Locale).
+// Punkt-Werte werden in Excel-DE sonst als Datum interpretiert (8.3 \u2192 8. M\u00e4rz).
+function _csvNum(v) {
+  if(v === '' || v == null) return '';
+  const n = parseFloat(v);
+  if(isNaN(n)) return '';
+  return String(n).replace('.', ',');
+}
 // CSV-sicher: Komma \u2192 wird Quotes brauchen damit der Wert nicht als Separator z\u00e4hlt
 function _csvCell(v) {
   const s = String(v == null ? '' : v);
