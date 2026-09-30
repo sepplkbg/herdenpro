@@ -222,7 +222,7 @@ window.exportSyncJSON = function() {
     if(m.art === 'prokuh' && m.prokuh) {
       Object.entries(m.prokuh).forEach(([kuhId, liter]) => {
         if(!milchWochen[kuhId]) milchWochen[kuhId] = {};
-        milchWochen[kuhId][wKey] = (milchWochen[kuhId][wKey]||0) + liter;
+        milchWochen[kuhId][wKey] = (milchWochen[kuhId][wKey]||0) + (window.milchWert ? window.milchWert(liter) : (parseFloat(liter)||0));   // v54.33: v2-Werte sind Objekte
       });
     }
   });
@@ -273,7 +273,8 @@ window.exportSyncJSON = function() {
   a.download = 'herdenpro_sync_' + datum + '.json';
   a.click();
 
-  document.getElementById('sync-status').innerHTML = 
+  const _syncSt = document.getElementById('sync-status') || {};   // v54.33: Element gibt es nicht mehr überall
+  _syncSt.innerHTML = 
     '✓ Exportiert: ' + datum + ' · Jetzt Datei in OneDrive speichern';
 };
 
@@ -8125,7 +8126,7 @@ window.computeMilchBericht = function(datumTs, zeit) {
     if(e.datum >= startTag.getTime() && e.datum < endeTag) return; // heute überspringen
     if((e.zeit || 'morgen') !== zeit) return;
     Object.entries(e.prokuh).forEach(([kuhId, l]) => {
-      if((parseFloat(l)||0) > 0) kuhMitWerten.add(kuhId);
+      if((window.milchWert?window.milchWert(l):(parseFloat(l)||0)) > 0) kuhMitWerten.add(kuhId);
     });
   });
   Object.keys(prokuh).forEach(kuhId => kuhMitWerten.delete(kuhId));

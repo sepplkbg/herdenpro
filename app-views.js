@@ -7181,7 +7181,7 @@ window.exportJahresbericht = function(saisonKey) {
   // Milch pro Kuh
   var kuhMilch = {};
   milchListe.forEach(function(m){
-    if(m.prokuh) Object.entries(m.prokuh).forEach(function(e){kuhMilch[e[0]]=(kuhMilch[e[0]]||0)+(parseFloat(e[1])||0);});
+    if(m.prokuh) Object.entries(m.prokuh).forEach(function(e){kuhMilch[e[0]]=(kuhMilch[e[0]]||0)+(window.milchWert?window.milchWert(e[1]):(parseFloat(e[1])||0));});
   });
 
   // Behandlungen
@@ -7482,7 +7482,7 @@ window.closePopup = function() {
 window.exportMolkereiExcel = function() {
   // Wir brauchen SheetJS (XLSX library)
   if(typeof XLSX === 'undefined') {
-    alert('Bibliothek wird geladen, bitte nochmal tippen...');
+    // v54.34: lädt lokal und exportiert danach automatisch (kein "nochmal tippen" → sonst doppelte Datei)
     const s=document.createElement('script');
     s.src='lib/xlsx.full.min.js';
     s.onload=()=>exportMolkereiExcel();
@@ -7509,7 +7509,7 @@ window.exportMolkereiExcel = function() {
     if(m.art === 'prokuh' && m.prokuh) {
       Object.entries(m.prokuh).forEach(([kuhId, liter]) => {
         if(!wochenMilch[kuhId]) wochenMilch[kuhId] = {};
-        wochenMilch[kuhId][wKey] = (wochenMilch[kuhId][wKey]||0) + liter;
+        wochenMilch[kuhId][wKey] = (wochenMilch[kuhId][wKey]||0) + (window.milchWert?window.milchWert(liter):(parseFloat(liter)||0));
       });
     } else if(m.art === 'gesamt') {
       // Gesamtmenge gleichmäßig auf alle aufgetriebenen Kühe verteilen
@@ -8525,7 +8525,7 @@ function renderKraftfutter() {
   Object.values(milchEintraege).forEach(e => {
     if(e.prokuh) Object.entries(e.prokuh).forEach(([kid,l]) => {
       if(!tagesMilch[kid]) tagesMilch[kid] = [];
-      tagesMilch[kid].push(parseFloat(l)||0);
+      tagesMilch[kid].push((window.milchWert?window.milchWert(l):(parseFloat(l)||0)));
     });
   });
   const milchSchnitt = {};
