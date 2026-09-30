@@ -2400,7 +2400,7 @@ function renderMilch() {
     <div class="stats-grid" style="grid-template-columns:1fr 1fr 1fr">
       <div class="stat-card"><div class="stat-icon" style="font-size:.9rem">Ø/Tag</div><div class="stat-num" style="font-size:1.4rem">${avgProTagSaison || '–'}L</div><div class="stat-label">Saison (${tageSaisonBerechnet} Tage)</div></div>
       <div class="stat-card"><div class="stat-icon" style="font-size:.9rem">Gesamt</div><div class="stat-num" style="font-size:1.4rem">${gesamtSaisonCarry}L</div><div class="stat-label">Saison · Carry-Forward</div></div>
-      <div class="stat-card" onclick="exportMilchMolkerei()"><div class="stat-icon">📤</div><div class="stat-num" style="font-size:.9rem">Export</div><div class="stat-label">→ Molkerei</div></div>
+      <div class="stat-card" onclick="exportMilchXLSX()"><div class="stat-icon">📤</div><div class="stat-num" style="font-size:.9rem">Export</div><div class="stat-label">→ Molkerei</div></div>
     </div>
 
     ${(chartTageMorgens.length >= 2 || chartTageAbends.length >= 2 || chartTageGesamt.length >= 2) ? `
@@ -3634,9 +3634,7 @@ function _hpMilchKuhZeile(id, k) {
                   `;
                 }
                 // Button-Anzeige: NUR wenn keine aktive Behandlungs-WZ (User-Wunsch)
-                const sperreBtn = !aktiveWzBeh ? `
-                    <button type="button" class="msp-btn" onclick="showMilchSperrePopup('${id}')" style="align-self:flex-start;margin-top:.3rem;padding:.28rem .6rem;font-size:.7rem;background:${aktSperre?'rgba(220,60,60,.15)':'rgba(255,255,255,.05)'};border:1px solid ${aktSperre?'rgba(220,60,60,.5)':'var(--border)'};color:${aktSperre?'var(--red)':'var(--text3)'};border-radius:6px;cursor:pointer;font-family:inherit">${aktSperre?('⚠ Sperre '+aktSperre.tage+'T ('+aktSperre.grund+')'):'⚠ außergew. WZ erfassen'}</button>
-                ` : '';
+                const sperreBtn = '';   // v54.47: „außergew. WZ erfassen“ entfernt – bei schlechter Milch wird eine Behandlung eingetragen
                 return `
                 <div class="milch-kuh-row" data-kid="${id}" data-bauer="${k.bauer||''}" data-wz="${aktiveWzBeh?'1':'0'}" style="${rowStyle}">
                   <div style="display:flex;align-items:center;gap:.5rem">
