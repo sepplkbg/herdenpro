@@ -12,6 +12,10 @@
   // ═══ A13: Was ist neu ═══════════════════════════════════════════════════
   // Neueste Version oben. Nur Punkte, die Nutzer merken.
   const CHANGELOG = [
+    { v: 'v54.38', punkte: [
+      'Sennerei-Produktion: Kesselmilch jetzt auch pro Spezialität',
+      'Übersicht zeigt Kesselmilch Käse, Kesselmilch Spezialitäten und die produzierten Spezialitäten'
+    ]},
     { v: 'v54.31', punkte: [
       'Selbsttest: AA-Menü oben rechts → 🧪 Selbsttest (Bericht kann an den Admin geschickt werden)',
       'Alle Programmteile und Symbole kommen jetzt direkt von der App – schnellerer Start, besser offline'
