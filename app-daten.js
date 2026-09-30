@@ -159,7 +159,7 @@
       if(vorhanden.exists() && !confirm(b.art + ' existiert an dieser Stelle schon wieder.\nMit dem gelöschten Stand überschreiben?')) return;
       await firebase.database().ref(e.pfad).set(e.daten);
       await window._hpRemoveOhnePapierkorb(firebase.database().ref('papierkorb/' + id));
-      if(typeof showToast === 'function') showToast('↩ ' + b.art + ' wiederhergestellt'); else alert('✓ ' + b.art + ' wiederhergestellt');
+      if(typeof window.showToast === 'function') window.showToast('↩ ' + b.art + ' wiederhergestellt'); else alert('✓ ' + b.art + ' wiederhergestellt');
       pkZeichnen();
     } catch(err) { alert('Wiederherstellen fehlgeschlagen: ' + err.message); }
   };

@@ -5873,6 +5873,7 @@ window.spDraw = function(W,H) {
   // ── Elemente ──
   var elemente = stall.elemente || [];
   elemente.forEach(function(el,ei) {
+    window._spZeichneStall = stall;   // v54.33: spDrawElement braucht den Stall (Box-Nummer)
     spDrawElement(ctx, el, ei);
   });
 
@@ -5990,7 +5991,7 @@ window.spDrawElement = function(ctx, el, ei) {
       ctx.fill(); ctx.stroke();
 
       // Box-Nummer (oben links)
-      var boxNr = (stall.elemente||[]).filter(function(e){return e.typ==='box';}).indexOf(el)+1;
+      var boxNr = ((window._spZeichneStall||{}).elemente||[]).filter(function(e){return e.typ==='box';}).indexOf(el)+1;
       ctx.fillStyle='rgba(255,255,255,.3)'; ctx.font=(8/z)+'px sans-serif';
       ctx.textAlign='left'; ctx.textBaseline='top';
       ctx.fillText(boxNr, el.x+3/z, el.y+2/z);
