@@ -978,6 +978,14 @@ window.importSaisonstartExcel = async function(input) {
     // Lokaler Mitglieder-Cache, damit aufeinanderfolgende Kuh-Zuweisungen
     // sich nicht gegenseitig überschreiben (Firebase-Listener ist asynchron).
     const localMembers = {}; // { gruppeId: { kuhId1: true, kuhId2: true } }
+    // v54.42: alle Änderungen sammeln und am Ende in EINEM Schreibvorgang speichern
+    // (vorher 3–5 einzelne Schreibvorgänge pro Kuh → ~45 s für 56 Kühe)
+    const U = {};                 // Pfad → Wert (Multi-Path-Update)
+    const neueGruppen = {};       // gruppeId → komplettes Objekt (inkl. Mitglieder)
+    const neueBauern = {};        // Name → { key, data }
+    const neueKuehe = {};         // Kuhnummer → { key, data }
+    const neueBes = [];           // { kuhId, datum } für Doppel-Prüfung innerhalb der Datei
+    const _neuKey = pfad => firebase.database().ref(pfad).push().key;
 
     // Helfer: Gruppe finden oder anlegen, kuhId zuordnen
     const farben = ['#e74c3c','#e67e22','#f1c40f','#2ecc71','#3498db','#9b59b6','#1abc9c','#34495e','#d35400','#16a085'];
@@ -986,8 +994,8 @@ window.importSaisonstartExcel = async function(input) {
       let gruppeId = Object.entries(window.gruppen||{}).find(([,g])=>g.name===gName)?.[0];
       if(!gruppeId) {
         const col = farben[Object.keys(window.gruppen||{}).length % farben.length];
-        const r = await push(ref(db,'gruppen'), {name:gName, farbe:col, createdAt:ts, mitglieder:{}});
-        gruppeId = r.key;
+        gruppeId = _neuKey('gruppen');
+        neueGruppen[gruppeId] = {name:gName, farbe:col, createdAt:ts, mitglieder:{}};
         if(!window.gruppen) window.gruppen = {};
         window.gruppen[gruppeId] = {name:gName, farbe:col, createdAt:ts, mitglieder:{}};
         gruppeCount++;
@@ -998,8 +1006,8 @@ window.importSaisonstartExcel = async function(input) {
         localMembers[gruppeId] = {...existing};
       }
       localMembers[gruppeId][kuhId] = true;
-      // Vollständigen aktuellen Stand schreiben (kein Überschreiben mit Teilmenge)
-      await update(ref(db,'gruppen/'+gruppeId), {mitglieder: localMembers[gruppeId]});
+      if(neueGruppen[gruppeId]) neueGruppen[gruppeId].mitglieder[kuhId] = true;
+      else U['gruppen/' + gruppeId + '/mitglieder/' + kuhId] = true;
     }
 
     for(const row of rows) {
@@ -1041,10 +1049,12 @@ window.importSaisonstartExcel = async function(input) {
 
         const existing = Object.entries(bauern||{}).find(([,b])=>b.name===bauerName);
         if(existing) {
-          await update(ref(db,'bauern/'+existing[0]), bauerData);
+          Object.entries(bauerData).forEach(([f, v]) => { U['bauern/' + existing[0] + '/' + f] = v; });
+        } else if(neueBauern[bauerName]) {
+          Object.assign(neueBauern[bauerName].data, bauerData);           // Bauer kommt in der Datei nochmal vor
         } else {
           bauerData.createdAt = ts;
-          await push(ref(db,'bauern'), bauerData);
+          neueBauern[bauerName] = { key: _neuKey('bauern'), data: bauerData };
           bauerCount++;
         }
       }
@@ -1077,13 +1087,16 @@ window.importSaisonstartExcel = async function(input) {
       let kuhId;
       if(existingKuh) {
         kuhId = existingKuh[0];
-        await update(ref(db,'kuehe/'+kuhId), kuhData);
+        Object.entries(kuhData).forEach(([f, v]) => { U['kuehe/' + kuhId + '/' + f] = v; });
+      } else if(neueKuehe[kuhNr]) {
+        kuhId = neueKuehe[kuhNr].key;                                    // Kuhnummer doppelt in der Datei
+        Object.assign(neueKuehe[kuhNr].data, kuhData);
       } else {
         kuhData.createdAt = ts;
         kuhData.almStatus = 'oben';
         kuhData.laktation = 'melkend';
-        const r = await push(ref(db,'kuehe'), kuhData);
-        kuhId = r.key;
+        kuhId = _neuKey('kuehe');
+        neueKuehe[kuhNr] = { key: kuhId, data: kuhData };
         kuhCount++;
       }
 
@@ -1094,7 +1107,7 @@ window.importSaisonstartExcel = async function(input) {
 
       // ─── BESAMUNG: nur wenn Datum gesetzt ──────────────────────────
       if(besDatum && kuhId) {
-        const dupe = Object.values(besamungen||{}).find(b =>
+        const dupe = Object.values(besamungen||{}).concat(neueBes).find(b =>
           b.kuhId === kuhId && b.datum && Math.abs(b.datum - besDatum) < 86400000);
         if(!dupe) {
           const geburt = new Date(besDatum);
@@ -1102,7 +1115,8 @@ window.importSaisonstartExcel = async function(input) {
           geburt.setDate(geburt.getDate()+10);
           const trock = new Date(geburt.getTime());
           trock.setDate(trock.getDate()-56);
-          await push(ref(db,'besamungen'), {
+          neueBes.push({ kuhId, datum: besDatum });
+          U['besamungen/' + _neuKey('besamungen')] = ({
             kuhId, datum: besDatum, status: 'besamt',
             erwartetGeburt: geburt.getTime(),
             trockenstell: trock.getTime(),
@@ -1112,6 +1126,16 @@ window.importSaisonstartExcel = async function(input) {
           bsCount++;
         }
       }
+    }
+
+    // ── EIN Schreibvorgang für alles ──
+    Object.values(neueBauern).forEach(b => { U['bauern/' + b.key] = b.data; });
+    Object.values(neueKuehe).forEach(k => { U['kuehe/' + k.key] = k.data; });
+    Object.entries(neueGruppen).forEach(([gid, g]) => { U['gruppen/' + gid] = g; });
+    if(statusEl) statusEl.innerHTML = '⏳ Speichere ' + Object.keys(U).length + ' Einträge…';
+    if(Object.keys(U).length) {
+      const _retry = window.withAuthRetry || (async fn => await fn());
+      await _retry(() => firebase.database().ref().update(U));
     }
 
     const msg = '✓ Saisonstart Import abgeschlossen:\n\n'+

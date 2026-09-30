@@ -12,6 +12,9 @@
   // ═══ A13: Was ist neu ═══════════════════════════════════════════════════
   // Neueste Version oben. Nur Punkte, die Nutzer merken.
   const CHANGELOG = [
+    { v: 'v54.42', punkte: [
+      'Saisonstart-Excel wird jetzt in wenigen Sekunden eingelesen (statt fast einer Minute)'
+    ]},
     { v: 'v54.38', punkte: [
       'Sennerei-Produktion: Kesselmilch jetzt auch pro Spezialität',
       'Übersicht zeigt Kesselmilch Käse, Kesselmilch Spezialitäten und die produzierten Spezialitäten'
