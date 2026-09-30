@@ -194,13 +194,17 @@
   // ── Wochen laden/speichern ──
   window.sennereiLadeWochen = function(callback) {
     if(!firebase || !firebase.database) return callback && callback([]);
-    firebase.database().ref('sennerei/wochen').orderByKey().limitToLast(20).once('value')
+    // v54.43: nicht ewig „Lade Wochen…“ – nach 10 s mit Fehlermeldung abbrechen
+    Promise.race([
+      firebase.database().ref('sennerei/wochen').orderByKey().limitToLast(20).once('value'),
+      new Promise((_, rej) => setTimeout(() => rej(new Error('Zeitüberschreitung')), 10000))
+    ])
       .then(snap => {
         const val = snap.val() || {};
         const wochen = Object.entries(val).map(([id, w]) => ({ id, ...w })).sort((a,b) => b.id.localeCompare(a.id));
         callback && callback(wochen);
       })
-      .catch(e => { console.warn('[Sennerei] Wochen laden:', e); callback && callback([]); });
+      .catch(e => { console.warn('[Sennerei] Wochen laden:', e); window._sennereiLadeFehler = (e && e.message) || 'Fehler'; callback && callback([]); });
   };
 
   window.sennereiSpeichereWoche = async function(wocheData) {
@@ -267,6 +271,7 @@
     // Nur EINMAL laden (nicht nach jedem render neu triggern → verhindert Flackern)
     if(_wochenCache === null && !_wochenLoading) {
       _wochenLoading = true;
+      window._sennereiLadeFehler = null;
       window.sennereiLadeWochen(w => {
         _wochenCache = w || [];
         _wochenLoading = false;
@@ -276,7 +281,7 @@
     const wochen = _wochenCache || [];
     return `
       <div class="page-header">
-        <h2>🥛 Sennerei</h2>
+        <h2>📦 Sennerei-Abholung</h2>
         <div style="display:flex;gap:.4rem">
           <button class="btn-primary" onclick="sennereiUploadPdf()">📥 Woche via PDF importieren</button>
         </div>
@@ -293,7 +298,9 @@
 
       <div class="section-title">Aktuelle & vergangene Wochen</div>
       ${_wochenCache === null ? '<div class="empty-state">⏳ Lade Wochen…</div>' :
-        wochen.length === 0
+        window._sennereiLadeFehler
+          ? '<div class="empty-state">⚠ Wochen konnten nicht geladen werden (keine Verbindung?).<br><button class="btn-secondary" style="margin-top:.6rem" onclick="sennereiInvalidateCache();render()">↻ Nochmal versuchen</button></div>'
+          : wochen.length === 0
           ? '<div class="empty-state">Noch keine Wochen importiert.<br>Tippe oben auf „📥 Woche via PDF importieren" um zu starten.</div>'
           : ''}
       <div class="card-list">

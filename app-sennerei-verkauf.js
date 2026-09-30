@@ -122,7 +122,7 @@
 
     return `
       <div class="page-header">
-        <h2>💰 Sennerei — Verkauf</h2>
+        <h2>💰 Sennerei-Verkauf</h2>
       </div>
 
       ${typeof window._renderSennereiTabs === 'function' ? window._renderSennereiTabs('verkauf') : ''}
