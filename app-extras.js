@@ -12,6 +12,11 @@
   // ═══ A13: Was ist neu ═══════════════════════════════════════════════════
   // Neueste Version oben. Nur Punkte, die Nutzer merken.
   const CHANGELOG = [
+    { v: 'v54.46', punkte: [
+      'Milchliste: Einfach die gemessenen Liter eintragen – die App rechnet Verworfen & Co. selbst',
+      'Wartezeit-Hinweis zeigt genau, wie viele Tage als verworfen zählen',
+      'Neue Seitentitel: Sennerei-Abholung und Sennerei-Verkauf'
+    ]},
     { v: 'v54.42', punkte: [
       'Saisonstart-Excel wird jetzt in wenigen Sekunden eingelesen (statt fast einer Minute)'
     ]},
