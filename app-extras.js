@@ -55,14 +55,26 @@
     const ov = document.createElement('div');
     ov.id = 'hp-whatsnew';
     ov.style.cssText = 'position:fixed;inset:0;z-index:99500;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;padding:1rem';
+    // v54.37: Fenster passt immer auf den Bildschirm – Liste scrollt, Knopf + ✕ bleiben sichtbar
+    const MAX = 8;
+    const punkte = eintrag.punkte.slice(0, MAX);
+    const mehr = eintrag.punkte.length - punkte.length;
     ov.innerHTML =
-      '<div style="background:var(--bg2);border:1px solid var(--gold2);border-radius:14px;max-width:420px;width:100%;padding:1.1rem 1.2rem;box-shadow:var(--shadow)">' +
-        '<div style="font-family:Georgia,serif;color:var(--gold);font-size:1.2rem;font-weight:700;margin-bottom:.2rem">✨ Was ist neu</div>' +
-        '<div style="font-size:.75rem;color:var(--text3);margin-bottom:.7rem">HerdenPro ' + esc(eintrag.v) + '</div>' +
-        '<ul style="margin:0 0 1rem 1.1rem;padding:0;color:var(--text);font-size:.9rem;line-height:1.5">' +
-          eintrag.punkte.map(p => '<li>' + esc(p) + '</li>').join('') +
-        '</ul>' +
-        '<button class="btn-primary" style="width:100%" onclick="document.getElementById(\'hp-whatsnew\').remove()">Alles klar</button>' +
+      '<div style="background:var(--bg2);border:1px solid var(--gold2);border-radius:14px;max-width:420px;width:100%;max-height:calc(100vh - 2rem);max-height:calc(100dvh - 2rem);display:flex;flex-direction:column;box-shadow:var(--shadow);overflow:hidden">' +
+        '<div style="display:flex;align-items:flex-start;gap:.5rem;padding:1rem 1.1rem .4rem">' +
+          '<div style="flex:1"><div style="font-family:Georgia,serif;color:var(--gold);font-size:1.2rem;font-weight:700">✨ Was ist neu</div>' +
+          '<div style="font-size:.75rem;color:var(--text3)">HerdenPro ' + esc(eintrag.v) + '</div></div>' +
+          '<button type="button" aria-label="Schließen" onclick="document.getElementById(\'hp-whatsnew\').remove()" style="flex:0 0 auto;width:2.4rem;height:2.4rem;border-radius:50%;border:1px solid var(--border2);background:var(--bg3);color:var(--text);font-size:1.1rem;cursor:pointer">✕</button>' +
+        '</div>' +
+        '<div style="flex:1 1 auto;min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;padding:0 1.1rem">' +
+          '<ul style="margin:0 0 .6rem 1.1rem;padding:0;color:var(--text);font-size:.9rem;line-height:1.5">' +
+            punkte.map(p => '<li>' + esc(p) + '</li>').join('') +
+          '</ul>' +
+          (mehr > 0 ? '<div style="font-size:.78rem;color:var(--text3);margin-bottom:.6rem">… und ' + mehr + ' weitere Verbesserungen</div>' : '') +
+        '</div>' +
+        '<div style="padding:.6rem 1.1rem 1rem;border-top:1px solid var(--border)">' +
+          '<button class="btn-primary" style="width:100%" onclick="document.getElementById(\'hp-whatsnew\').remove()">Alles klar</button>' +
+        '</div>' +
       '</div>';
     ov.addEventListener('click', e => { if(e.target === ov) ov.remove(); });
     document.body.appendChild(ov);

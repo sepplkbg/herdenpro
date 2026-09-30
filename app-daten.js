@@ -694,7 +694,7 @@
     const ov = document.createElement('div');
     ov.id = 'hp-selbsttest';
     ov.style.cssText = 'position:fixed;inset:0;z-index:99500;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;padding:1rem';
-    ov.innerHTML = '<div style="background:var(--bg2);border:1px solid var(--gold2);border-radius:14px;max-width:440px;width:100%;max-height:88vh;overflow:auto;padding:1rem 1.1rem">' +
+    ov.innerHTML = '<div style="background:var(--bg2);border:1px solid var(--gold2);border-radius:14px;max-width:440px;width:100%;max-height:88vh;max-height:calc(100dvh - 2rem);overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;padding:1rem 1.1rem">' +
       '<div style="font-family:Georgia,serif;color:var(--gold);font-size:1.2rem;font-weight:700;margin-bottom:.5rem">🧪 Selbsttest</div>' +
       '<div id="hp-st-liste" style="font-size:.86rem">⏳ Prüfe…</div>' +
       '<div style="display:flex;gap:.5rem;margin-top:.9rem"><button class="btn-secondary" style="flex:1" id="hp-st-kopie">📋 Bericht kopieren</button>' +
