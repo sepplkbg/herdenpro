@@ -14,7 +14,7 @@
   const ARCHIV_PFADE = ['kuehe','bauern','milch','behandlungen','besamungen','weideTage','gruppen','journal',
     'sennerei','milchSperren','schalmtest','zellzahl','kaese_produktion','zaehlung','zaehlVerlauf',
     'kraftfutter','kfLieferungen','aufgaben','kalenderTermine','traenkeLog','klauenpflege',
-    'stallplan','stallplanV','fotos','chat','weiden','almKarteWeiden'];
+    'stallplan','stallplanV2','fotos','chat','weiden','almKarteWeiden'];
   // Was bleibt: kontakte, benutzer, saisonArchiv (Kennzahlen), wartung (Maschinen), lager, spielScores
   window.HP_ARCHIV_PFADE = ARCHIV_PFADE;
 
@@ -56,7 +56,9 @@
     // 1) Alles lesen
     const daten = {}, zaehler = {};
     for(const p of ARCHIV_PFADE) {
-      const snap = await db.ref(p).once('value');
+      let snap;
+      try { snap = await db.ref(p).once('value'); }
+      catch(e) { if(/permission/i.test(e.message)) { console.warn('[Archiv] übersprungen (keine Leserechte):', p); continue; } throw e; }   // v54.35
       if(snap.exists()) { daten[p] = snap.val(); zaehler[p] = _cnt(daten[p]); }
     }
     // 2) Freien Archiv-Schlüssel wählen (2026, 2026-2, …)
