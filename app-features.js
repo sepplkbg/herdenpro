@@ -2553,7 +2553,7 @@ function renderMilch() {
               <input id="mq-liter" class="inp" type="text" inputmode="decimal" placeholder="Liter" autocomplete="off" style="flex:1;min-width:0;text-align:center;font-weight:700;font-size:1rem;padding:.4rem .3rem" onkeydown="milchQuickKey(event)" onfocus="this.select()" />
               <button onclick="milchQuickAdd()" class="btn-primary" style="padding:.45rem .8rem;font-size:1.1rem;flex-shrink:0;min-width:2.5rem;line-height:1">→</button>
             </div>
-            <div style="font-size:.72rem;color:var(--text3);margin-bottom:.5rem">Liter pro Kuh · 0 oder leer = nicht gemolken · <span style="color:var(--gold)">⚡ = Schnell-Eingabe</span></div>
+            <div style="font-size:.78rem;color:var(--text2);background:rgba(122,203,255,.08);border:1px solid rgba(122,203,255,.3);border-radius:8px;padding:.45rem .6rem;margin-bottom:.5rem;line-height:1.45">ℹ <b>Einfach die gemessenen Liter eintragen</b> – auch bei Kühen mit Wartezeit. Nichts ausrechnen: Verworfen, Molkerei/Sennerei und Summen rechnet die App.<div style="font-size:.72rem;color:var(--text3);margin-top:.15rem">0 oder leer = nicht gemolken · <span style="color:var(--gold)">⚡ = Schnell-Eingabe</span></div></div>
             <div id="m-bauer-filter" style="display:flex;gap:.3rem;flex-wrap:wrap;margin-bottom:.6rem">
               <button class="filter-chip active" onclick="filterMilchBauer('',this)">Alle</button>
               ${[...new Set(kueheOben.map(([,k])=>k.bauer).filter(Boolean))].map(b=>`<button class="filter-chip" onclick="filterMilchBauer('${b}',this)">${b.split(' ').pop()}</button>`).join('')}
@@ -3595,11 +3595,13 @@ function _hpMilchKuhZeile(id, k) {
                 if(aktiveWzBeh) {
                   const tageRest = Math.ceil((aktiveWzBeh.wzMilchEnde - heute) / 86400000);
                   const restText = tageRest === 1 ? '1 Tag' : tageRest+' Tage';
+                  const _e = new Date(aktiveWzBeh.wzMilchEnde);
+                  const endeText = _e.toLocaleDateString('de-AT',{weekday:'short',day:'2-digit',month:'2-digit'}) + (_e.getHours() < 12 ? ' früh' : ' abends');
                   rowStyle += ';border-left:4px solid #e67e22;padding-left:.4rem';
                   wzHinweis = `
                     <div class="wz-hinweis" style="display:flex;align-items:center;gap:.5rem;background:rgba(230,126,34,.12);border:1px solid rgba(230,126,34,.35);border-radius:6px;padding:.35rem .55rem;margin:.3rem 0 .1rem;font-size:.75rem">
                       <span style="font-size:.95rem">⚠</span>
-                      <span style="color:#e67e22;font-weight:700;flex:1">${restText} keine Milch (Wartezeit)</span>
+                      <span style="color:#e67e22;font-weight:700;flex:1">Wartezeit noch ${restText} (bis ${endeText})<br><span style="font-weight:500;color:var(--text2)">Liter normal eintragen – wird automatisch als verworfen gezählt</span></span>
                       <label style="display:inline-flex;align-items:center;gap:.3rem;font-size:.72rem;color:var(--text2);cursor:pointer;white-space:nowrap">
                         <input type="checkbox" class="wz-beachtet-cb" data-kuh="${id}"
                           onchange="onWzBeachtet(this)"
@@ -3610,14 +3612,14 @@ function _hpMilchKuhZeile(id, k) {
                   `;
                 } else if(vergangeneWzBeh) {
                   // Vergangene WZ diese Woche: rote Info (Milch dieser Woche wird als verworfen gezählt)
-                  const wzStart = vergangeneWzBeh.datum || (vergangeneWzBeh.wzMilchEnde - (vergangeneWzBeh.wzMilchTage||0)*86400000);
+                  const wzStart = (window.hpWzStartTs && window.hpWzStartTs(vergangeneWzBeh)) || vergangeneWzBeh.datum || (vergangeneWzBeh.wzMilchEnde - (vergangeneWzBeh.wzMilchTage||0)*86400000);
                   const dt = (ts) => new Date(ts).toLocaleDateString('de-AT',{day:'2-digit',month:'2-digit'});
-                  const tageWz = Math.max(1, Math.ceil((vergangeneWzBeh.wzMilchEnde - wzStart) / 86400000));
+                  const tageWz = Math.max(1, Math.round((vergangeneWzBeh.wzMilchEnde - wzStart) / 86400000));   // v54.46
                   rowStyle += ';border-left:4px solid var(--red);padding-left:.4rem';
                   wzHinweis = `
                     <div class="wz-hinweis-vergangen" style="display:flex;align-items:center;gap:.5rem;background:rgba(220,60,60,.12);border:1px solid rgba(220,60,60,.35);border-radius:6px;padding:.35rem .55rem;margin:.3rem 0 .1rem;font-size:.72rem">
                       <span style="font-size:.9rem">⚠</span>
-                      <span style="color:var(--red);font-weight:700;flex:1">WZ ${dt(wzStart)}–${dt(vergangeneWzBeh.wzMilchEnde)} (${tageWz} Tage) — Milch dieser Woche wird als verworfen gezählt</span>
+                      <span style="color:var(--red);font-weight:700;flex:1">${tageWz === 1 ? '1 Tag' : tageWz + ' Tage'} Wartezeit (${dt(wzStart)}–${dt(vergangeneWzBeh.wzMilchEnde)}) werden als verworfen gezählt<br><span style="font-weight:500;color:var(--text2)">Die übrigen Tage zählen normal</span></span>
                     </div>
                   `;
                 } else if(aktSperre) {
@@ -3702,7 +3704,7 @@ window.renderMilchErfassen = function() {
         <input id="mq-liter" class="inp" type="text" inputmode="decimal" placeholder="Liter" autocomplete="off" style="flex:1;min-width:0;text-align:center;font-weight:700;font-size:1rem;padding:.4rem .3rem" onkeydown="milchQuickKey(event)" onfocus="this.select()" />
         <button onclick="milchQuickAdd()" class="btn-primary" style="padding:.45rem .8rem;font-size:1.1rem;flex-shrink:0;min-width:2.5rem;line-height:1">→</button>
       </div>
-      <div style="font-size:.72rem;color:var(--text3);margin-bottom:.5rem">Liter pro Kuh · 0 oder leer = nicht gemolken · <span style="color:var(--gold)">⚡ = Schnell-Eingabe</span></div>
+      <div style="font-size:.78rem;color:var(--text2);background:rgba(122,203,255,.08);border:1px solid rgba(122,203,255,.3);border-radius:8px;padding:.45rem .6rem;margin-bottom:.5rem;line-height:1.45">ℹ <b>Einfach die gemessenen Liter eintragen</b> – auch bei Kühen mit Wartezeit. Nichts ausrechnen: Verworfen, Molkerei/Sennerei und Summen rechnet die App.<div style="font-size:.72rem;color:var(--text3);margin-top:.15rem">0 oder leer = nicht gemolken · <span style="color:var(--gold)">⚡ = Schnell-Eingabe</span></div></div>
       <div id="m-bauer-filter" style="display:flex;gap:.3rem;flex-wrap:wrap;margin-bottom:.6rem">
         <button class="filter-chip active" onclick="filterMilchBauer('',this)">Alle</button>
         ${[...new Set(kueheOben.map(([,k])=>k.bauer).filter(Boolean))].map(b=>`<button class="filter-chip" onclick="filterMilchBauer('${b}',this)">${b.split(' ').pop()}</button>`).join('')}

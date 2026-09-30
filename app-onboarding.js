@@ -29,7 +29,7 @@
       icon: '🥛',
       title: 'Milch messen',
       subtitle: 'Morgens und abends — schnell erfasst',
-      body: 'Über <b>„Milch"</b> → „+ Neu" das Datum wählen, Morgen oder Abend, und pro Kuh die Liter eintippen.<br><br>Der <b>Schnell-Eingabe-Modus</b> spart Zeit: Nummer + Liter + Enter.<br><br>Die App rechnet Gesamt, Durchschnitt, Vergleich zum Vortag automatisch.',
+      body: 'Über <b>„Milch"</b> → „+ Neu" das Datum wählen, Morgen oder Abend, und pro Kuh die Liter eintippen.<br><br>Der <b>Schnell-Eingabe-Modus</b> spart Zeit: Nummer + Liter + Enter.<br><br><b>Einfach die gemessenen Liter eintragen</b> – auch bei Kühen mit Wartezeit. Nichts ausrechnen: Gesamt, Verworfen, Molkerei/Sennerei und Durchschnitt rechnet die App automatisch.',
       bg: 'linear-gradient(160deg,#1a2a10,#0c1a09)'
     },
     {
