@@ -6481,7 +6481,7 @@ function renderSaisonvergleich() {
   const milchGesamt = _saisonCf.gesamt;
   const kuhListe = Object.values(kuehe);
   const alpungTage = saisonInfo?.auftriebDatum
-    ? Math.floor((heute - saisonInfo.auftriebDatum)/86400000)+1 : 0;
+    ? Math.max(0, Math.floor(((saisonInfo.saisonEndeDatum || heute) - saisonInfo.auftriebDatum)/86400000)+1) : 0;
   // Ø-Berechnung: Gesamt / gerechnete Tage (Carry-Forward-Basis)
   const schnittMilch = _saisonCf.tage > 0 ? Math.round(milchGesamt / _saisonCf.tage * 2) : 0; // *2 weil tage morgens+abends getrennt zählt
   const tagesMilch = {};
@@ -6708,7 +6708,7 @@ window.saveSaisonArchiv = async function() {
   // Carry-Forward für Gesamt (analog Blatt Milch)
   const _cfSA = typeof window.computeCarryForwardGesamt === 'function' ? window.computeCarryForwardGesamt() : {gesamt:0, tage:0};
   const milchGesamt = _cfSA.gesamt;
-  const alpungTage = saisonInfo?.auftriebDatum ? Math.floor((heute - saisonInfo.auftriebDatum) / 86400000)+1 : 0;
+  const alpungTage = saisonInfo?.auftriebDatum ? Math.max(0, Math.floor(((saisonInfo.saisonEndeDatum || heute) - saisonInfo.auftriebDatum) / 86400000)+1) : 0;
   const schnittMilch = _cfSA.tage > 0 ? Math.round(milchGesamt / _cfSA.tage * 2) : 0;
   const bsGesamt = Object.values(besamungen).length;
   const bsErfolg = Object.values(besamungen).filter(b=>b.status==='tragend').length;

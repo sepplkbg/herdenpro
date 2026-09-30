@@ -89,7 +89,7 @@
     const _mW = window.milchWert || function(v){ return typeof v === 'number' ? v : (v && v.wert != null ? parseFloat(v.wert)||0 : parseFloat(v)||0); };
 
     const alpungTage = saisonInfo?.auftriebDatum
-      ? Math.floor((heute - saisonInfo.auftriebDatum)/86400000) + 1
+      ? Math.max(0, Math.floor(((saisonInfo.saisonEndeDatum || heute) - saisonInfo.auftriebDatum)/86400000) + 1)   // v54.36: bis Saisonende, nie negativ
       : Object.keys(window.hpMilchDerSaison ? window.hpMilchDerSaison() : milchEintraege).length > 0
         ? Math.floor((heute - Math.min(...Object.values(window.hpMilchDerSaison ? window.hpMilchDerSaison() : milchEintraege).map(m => m.datum || heute)))/86400000) + 1
         : 0;

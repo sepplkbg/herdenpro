@@ -2881,7 +2881,7 @@ function renderSaison() {
   const vorzeitig = kuhListe.filter(([,k])=>k.almStatus==='vorzeitig');
   const unten     = kuhListe.filter(([,k])=>k.almStatus!=='oben' && k.almStatus!=='vorzeitig');
   const heute = Date.now();
-  const tageOben = saisonInfo?.auftriebDatum ? Math.floor((heute - saisonInfo.auftriebDatum)/86400000) : 0;
+  const tageOben = saisonInfo?.auftriebDatum ? Math.max(0, Math.floor((heute - saisonInfo.auftriebDatum)/86400000)) : 0;
 
   return `
     <div class="page-header"><h2>⛰ Saison</h2></div>
@@ -3550,7 +3550,7 @@ window.renderAlpungsKalender = function() {
   if(!auftrieb) return '<div class="empty-state">Keine aktive Saison</div>';
   
   const heute = Date.now();
-  const tage = Math.min(98, Math.floor((heute - auftrieb) / 86400000) + 1);
+  const tage = Math.max(0, Math.min(98, Math.floor((heute - auftrieb) / 86400000) + 1));
   if(tage <= 0) return '<div class="empty-state">Saison noch nicht begonnen</div>';
   
   // Count cows per day from weideTage data
