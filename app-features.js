@@ -4299,9 +4299,9 @@ const ROLE_PERMISSIONS = {
 
 // Hidden modules per role
 var ROLE_HIDDEN_MODULES = {
-  milchmesser: ['zaehlung','weide','behandlung','besamung','bestandsbuch','einstellungen','journal','alpung','kontakte','gruppen','kontrolle','kalender','statistik','backup','suche','chat','kraftfutter','wetter','bauern_menu','saison','__drucken__','sennerei'],
-  molkerei:    ['behandlung','besamung','bestandsbuch','einstellungen','journal','alpung','kontakte','gruppen','kontrolle','chat','kraftfutter','wetter','bauern_menu','zaehlung','__drucken__','sennerei'],
-  sennerei:    ['zaehlung','weide','behandlung','besamung','bestandsbuch','einstellungen','journal','alpung','kontakte','gruppen','kontrolle','kalender','statistik','backup','suche','chat','kraftfutter','wetter','bauern_menu','saison','milch','herde','__drucken__'],
+  milchmesser: ['papierkorb','zaehlung','weide','behandlung','besamung','bestandsbuch','einstellungen','journal','alpung','kontakte','gruppen','kontrolle','kalender','statistik','backup','suche','chat','kraftfutter','wetter','bauern_menu','saison','__drucken__','sennerei'],
+  molkerei:    ['papierkorb','behandlung','besamung','bestandsbuch','einstellungen','journal','alpung','kontakte','gruppen','kontrolle','chat','kraftfutter','wetter','bauern_menu','zaehlung','__drucken__','sennerei'],
+  sennerei:    ['papierkorb','zaehlung','weide','behandlung','besamung','bestandsbuch','einstellungen','journal','alpung','kontakte','gruppen','kontrolle','kalender','statistik','backup','suche','chat','kraftfutter','wetter','bauern_menu','saison','milch','herde','__drucken__'],
   hirte:       ['einstellungen','benutzer','sennerei'],
   admin:       [],
 };
@@ -5922,7 +5922,7 @@ function applyRoleToModules() {
   const user = window._currentUser || {};
   if(user.erlaubteModule && user.erlaubteModule.length > 0) {
     const allowed = new Set(user.erlaubteModule);
-    if(role === 'admin') allowed.add('benutzer');
+    if(role === 'admin') { allowed.add('benutzer'); allowed.add('papierkorb'); }
     window.ALLE_MODULE = window._origAlleModule.filter(m => allowed.has(m.id) || m.id === '__drucken__');
     const nav = (window._mainNav||['dashboard','herde','saison','milch']).filter(id => allowed.has(id));
     if(nav.length < 2) {
@@ -6376,7 +6376,7 @@ window.deleteBenutzer = async function(uid, email) {
           {id:'journal',icon:'📓',label:'Journal'},{id:'alpung',icon:'📊',label:'Alpungstage'},
           {id:'kontakte',icon:'📞',label:'Kontakte'},{id:'gruppen',icon:'🏷',label:'Gruppen'},
           {id:'kontrolle',icon:'🔍',label:'Kontrolle'},{id:'kalender',icon:'📅',label:'Kalender'},
-          {id:'statistik',icon:'📊',label:'Statistik'},{id:'backup',icon:'💾',label:'Backup'},
+          {id:'statistik',icon:'📊',label:'Statistik'},{id:'backup',icon:'💾',label:'Backup'},{id:'papierkorb',icon:'🗑',label:'Papierkorb'},
           {id:'suche',icon:'🔎',label:'Suche'},{id:'chat',icon:'💬',label:'Chat'},
           {id:'kraftfutter',icon:'🌾',label:'Kraftfutter'},{id:'wetter',icon:'⛅',label:'Wetter'},
           {id:'kaese',icon:'🧀',label:'Käse'},{id:'bauern_menu',icon:'👥',label:'Bauern'},
@@ -6712,7 +6712,7 @@ window.deleteBenutzer = async function(uid, email) {
               {id:'journal',icon:'📓',label:'Journal'},{id:'alpung',icon:'📊',label:'Alpungstage'},
               {id:'kontakte',icon:'📞',label:'Kontakte'},{id:'gruppen',icon:'🏷',label:'Gruppen'},
               {id:'kontrolle',icon:'🔍',label:'Kontrolle'},{id:'kalender',icon:'📅',label:'Kalender'},
-              {id:'statistik',icon:'📊',label:'Statistik'},{id:'backup',icon:'💾',label:'Backup'},
+              {id:'statistik',icon:'📊',label:'Statistik'},{id:'backup',icon:'💾',label:'Backup'},{id:'papierkorb',icon:'🗑',label:'Papierkorb'},
               {id:'suche',icon:'🔎',label:'Suche'},{id:'chat',icon:'💬',label:'Chat'},
               {id:'kraftfutter',icon:'🌾',label:'Kraftfutter'},{id:'wetter',icon:'⛅',label:'Wetter'},
               {id:'kaese',icon:'🧀',label:'Käse'},{id:'bauern_menu',icon:'👥',label:'Bauern'},

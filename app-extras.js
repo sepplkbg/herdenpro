@@ -12,6 +12,9 @@
   // ═══ A13: Was ist neu ═══════════════════════════════════════════════════
   // Neueste Version oben. Nur Punkte, die Nutzer merken.
   const CHANGELOG = [
+    { v: 'v54.51', punkte: [
+      'Neu unter „Mehr“: 🗑 Papierkorb – gelöschte Einträge 30 Tage lang zurückholen'
+    ]},
     { v: 'v54.50', punkte: [
       'Herdenzählung & Kontrolle: Bei jeder Kuh steht jetzt die Ohrmarke (Suche nach Ohrmarke möglich)',
       'Behandlung löschen: klare Meldung, falls die Anmeldung abgelaufen ist'
