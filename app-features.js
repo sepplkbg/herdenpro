@@ -2917,7 +2917,6 @@ function renderWeide() {
   const verlauf = weideFilter
     ? alleVerlauf.filter(([,w]) => w.weideId === weideFilter)
     : alleVerlauf;
-  const verlaufLimited = verlauf.slice(0, 30);
   return `
     <div class="page-header"><h2>🌿 Weidegang</h2><button class="btn-primary" onclick="showWeideTagForm()">+ Heute</button></div>
     <div class="section-title">Weiden <button class="btn-xs" style="margin-left:.5rem" onclick="showWeideForm()">+ anlegen</button></div>
@@ -2930,7 +2929,7 @@ function renderWeide() {
       ${heuteEintrag[1].notiz?`<div class="info-row"><span>Notiz</span><span>${heuteEintrag[1].notiz}</span></div>`:''}
       <button class="btn-xs-danger" style="margin-top:.4rem" onclick="deleteWeideTag('${heuteEintrag[0]}')">Löschen</button>
     </div>`:''}
-    <div class="section-title">Verlauf ${weideFilter?`<span style="color:var(--gold);font-size:.75rem;font-weight:400">· gefiltert</span>`:''}</div>
+    <div class="section-title">Verlauf ${weideFilter?`<span style="color:var(--gold);font-size:.75rem;font-weight:400">· gefiltert</span>`:''}${verlauf.length?`<button class="btn-xs" style="margin-left:auto" onclick="exportWeidePdf()">📄 PDF</button>`:''}</div>
     ${weidenListe.length > 0 ? `
     <!-- Filter-Chips: nach Weide filtern -->
     <div style="display:flex;flex-wrap:wrap;gap:.3rem;margin-bottom:.6rem;padding:.35rem 0">
@@ -2942,7 +2941,7 @@ function renderWeide() {
       }).filter(Boolean).join('')}
     </div>` : ''}
     <div class="card-list">
-      ${verlaufLimited.length?verlaufLimited.map(([id,w])=>`
+      ${verlauf.length?verlauf.map(([id,w])=>`
         <div class="list-card" onclick="showWeideTagDetail('${id}')" style="cursor:pointer">
           <div class="list-card-left">
             <div>
@@ -2954,7 +2953,7 @@ function renderWeide() {
           <button class="btn-xs-danger" onclick="event.stopPropagation();deleteWeideTag('${id}')">✕</button>
         </div>`).join(''):`<div class="empty-state">${weideFilter?'Keine Einträge für diese Weide':'Noch keine Einträge'}</div>`}
     </div>
-    ${verlauf.length > 30 ? `<div style="text-align:center;font-size:.72rem;color:var(--text3);margin-top:.4rem">Nur die letzten 30 von ${verlauf.length} Einträgen angezeigt</div>` : ''}
+    ${verlauf.length ? `<div style="text-align:center;font-size:.72rem;color:var(--text3);margin-top:.4rem">${verlauf.length} Einträge</div>` : ''}
     <div id="weidetag-overlay" class="form-overlay" style="display:none">
       <div class="form-sheet">
         <div class="form-header"><h3>Weidegang erfassen</h3><button class="close-btn" onclick="closeForm('weidetag-overlay')">✕</button></div>
@@ -5325,6 +5324,79 @@ window.druckeBestandsbuch=function(){
 // ══════════════════════════════════════════════════════════════════════════════
 //  EINSTELLUNGEN
 // ══════════════════════════════════════════════════════════════════════════════
+
+// ══════════════════════════════════════════════════════════════════════════════
+//  WEIDE-VERLAUF → PDF (Druckfenster → „Als PDF speichern")
+//  Exportiert ALLE Weideeinträge (bzw. nur die gefilterte Weide, falls aktiv)
+// ══════════════════════════════════════════════════════════════════════════════
+window.exportWeidePdf = function() {
+  const e = s => String(s == null ? '' : s).replace(/[<>&"']/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;',"'":'&#39;'})[c]);
+  const alm  = saisonInfo?.alm  || 'Alm';
+  const jahr = saisonInfo?.jahr || new Date().getFullYear();
+  const filterId = window._weideVerlaufFilter || '';
+  const weideName = w => weiden[w.weideId]?.name || w.weideText || '–';
+  // chronologisch aufsteigend (Dokument liest sich von Auftrieb bis Abtrieb)
+  const liste = Object.values(weideTage || {})
+    .filter(w => w && w.datum && (!filterId || w.weideId === filterId))
+    .sort((a, b) => a.datum.localeCompare(b.datum));
+  if (!liste.length) { alert('Keine Weideeinträge vorhanden.'); return; }
+
+  const tierTxt = id => { const k = kuehe[id]; return k ? '#' + (k.nr || '?') + (k.name ? ' ' + k.name : '') : '(gelöschtes Tier)'; };
+  const rows = liste.map((w, i) => {
+    const ids = Array.isArray(w.kuhIds) ? w.kuhIds : Object.values(w.kuhIds || {});
+    const tiere = ids.map(tierTxt).sort((a, b) => (parseInt(a.slice(1)) || 0) - (parseInt(b.slice(1)) || 0)).join(', ');
+    const d = new Date(w.datum + 'T12:00');
+    return '<tr>' +
+      '<td>' + (i + 1) + '</td>' +
+      '<td style="white-space:nowrap">' + e(d.toLocaleDateString('de-AT', {weekday:'short'})) + ' ' + e(d.toLocaleDateString('de-AT')) + '</td>' +
+      '<td>' + e(weideName(w)) + '</td>' +
+      '<td style="text-align:right">' + ids.length + '</td>' +
+      '<td class="tiere">' + e(tiere || '–') + '</td>' +
+      '<td>' + e(w.notiz || '') + '</td>' +
+      '</tr>';
+  }).join('');
+
+  // Zusammenfassung je Weide
+  const sum = {};
+  liste.forEach(w => { const n = weideName(w); sum[n] = sum[n] || {tage:0, tiere:0}; sum[n].tage++; sum[n].tiere += (Array.isArray(w.kuhIds) ? w.kuhIds.length : Object.keys(w.kuhIds || {}).length); });
+  const sumRows = Object.entries(sum).sort((a, b) => b[1].tage - a[1].tage).map(([n, v]) =>
+    '<tr><td>' + e(n) + '</td><td style="text-align:right">' + v.tage + '</td><td style="text-align:right">' + v.tiere + '</td><td style="text-align:right">' + (v.tiere / v.tage).toFixed(1).replace('.', ',') + '</td></tr>').join('');
+
+  const von = new Date(liste[0].datum + 'T12:00').toLocaleDateString('de-AT');
+  const bis = new Date(liste[liste.length - 1].datum + 'T12:00').toLocaleDateString('de-AT');
+  const titel = 'Weidebuch ' + alm + ' ' + jahr + (filterId ? ' – ' + (weiden[filterId]?.name || '') : '');
+  const css = [
+    'body{font-family:Arial,sans-serif;font-size:9px;margin:0;color:#111}',
+    'h2{font-size:14px;margin:8mm 8mm 3px}',
+    'h3{font-size:11px;margin:6mm 0 2mm}',
+    'p.meta{font-size:8px;color:#555;margin:0 8mm 5mm}',
+    '.wrap{padding:0 8mm 8mm}',
+    'table{width:100%;border-collapse:collapse;font-size:8px}',
+    'thead{display:table-header-group}',
+    'th{background:#1a3a0a;color:#fff;padding:4px 3px;text-align:left;border:1px solid #666;font-size:7.5px;white-space:nowrap}',
+    'td{padding:3px;border:1px solid #ccc;vertical-align:top;word-break:break-word}',
+    'td.tiere{font-size:7px;color:#333}',
+    'tr:nth-child(even) td{background:#f5f5f5}',
+    'tr{page-break-inside:avoid}',
+    'table.sum{width:auto;min-width:50%}',
+    '.foot{margin-top:6mm;font-size:7.5px;color:#888;border-top:1px solid #999;padding-top:3px}',
+    '@media print{@page{size:A4 landscape;margin:8mm}h2,p.meta{margin-left:0;margin-right:0}.wrap{padding:0}}'
+  ].join('');
+  const html_str = '<!DOCTYPE html><html><head><meta charset="UTF-8"><title>' + e(titel) + '</title><style>' + css + '</style></head><body>' +
+    '<h2>🌿 ' + e(titel) + '</h2>' +
+    '<p class="meta">' + liste.length + ' Einträge &nbsp;·&nbsp; ' + e(von) + ' – ' + e(bis) + ' &nbsp;·&nbsp; Erstellt: ' + new Date().toLocaleDateString('de-AT') + ' &nbsp;·&nbsp; Engineering by LNMachinery</p>' +
+    '<div class="wrap">' +
+      '<table><thead><tr><th>Nr.</th><th>Datum</th><th>Weide</th><th>Tiere</th><th>Tierliste</th><th>Notiz</th></tr></thead><tbody>' + rows + '</tbody></table>' +
+      '<h3>Zusammenfassung je Weide</h3>' +
+      '<table class="sum"><thead><tr><th>Weide</th><th>Weidetage</th><th>Tiere gesamt</th><th>Ø Tiere/Tag</th></tr></thead><tbody>' + sumRows + '</tbody></table>' +
+      '<div class="foot">HerdenPro · ' + e(alm) + ' · Saison ' + e(jahr) + ' · Engineering by LNMachinery</div>' +
+    '</div>' +
+    '<scr' + 'ipt>window.onload=function(){setTimeout(function(){window.print();},300);}</' + 'script></body></html>';
+  const w = window.open('', '_blank');
+  if (!w) { alert('Druckfenster wurde blockiert. Bitte Pop-ups für HerdenPro erlauben und nochmal tippen.'); return; }
+  w.document.write(html_str);
+  w.document.close();
+};
 
 window.saveAbtrieb=async function(){
   const datum=document.getElementById('ab-datum')?.value;
