@@ -12,6 +12,10 @@
   // ═══ A13: Was ist neu ═══════════════════════════════════════════════════
   // Neueste Version oben. Nur Punkte, die Nutzer merken.
   const CHANGELOG = [
+    { v: 'v54.50', punkte: [
+      'Herdenzählung & Kontrolle: Bei jeder Kuh steht jetzt die Ohrmarke (Suche nach Ohrmarke möglich)',
+      'Behandlung löschen: klare Meldung, falls die Anmeldung abgelaufen ist'
+    ]},
     { v: 'v54.46', punkte: [
       'Milchliste: Einfach die gemessenen Liter eintragen – die App rechnet Verworfen & Co. selbst',
       'Wartezeit-Hinweis zeigt genau, wie viele Tage als verworfen zählen',

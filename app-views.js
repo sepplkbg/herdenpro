@@ -1728,10 +1728,11 @@ function renderZaehlung() {
               <span>✓ BEREITS ERFASST (${kuhListe.filter(([kid])=>anwesend[kid]).length})</span>
             </div>`;
           }
-          return header + `<div class="list-card list-card-sm zaeh-item" data-search="${(k.nr+' '+(k.name||'')+' '+(k.bauer||'')).toLowerCase()}" style="border-left:3px solid ${da?'var(--green)':'var(--border)'};${da?'opacity:.7':''}">
+          return header + `<div class="list-card list-card-sm zaeh-item" data-search="${(k.nr+' '+(k.name||'')+' '+(k.ohrmarke||'')+' '+String(k.ohrmarke||'').replace(/\s+/g,'')+' '+(k.bauer||'')).toLowerCase()}" style="border-left:3px solid ${da?'var(--green)':'var(--border)'};${da?'opacity:.7':''}">
             <span class="nr-badge">#${k.nr}</span>
             <div style="flex:1;min-width:0">
               <div style="font-size:.88rem;color:${da?'var(--text)':'var(--text2)'}">${k.name||'–'}</div>
+              ${hpOhrmarkeHTML(k)}
               <div style="font-size:.7rem;color:var(--text3)">${k.bauer||''} ${k.gruppe?'· '+k.gruppe:''}</div>
             </div>
             ${da
@@ -1746,6 +1747,12 @@ function renderZaehlung() {
       })()}
     </div>`}
   `;
+}
+// Ohrmarke gut lesbar anzeigen (Zählung + Kontrolle)
+function hpOhrmarkeHTML(k, klein){
+  const om=String((k&&k.ohrmarke)||'').trim();
+  if(!om) return `<div style="font-size:${klein?'.68rem':'.78rem'};color:var(--text3);font-style:italic">keine Ohrmarke</div>`;
+  return `<div class="hp-ohrmarke" style="font-size:${klein?'.72rem':'.85rem'};font-weight:700;color:var(--gold);letter-spacing:.02em;overflow-wrap:anywhere;line-height:1.25">🏷 ${om}</div>`;
 }
 window.setZaehTab=function(t){window._zaehTab=t;render();};
 window.setZaehGruppe=function(g){window._zaehGruppe=g;window._zaehTab='alle';render();};
@@ -3416,6 +3423,7 @@ function renderKontrolle() {
         <button class="kuh-chip" onclick="zaehlKuhById('${id}')">
           <span class="chip-nr">#${k.nr}</span>
           ${k.name?`<span class="chip-kuh">${k.name}</span>`:''}
+          ${k.ohrmarke?`<span style="font-size:.7rem;font-weight:700;color:var(--gold);margin-left:3px">🏷 ${k.ohrmarke}</span>`:''}
           ${k.gruppe?`<span style="font-size:.65rem;color:var(--text3);margin-left:2px">${k.gruppe}</span>`:''}
         </button>`).join('')}
     </div>` : fehlend.length > 50 ? `
@@ -3427,8 +3435,11 @@ function renderKontrolle() {
       ${kuhListe.filter(([id])=>anwesend[id]).map(([id,k])=>`
         <div class="list-card list-card-sm">
           <span class="nr-badge">#${k.nr}</span>
-          <span class="list-card-title">${k.name||''}</span>
-          ${k.gruppe?`<span class="tag tag-gray" style="font-size:.65rem">${k.gruppe}</span>`:''}
+          <div style="flex:1;min-width:0">
+            <div class="list-card-title">${k.name||'–'}</div>
+            ${hpOhrmarkeHTML(k,true)}
+            ${k.gruppe?`<div style="font-size:.65rem;color:var(--text3)">${k.gruppe}</div>`:''}
+          </div>
           <button class="remove-btn" onclick="entferneZaehlung('${id}')">✕</button>
         </div>`).join('')}
     </div>
