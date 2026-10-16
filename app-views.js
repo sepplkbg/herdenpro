@@ -2508,7 +2508,19 @@ window.kp_onDrop = function(ev, toIdx) {
     console.warn('kp_reorder noch nicht implementiert – from:',from,'to:',toIdx);
   }
 };
-window.deleteBehandlung=async id=>{if(confirm('Löschen?'))await remove(ref(db,'behandlungen/'+id));};
+window.deleteBehandlung=async id=>{
+  if(!id||!confirm('Behandlung wirklich löschen?'))return;
+  try{
+    await remove(ref(db,'behandlungen/'+id));
+    if(typeof window.showSaveToast==='function')window.showSaveToast('Behandlung gelöscht');
+  }catch(e){
+    console.error('[deleteBehandlung]',e);
+    const msg=String(e&&(e.message||e.code)||e);
+    alert(/permission/i.test(msg)
+      ? 'Löschen fehlgeschlagen: Anmeldung abgelaufen oder keine Berechtigung.\nBitte abmelden und neu anmelden, dann nochmal versuchen.'
+      : 'Löschen fehlgeschlagen: '+msg);
+  }
+};
 window.wartezeitAbschliessen=async function(id){
   try {
     const _retry = window.withAuthRetry || (async fn => await fn());

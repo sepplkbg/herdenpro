@@ -20,7 +20,11 @@ function onValue(refObj, callback, errCallback) {
 }
 function set(refObj, val) { return refObj.set(val); }
 function update(refObj, val) { return refObj.update(val); }
-function remove(refObj) { return refObj.remove(); }
+function remove(refObj) {
+  // Bei abgelaufener Anmeldung (PERMISSION_DENIED): Token erneuern + nochmal versuchen
+  if(typeof window.withAuthRetry === 'function') return window.withAuthRetry(() => refObj.remove());
+  return refObj.remove();
+}
 function push(refObj, val) { return refObj.push(val); }
 function serverTimestamp() { return firebase.database.ServerValue.TIMESTAMP; }
 
