@@ -29,6 +29,7 @@ const SHELL_FILES = [
   'app-email-send.js',
   'app-env-switch.js',
   'app-install.js',
+  'app-auswertung.js',
   // v54.31: Bibliotheken lokal (keine fremden Server beim Start)
   'lib/firebase-app-compat.js',
   'lib/firebase-database-compat.js',
@@ -55,7 +56,7 @@ const SCOPE = self.registration.scope;               // z.B. https://sepplkbg.gi
 // v54.22: Cache-Name pro App — beide Almen liegen auf derselben Domain und dürfen sich
 // gegenseitig nicht die Offline-Caches löschen.
 const APP_ID = new URL(SCOPE).pathname.replace(/\W+/g, '_');   // _herdenpro_ / _HerdenPro_Falkaunsalm_
-const CACHE = 'herdenpro-v356' + APP_ID;
+const CACHE = 'herdenpro-v357' + APP_ID;
 const SHELL = SHELL_FILES.map(f => new URL(f, SCOPE).href);
 const INDEX_URL = new URL('index.html', SCOPE).href;
 

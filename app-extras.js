@@ -12,6 +12,12 @@
   // ═══ A13: Was ist neu ═══════════════════════════════════════════════════
   // Neueste Version oben. Nur Punkte, die Nutzer merken.
   const CHANGELOG = [
+    { v: 'v54.53', punkte: [
+      'Kuh-Fenster: Warnung, wenn die Milch einer Kuh deutlich abfällt oder der Schalmtest schlechter wird',
+      'Sennerei-Verkauf → 🧾 Abschluss: Tagessumme, Kassensturz und PDF',
+      'Bauer-Fenster: 📈 Saisonen im Vergleich (Milch, Ø pro Kuh/Tag, Käse/Butter)',
+      'Herdenvergleich → 📄 Rückblick: Saison-Rückblick als PDF'
+    ]},
     { v: 'v54.52', punkte: [
       'Sennerei-Abholung: Käse und Butter in kg mit Komma eintragen (z.B. 10,52)',
       'Sennerei-PDF: Naturalrückgabe und Klötze landen jetzt in der richtigen Spalte; Laib-Feld startet leer',

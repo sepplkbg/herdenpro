@@ -128,15 +128,17 @@
       ${typeof window._renderSennereiTabs === 'function' ? window._renderSennereiTabs('verkauf') : ''}
 
       <!-- Sub-Tabs: Kasse | Historie | Preisliste -->
-      <div style="display:flex;background:var(--bg3);border:1px solid var(--border);border-radius:10px;padding:3px;margin-bottom:.6rem">
-        <button onclick="_svSubView('kasse')" style="flex:1;padding:.5rem;background:${sub==='kasse'?'var(--gold)':'transparent'};color:${sub==='kasse'?'#000':'var(--text2)'};border:none;border-radius:7px;font-size:.85rem;font-weight:600;cursor:pointer">🛒 Kasse</button>
-        <button onclick="_svSubView('historie')" style="flex:1;padding:.5rem;background:${sub==='historie'?'var(--gold)':'transparent'};color:${sub==='historie'?'#000':'var(--text2)'};border:none;border-radius:7px;font-size:.85rem;font-weight:600;cursor:pointer">📋 Historie</button>
-        <button onclick="_svSubView('preisliste')" style="flex:1;padding:.5rem;background:${sub==='preisliste'?'var(--gold)':'transparent'};color:${sub==='preisliste'?'#000':'var(--text2)'};border:none;border-radius:7px;font-size:.85rem;font-weight:600;cursor:pointer">⚙ Preisliste</button>
+      <div style="display:flex;flex-wrap:wrap;gap:2px;background:var(--bg3);border:1px solid var(--border);border-radius:10px;padding:3px;margin-bottom:.6rem">
+        <button onclick="_svSubView('kasse')" style="flex:1 1 5.5rem;padding:.5rem;background:${sub==='kasse'?'var(--gold)':'transparent'};color:${sub==='kasse'?'#000':'var(--text2)'};border:none;border-radius:7px;font-size:.85rem;font-weight:600;cursor:pointer">🛒 Kasse</button>
+        <button onclick="_svSubView('historie')" style="flex:1 1 5.5rem;padding:.5rem;background:${sub==='historie'?'var(--gold)':'transparent'};color:${sub==='historie'?'#000':'var(--text2)'};border:none;border-radius:7px;font-size:.85rem;font-weight:600;cursor:pointer">📋 Historie</button>
+        <button onclick="_svSubView('preisliste')" style="flex:1 1 5.5rem;padding:.5rem;background:${sub==='preisliste'?'var(--gold)':'transparent'};color:${sub==='preisliste'?'#000':'var(--text2)'};border:none;border-radius:7px;font-size:.85rem;font-weight:600;cursor:pointer">⚙ Preisliste</button>
+        <button onclick="_svSubView('abschluss')" style="flex:1 1 5.5rem;padding:.5rem;background:${sub==='abschluss'?'var(--gold)':'transparent'};color:${sub==='abschluss'?'#000':'var(--text2)'};border:none;border-radius:7px;font-size:.85rem;font-weight:600;cursor:pointer">🧾 Abschluss</button>
       </div>
 
       ${sub === 'kasse' ? _renderKasse(preisliste, isEmpty, stats) : ''}
       ${sub === 'historie' ? _renderHistorie() : ''}
       ${sub === 'preisliste' ? _renderPreislisteEditor(preisliste) : ''}
+      ${sub === 'abschluss' ? (typeof window.hpRenderTagesabschluss === 'function' ? window.hpRenderTagesabschluss() : '') : ''}
     `;
   };
 
