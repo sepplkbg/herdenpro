@@ -137,14 +137,16 @@
     box.innerHTML = liste.map(e => {
       const b = pkBeschreibung(e);
       const rest = Math.max(0, Math.ceil(((e.zeit || 0) + PK_TAGE * TAG - Date.now()) / TAG));
-      return '<div class="list-card" style="display:flex;align-items:center;gap:.6rem;padding:.6rem .7rem">' +
+      return '<div class="list-card" style="display:block;padding:.6rem .7rem">' +
+        '<div style="display:flex;align-items:flex-start;gap:.6rem">' +
         '<div style="font-size:1.4rem">' + b.icon + '</div>' +
         '<div style="flex:1;min-width:0">' +
           '<div style="font-weight:700">' + esc(b.art) + '</div>' +
-          '<div style="font-size:.8rem;color:var(--text2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(b.text || '–') + '</div>' +
+          '<div style="font-size:.8rem;color:var(--text2);overflow-wrap:anywhere">' + esc(b.text || '–') + '</div>' +
           '<div style="font-size:.7rem;color:var(--text3)">gelöscht ' + esc(fdat(e.zeit)) + (e.von ? ' · ' + esc(e.von) : '') + ' · noch ' + rest + ' Tage</div>' +
         '</div>' +
-        '<div style="display:flex;flex-direction:column;gap:.3rem">' +
+        '</div>' +
+        '<div style="display:flex;flex-wrap:wrap;gap:.4rem;margin-top:.5rem">' +
           '<button class="btn-xs" style="background:var(--green);color:#fff;border:none" onclick="hpPkWiederherstellen(\'' + esc(e.id) + '\')">↩ Zurückholen</button>' +
           (istAdmin() ? '<button class="btn-xs" style="color:var(--red)" onclick="hpPkEndgueltig(\'' + esc(e.id) + '\')">Endgültig löschen</button>' : '') +
         '</div>' +
@@ -160,7 +162,7 @@
       if(vorhanden.exists() && !confirm(b.art + ' existiert an dieser Stelle schon wieder.\nMit dem gelöschten Stand überschreiben?')) return;
       await firebase.database().ref(e.pfad).set(e.daten);
       await window._hpRemoveOhnePapierkorb(firebase.database().ref('papierkorb/' + id));
-      if(typeof window.showToast === 'function') window.showToast('↩ ' + b.art + ' wiederhergestellt'); else alert('✓ ' + b.art + ' wiederhergestellt');
+      if(typeof window.showSaveToast === 'function') window.showSaveToast(b.art + ' zurückgeholt'); else alert('✓ ' + b.art + ' zurückgeholt');
       pkZeichnen();
     } catch(err) { alert('Wiederherstellen fehlgeschlagen: ' + err.message); }
   };
@@ -254,7 +256,7 @@
 
   window.renderWiederherstellung = function() {
     setTimeout(whZeichnen, 0);
-    return '<div class="page-header"><h2>⏪ Wiederherstellungspunkte</h2></div>' +
+    return '<div class="page-header"><h2>⏪ Wieder&shy;herstellungs&shy;punkte</h2></div>' +
       '<p style="font-size:.8rem;color:var(--text3);margin:-.3rem 0 .7rem;line-height:1.5">Einmal pro Woche speichert die App automatisch den kompletten Datenstand (ohne Fotos und Chat). ' +
       'Die letzten ' + WH_BEHALTEN + ' bleiben erhalten. Beim Zurücksetzen wird vorher automatisch ein Punkt vom jetzigen Stand gemacht.</p>' +
       (istAdmin() ? '<button class="btn-primary btn-block" style="margin-bottom:.8rem" onclick="hpWhJetzt()">➕ Jetzt einen Punkt erstellen</button>' : '') +

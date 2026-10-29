@@ -10,6 +10,22 @@
   window.SENNEREI_VERSION = VERSION;
 
   // ── Utilities ──
+  // kg-Werte: Komma erlaubt, max. 2 Nachkommastellen (z.B. 10,52)
+  function kgTxt(n) {
+    const x = Math.round((parseFloat(n) || 0) * 100) / 100;
+    return String(x).replace('.', ',');
+  }
+  function kgFeld(id, wert, placeholder) {
+    const v = (wert === '' || wert == null || +wert === 0) ? '' : kgTxt(wert);
+    return `<input id="${id}" class="inp" type="text" inputmode="decimal" autocomplete="off" value="${v}" placeholder="${placeholder == null ? '' : String(placeholder).replace('.', ',')}" oninput="hpKgEingabe(this)" style="margin-bottom:.5rem" />`;
+  }
+  // Nur Ziffern + EIN Komma, höchstens 2 Nachkommastellen
+  window.hpKgEingabe = function(el) {
+    let v = String(el.value || '').replace(/\./g, ',').replace(/[^0-9,]/g, '');
+    const i = v.indexOf(',');
+    if(i >= 0) v = v.slice(0, i + 1) + v.slice(i + 1).replace(/,/g, '').slice(0, 2);
+    if(v !== el.value) el.value = v;
+  };
   function normalisierName(s) {
     return String(s || '').toLowerCase()
       .replace(/ä/g,'ae').replace(/ö/g,'oe').replace(/ü/g,'ue').replace(/ß/g,'ss')
@@ -52,7 +68,7 @@
         // transform = [scaleX, skewY, skewX, scaleY, x, y]
         const x = item.transform[4];
         const y = viewport.height - item.transform[5] + yOffset; // Y invertieren, PDF-Koord
-        allItems.push({ str: item.str.trim(), x, y });
+        allItems.push({ str: item.str.trim(), x, y, w: item.width || 0 });
       });
       yOffset += viewport.height + 20; // Puffer zwischen Seiten
     }
@@ -99,6 +115,11 @@
     // 3) Produkt-Spalten-X ermitteln (durchschnittliche x-Position von Käse/Butter)
     const produktX = produktAnker.reduce((s,p) => s + p.x, 0) / produktAnker.length;
 
+    // 3b) Spalten aus der Kopfzeile bestimmen (Mitte jeder Überschrift).
+    //     Leere Zellen werden so NICHT mehr übersprungen – jeder Wert landet
+    //     in der Spalte, unter deren Überschrift er steht.
+    const spalten = _sennereiSpaltenAusKopf(allItems);
+
     // 4) Für jedes Paar: Name + Werte extrahieren
     const bauern = [];
     // Noise-Words (Header/Footer die niemals als Bauer-Name gelten dürfen)
@@ -140,8 +161,8 @@
       bauern.push({
         name: name,
         nameNorm: normalisierName(name),
-        kaese: extractProduktZeile(kaeseVals),
-        butter: extractProduktZeile(butterVals)
+        kaese: spalten ? extractNachSpalten(kaeseVals, spalten) : extractProduktZeile(kaeseVals),
+        butter: spalten ? extractNachSpalten(butterVals, spalten) : extractProduktZeile(butterVals)
       });
     });
 
@@ -156,7 +177,58 @@
     };
   }
 
-  // Extrahiert Zahlen aus einer Produkt-Zeile
+  // ── Spalten der Abholungsliste anhand der Überschriften ──
+  // Liefert {name: xMitte} oder null, wenn die Kopfzeile nicht erkannt wird.
+  function _sennereiSpaltenAusKopf(items) {
+    const soll = items.find(i => i.str === 'Soll');
+    if(!soll) return null;
+    const kopf = items.filter(i => Math.abs(i.y - soll.y) < 16);
+    const mitte = i => i.x + (i.w || 0) / 2;
+    const finde = (test) => { const t = kopf.find(i => test(i.str)); return t ? mitte(t) : null; };
+    const sp = {
+      verk:        finde(s => /^Verk/i.test(s)),
+      soll:        mitte(soll),
+      guthaben:    finde(s => /^Guthaben/i.test(s) || /^Vorwoche$/i.test(s)),
+      zum:         finde(s => /^Zum\b/i.test(s) || /^Abholen$/.test(s)),
+      klotze:      finde(s => /^Kl(ö|oe)tze$/i.test(s)),
+      abgeholt:    finde(s => s === 'Abgeholt'),
+      natAnspruch: finde(s => /Anspruch/i.test(s)),
+      natAbgeholt: finde(s => s === 'abgeholt' || /^Naturalr\.?\s+abgeholt$/i.test(s)),
+      chargen:     finde(s => /^Chargen$/i.test(s)),
+      gesamt:      finde(s => /Gesamt/i.test(s))
+    };
+    // Mindestens die wichtigen Spalten müssen gefunden sein
+    if(sp.zum == null || sp.natAnspruch == null || sp.klotze == null) return null;
+    return Object.fromEntries(Object.entries(sp).filter(([, v]) => v != null));
+  }
+
+  // Ordnet jede Zahl der nächstgelegenen Spalte zu (leere Zellen bleiben 0)
+  function extractNachSpalten(items, spalten) {
+    const zahl = s => { const n = parseFloat(String(s).replace('%', '').replace(',', '.')); return isNaN(n) ? 0 : n; };
+    const werte = {};
+    const namen = Object.keys(spalten);
+    items.forEach(i => {
+      if(!/^-?\d+([.,]\d+)?%?$/.test(i.str)) return;   // nur Zahlen (Chargen-Text u. ä. ignorieren)
+      const m = i.x + (i.w || 0) / 2;
+      let best = null, bestD = Infinity;
+      namen.forEach(n => { const d = Math.abs(spalten[n] - m); if(d < bestD) { bestD = d; best = n; } });
+      if(best && werte[best] == null) werte[best] = zahl(i.str);
+    });
+    return {
+      verkProzent: Math.round(werte.verk || 0),
+      soll: werte.soll || 0,
+      guthabenVorwoche: werte.guthaben || 0,
+      zumAbholen: werte.zum || 0,
+      klotze: werte.klotze || 0,
+      abgeholt: 0,
+      naturalrAnspruch: werte.natAnspruch || 0,
+      naturalrAbgeholt: 0,
+      chargen: [],
+      _rawItems: items.map(i => i.str)
+    };
+  }
+
+  // Extrahiert Zahlen aus einer Produkt-Zeile (alte Methode, nur noch Rückfall)
   // Reihenfolge in PDF: Verk%, Soll, GuthabenVorwoche, ZumAbholen, Klötze, Abgeholt, NaturalrAnspruch, NaturalrAbgeholt, Chargen, AbholungGesamt
   function extractProduktZeile(items) {
     const nums = items.map(i => i.str);
@@ -238,6 +310,20 @@
       maxVerkaufbar: wocheData.maxVerkaufbar || { kaese: 0, butter: 0 },
       bauern: bauern
     };
+    // Erneuter Import derselben Woche: bereits erfasste Abholungen NICHT überschreiben
+    try {
+      const alt = (await firebase.database().ref('sennerei/wochen/' + wocheData.wocheId + '/bauern').once('value')).val() || {};
+      Object.entries(alt).forEach(([id, a]) => {
+        if(!a || !a.abgeholtAm) return;
+        const n = bauern[id] || (bauern[id] = { name: a.name, kaese: a.kaese || null, butter: a.butter || null });
+        ['unterschriftPng', 'abholungen', 'abgeholtAm', 'abgeholtVon'].forEach(f => { if(a[f] != null) n[f] = a[f]; });
+        [['kaese', ['abgeholt', 'naturalrAbgeholt', 'chargen', 'klotze']], ['butter', ['abgeholt', 'naturalrAbgeholt', 'chargen']]].forEach(([art, felder]) => {
+          if(!a[art]) return;
+          n[art] = n[art] || {};
+          felder.forEach(f => { if(a[art][f] != null) n[art][f] = a[art][f]; });
+        });
+      });
+    } catch(e) { throw new Error('Bisherige Abholungen dieser Woche konnten nicht gelesen werden – nichts gespeichert. Bitte nochmal versuchen. (' + (e && e.message) + ')'); }
     await _retry(() => firebase.database().ref('sennerei/wochen/' + wocheData.wocheId).set(payload));
     return wocheData.wocheId;
   };
@@ -357,7 +443,7 @@
       sumKaeseKlotze += (b.kaese?.klotze || 0);
       sumButterKlotze += (b.butter?.klotze || 0);
     });
-    const fmt = (n) => Math.round(n * 10) / 10;
+    const fmt = (n) => kgTxt(n);
     return `
       <div class="page-header">
         <h2>🥛 Woche ${woche.wocheNr}</h2>
@@ -432,13 +518,13 @@
     window._sennereiWizardData = {
       istNachfolge,   // Merker für Save-Logik
       kaese: {
-        klotze: istNachfolge ? 0 : (b?.kaese?.klotze || 0),
+        klotze: 0,   // Laib immer leer – wird bei der Abholung gezählt
         abgeholt: istNachfolge ? 0 : (b?.kaese?.abgeholt || 0),
         naturalrAbgeholt: istNachfolge ? 0 : (b?.kaese?.naturalrAbgeholt || 0),
         chargen: istNachfolge ? '' : (b?.kaese?.chargen || []).join(', ')
       },
       butter: {
-        klotze: istNachfolge ? 0 : (b?.butter?.klotze || 0),
+        klotze: 0,   // Butter-Klötze kommen aus dem PDF, nicht aus der Eingabe
         abgeholt: istNachfolge ? 0 : (b?.butter?.abgeholt || 0),
         naturalrAbgeholt: istNachfolge ? 0 : (b?.butter?.naturalrAbgeholt || 0),
         chargen: istNachfolge ? '' : (b?.butter?.chargen || []).join(', ')
@@ -455,7 +541,7 @@
     const parseNum = (id) => {
       const v = document.getElementById(id)?.value;
       const n = parseFloat(String(v||'').replace(',','.'));
-      return isNaN(n) ? 0 : n;
+      return isNaN(n) ? 0 : Math.round(n * 100) / 100;
     };
     const parseI = (id) => parseInt(document.getElementById(id)?.value) || 0;
     if(step === 2) {
@@ -648,8 +734,8 @@
       tagesmilchHtml = '<div class="card-section" style="padding:.6rem;margin-bottom:.8rem;color:var(--text3);font-size:.85rem;text-align:center">Keine Kuh-Zuordnung für „' + b.name + '" gefunden</div>';
     }
     // Reste (Anspruch - Abgeholt) — wichtig bei mehrfach-Abholung
-    const restK = Math.max(0, Math.round(((k.zumAbholen||0) - (k.abgeholt||0)) * 10) / 10);
-    const restB = Math.max(0, Math.round(((bt.zumAbholen||0) - (bt.abgeholt||0)) * 10) / 10);
+    const restK = Math.max(0, Math.round(((k.zumAbholen||0) - (k.abgeholt||0)) * 100) / 100);
+    const restB = Math.max(0, Math.round(((bt.zumAbholen||0) - (bt.abgeholt||0)) * 100) / 100);
     // Historie einzelner Abholungen (falls mehrfach)
     const abholungen = (b.abholungen || []);
     const historieHtml = abholungen.length > 0 ? `
@@ -661,8 +747,8 @@
               <span>${new Date(a.ts).toLocaleString('de-AT',{weekday:'short',day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})}</span>
               <span>${a.signaturPng ? '✍ signiert' : '<span style="color:var(--orange)">ohne Unterschrift</span>'}</span>
             </div>
-            ${(a.kaese && a.kaese.abgeholt) ? `<div>🧀 ${a.kaese.abgeholt} kg${a.kaese.naturalrAbgeholt?' (+ '+a.kaese.naturalrAbgeholt+' Natur)':''}${(a.kaese.chargen||[]).length?' · '+a.kaese.chargen.join(', '):''}</div>` : ''}
-            ${(a.butter && a.butter.abgeholt) ? `<div>🧈 ${a.butter.abgeholt} kg${a.butter.naturalrAbgeholt?' (+ '+a.butter.naturalrAbgeholt+' Natur)':''}${(a.butter.chargen||[]).length?' · '+a.butter.chargen.join(', '):''}</div>` : ''}
+            ${(a.kaese && a.kaese.abgeholt) ? `<div>🧀 ${kgTxt(a.kaese.abgeholt)} kg${a.kaese.naturalrAbgeholt?' (+ '+kgTxt(a.kaese.naturalrAbgeholt)+' Natur)':''}${(a.kaese.chargen||[]).length?' · '+a.kaese.chargen.join(', '):''}</div>` : ''}
+            ${(a.butter && a.butter.abgeholt) ? `<div>🧈 ${kgTxt(a.butter.abgeholt)} kg${a.butter.naturalrAbgeholt?' (+ '+kgTxt(a.butter.naturalrAbgeholt)+' Natur)':''}${(a.butter.chargen||[]).length?' · '+a.butter.chargen.join(', '):''}</div>` : ''}
             ${a.signaturPng ? `<img src="${a.signaturPng}" alt="Unterschrift" style="display:block;max-height:44px;max-width:180px;margin-top:.3rem;background:#fff;border-radius:4px;padding:2px">` : ''}
           </div>`).join('')}
       </div>` : '';
@@ -675,8 +761,8 @@
       <div class="section-title">📦 ${isAbgeholt ? 'Rest offen' : 'Zum Abholen'}</div>
       <div class="card-section" style="padding:.7rem;margin-bottom:.8rem">
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:.6rem;font-size:.9rem">
-          <div>🧀 <b>Käse:</b> ${isAbgeholt ? restK : (k.zumAbholen||0)} kg${isAbgeholt ? ' <span style="color:var(--text3);font-size:.75rem">von ' + (k.zumAbholen||0) + ' kg</span>' : ''}</div>
-          <div>🧈 <b>Butter:</b> ${isAbgeholt ? restB : (bt.zumAbholen||0)} kg${isAbgeholt ? ' <span style="color:var(--text3);font-size:.75rem">von ' + (bt.zumAbholen||0) + ' kg</span>' : ''}</div>
+          <div>🧀 <b>Käse:</b> ${kgTxt(isAbgeholt ? restK : (k.zumAbholen||0))} kg${isAbgeholt ? ' <span style="color:var(--text3);font-size:.75rem">von ' + kgTxt(k.zumAbholen) + ' kg</span>' : ''}</div>
+          <div>🧈 <b>Butter:</b> ${kgTxt(isAbgeholt ? restB : (bt.zumAbholen||0))} kg${isAbgeholt ? ' <span style="color:var(--text3);font-size:.75rem">von ' + kgTxt(bt.zumAbholen) + ' kg</span>' : ''}</div>
           ${k.naturalrAnspruch ? '<div style="color:#ff9632;font-size:.8rem">Naturalr. Käse: ' + k.naturalrAnspruch + ' kg</div>' : '<div></div>'}
           ${bt.naturalrAnspruch ? '<div style="color:#ff9632;font-size:.8rem">Naturalr. Butter: ' + bt.naturalrAnspruch + ' kg</div>' : '<div></div>'}
         </div>
@@ -705,12 +791,12 @@
         </div>
         <input type="hidden" id="sb-b-klotze" value="${d.klotze || 0}" />
         <label class="inp-label">Tatsächlich abgeholt (kg)</label>
-        <input id="sb-b-abgeholt" class="inp" type="number" step="0.1" min="0" inputmode="decimal" value="${d.abgeholt || ''}" placeholder="${bt.zumAbholen || 0}" style="margin-bottom:.5rem" />
+        ${kgFeld('sb-b-abgeholt', d.abgeholt, bt.zumAbholen || 0)}
         <label class="inp-label">Chargen (Produktionsdatum, kommagetrennt) — z.B. 1208, 1508</label>
         <input id="sb-b-chargen" class="inp" type="text" placeholder="z.B. 1208, 1508" value="${d.chargen || ''}" style="margin-bottom:.4rem" />
         ${chargenChips}
-        ${bt.naturalrAnspruch ? `<label class="inp-label" style="margin-top:.6rem">Naturalrückgabe abgeholt (kg) — Anspruch: ${bt.naturalrAnspruch} kg</label>
-          <input id="sb-b-natabg" class="inp" type="number" step="0.1" min="0" inputmode="decimal" value="${d.naturalrAbgeholt || ''}" />` : '<input type="hidden" id="sb-b-natabg" value="0" />'}
+        ${bt.naturalrAnspruch ? `<label class="inp-label" style="margin-top:.6rem">Naturalrückgabe abgeholt (kg) — Anspruch: ${kgTxt(bt.naturalrAnspruch)} kg</label>
+          ${kgFeld('sb-b-natabg', d.naturalrAbgeholt, '')}` : '<input type="hidden" id="sb-b-natabg" value="0" />'}
       </div>
     `;
   }
@@ -733,14 +819,14 @@
           </div>
         </div>
         <label class="inp-label">Laib (Stück)</label>
-        <input id="sb-k-klotze" class="inp" type="number" step="1" min="0" inputmode="numeric" value="${d.klotze || ''}" placeholder="${k.klotze || ''}" style="margin-bottom:.5rem" />
+        <input id="sb-k-klotze" class="inp" type="number" step="1" min="0" inputmode="numeric" value="${d.klotze || ''}" style="margin-bottom:.5rem" />
         <label class="inp-label">Tatsächlich abgeholt (kg)</label>
-        <input id="sb-k-abgeholt" class="inp" type="number" step="0.1" min="0" inputmode="decimal" value="${d.abgeholt || ''}" placeholder="${abholvorschlagK}" style="margin-bottom:.5rem" />
+        ${kgFeld('sb-k-abgeholt', d.abgeholt, abholvorschlagK)}
         <label class="inp-label">Chargen (Produktionsdatum, kommagetrennt) — z.B. 1208, 1508</label>
         <input id="sb-k-chargen" class="inp" type="text" placeholder="z.B. 1208, 1508" value="${d.chargen || ''}" style="margin-bottom:.4rem" />
         ${chargenChips}
-        ${k.naturalrAnspruch ? `<label class="inp-label" style="margin-top:.6rem">Naturalrückgabe abgeholt (kg) — Anspruch: ${k.naturalrAnspruch} kg</label>
-          <input id="sb-k-natabg" class="inp" type="number" step="0.1" min="0" inputmode="decimal" value="${d.naturalrAbgeholt || ''}" />` : '<input type="hidden" id="sb-k-natabg" value="0" />'}
+        ${k.naturalrAnspruch ? `<label class="inp-label" style="margin-top:.6rem">Naturalrückgabe abgeholt (kg) — Anspruch: ${kgTxt(k.naturalrAnspruch)} kg</label>
+          ${kgFeld('sb-k-natabg', d.naturalrAbgeholt, '')}` : '<input type="hidden" id="sb-k-natabg" value="0" />'}
       </div>
     `;
   }
@@ -792,15 +878,15 @@
       <div class="card-section" style="padding:.7rem .8rem;margin-bottom:.8rem">
         <div style="font-weight:700;color:var(--gold);margin-bottom:.3rem">🧈 Butter</div>
         <div style="font-size:.9rem;padding-left:.5rem">
-          Abgeholt: <b>${bt.abgeholt||0} kg</b><br>
-          ${bt.naturalrAbgeholt ? 'Naturalrückgabe: <b>' + bt.naturalrAbgeholt + ' kg</b><br>' : ''}
+          Abgeholt: <b>${kgTxt(bt.abgeholt)} kg</b><br>
+          ${bt.naturalrAbgeholt ? 'Naturalrückgabe: <b>' + kgTxt(bt.naturalrAbgeholt) + ' kg</b><br>' : ''}
           ${chargenB ? 'Chargen: ' + chargenB + '<br>' : ''}
         </div>
         <div style="font-weight:700;color:var(--gold);margin:.7rem 0 .3rem">🧀 Käse</div>
         <div style="font-size:.9rem;padding-left:.5rem">
           Laib: <b>${k.klotze||0}</b><br>
-          Abgeholt: <b>${k.abgeholt||0} kg</b><br>
-          ${k.naturalrAbgeholt ? 'Naturalrückgabe: <b>' + k.naturalrAbgeholt + ' kg</b><br>' : ''}
+          Abgeholt: <b>${kgTxt(k.abgeholt)} kg</b><br>
+          ${k.naturalrAbgeholt ? 'Naturalrückgabe: <b>' + kgTxt(k.naturalrAbgeholt) + ' kg</b><br>' : ''}
           ${chargenK ? 'Chargen: ' + chargenK + '<br>' : ''}
         </div>
       </div>
@@ -840,11 +926,11 @@
         <div style="font-size:1rem;font-weight:700;color:var(--gold);margin-bottom:.4rem">${b.name}</div>
         <div style="font-weight:700;margin-bottom:.2rem">🧈 Butter</div>
         <div style="font-size:.9rem;padding-left:.5rem;margin-bottom:.5rem">
-          Abgeholt: <b>${bt.abgeholt||0} kg</b>${bt.naturalrAbgeholt ? ' · Naturalr.: <b>' + bt.naturalrAbgeholt + ' kg</b>' : ''}${bt.chargen ? '<br>Chargen: ' + bt.chargen : ''}
+          Abgeholt: <b>${kgTxt(bt.abgeholt)} kg</b>${bt.naturalrAbgeholt ? ' · Naturalr.: <b>' + kgTxt(bt.naturalrAbgeholt) + ' kg</b>' : ''}${bt.chargen ? '<br>Chargen: ' + bt.chargen : ''}
         </div>
         <div style="font-weight:700;margin-bottom:.2rem">🧀 Käse</div>
         <div style="font-size:.9rem;padding-left:.5rem;margin-bottom:.5rem">
-          Laib: <b>${k.klotze||0}</b> · Abgeholt: <b>${k.abgeholt||0} kg</b>${k.naturalrAbgeholt ? ' · Naturalr.: <b>' + k.naturalrAbgeholt + ' kg</b>' : ''}${k.chargen ? '<br>Chargen: ' + k.chargen : ''}
+          Laib: <b>${k.klotze||0}</b> · Abgeholt: <b>${kgTxt(k.abgeholt)} kg</b>${k.naturalrAbgeholt ? ' · Naturalr.: <b>' + kgTxt(k.naturalrAbgeholt) + ' kg</b>' : ''}${k.chargen ? '<br>Chargen: ' + k.chargen : ''}
         </div>
       </div>
       <div class="section-title">✍ Unterschrift</div>
@@ -896,18 +982,19 @@
       const _uniq = (arr) => [...new Set(arr.filter(Boolean))];
 
       const kaeseUpdate = {
-        klotze: (parseInt(kAlt.klotze) || 0) + zusatzK.klotze,
-        abgeholt: Math.round(((parseFloat(kAlt.abgeholt) || 0) + zusatzK.abgeholt) * 10) / 10,
-        naturalrAbgeholt: Math.round(((parseFloat(kAlt.naturalrAbgeholt) || 0) + zusatzK.naturalrAbgeholt) * 10) / 10,
+        // Erste Abholung: Laib-Zahl aus PDF ist nur Vorschlag → nicht dazuzählen
+        klotze: (bAlt.abgeholtAm ? (parseInt(kAlt.klotze) || 0) : 0) + zusatzK.klotze,
+        abgeholt: Math.round(((parseFloat(kAlt.abgeholt) || 0) + zusatzK.abgeholt) * 100) / 100,
+        naturalrAbgeholt: Math.round(((parseFloat(kAlt.naturalrAbgeholt) || 0) + zusatzK.naturalrAbgeholt) * 100) / 100,
         chargen: _uniq([...(kAlt.chargen || []), ...zusatzK.chargen]),
         zumAbholen: kAlt.zumAbholen || 0,
         naturalrAnspruch: kAlt.naturalrAnspruch || 0,
         verkProzent: kAlt.verkProzent || 0
       };
       const butterUpdate = {
-        klotze: (parseInt(bkAlt.klotze) || 0) + zusatzB.klotze,
-        abgeholt: Math.round(((parseFloat(bkAlt.abgeholt) || 0) + zusatzB.abgeholt) * 10) / 10,
-        naturalrAbgeholt: Math.round(((parseFloat(bkAlt.naturalrAbgeholt) || 0) + zusatzB.naturalrAbgeholt) * 10) / 10,
+        klotze: (parseInt(bkAlt.klotze) || 0) + zusatzB.klotze,   // = Klötze aus PDF (Eingabe ist 0)
+        abgeholt: Math.round(((parseFloat(bkAlt.abgeholt) || 0) + zusatzB.abgeholt) * 100) / 100,
+        naturalrAbgeholt: Math.round(((parseFloat(bkAlt.naturalrAbgeholt) || 0) + zusatzB.naturalrAbgeholt) * 100) / 100,
         chargen: _uniq([...(bkAlt.chargen || []), ...zusatzB.chargen]),
         zumAbholen: bkAlt.zumAbholen || 0,
         naturalrAnspruch: bkAlt.naturalrAnspruch || 0,
@@ -1110,9 +1197,9 @@
               '<tbody>' + bauernRows + '</tbody>' +
             '</table>' +
           '</div>' +
-          '<div style="display:flex;gap:.5rem;margin-top:1rem">' +
-            '<button class="btn-secondary" style="flex:1" onclick="document.getElementById(\'sennerei-import-overlay\').remove()">Abbrechen</button>' +
-            '<button class="btn-primary" style="flex:1" onclick="sennereiImportBestaetigen()">✓ Woche speichern</button>' +
+          '<div style="display:flex;flex-wrap:wrap;gap:.5rem;margin-top:1rem">' +
+            '<button class="btn-secondary" style="flex:1 1 8rem;white-space:normal" onclick="document.getElementById(\'sennerei-import-overlay\').remove()">Abbrechen</button>' +
+            '<button class="btn-primary" style="flex:1 1 8rem;white-space:normal" onclick="sennereiImportBestaetigen()">✓ Woche speichern</button>' +
           '</div>' +
         '</div>' +
       '</div>';
@@ -1146,7 +1233,7 @@
     if(!woche) { alert('Woche nicht gefunden'); return; }
     const bauern = Object.entries(woche.bauern || {}).sort((a,b) => (a[1].name||'').localeCompare(b[1].name||''));
 
-    const fmt = (n) => n == null || n === 0 ? '' : String(Math.round(n * 10) / 10).replace('.', ',');
+    const fmt = (n) => n == null || n === 0 ? '' : kgTxt(n);
     const fmtI = (n) => n == null || n === 0 ? '' : String(n);
     const escapeHtml = (s) => String(s||'').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c]);
 
@@ -1160,7 +1247,7 @@
       const butterGesamt = (bt.abgeholt||0) + (bt.naturalrAbgeholt||0);
       // v54.28: ALLE Unterschriften (jede Abholung einzeln quittiert), sonst letzte (Altdaten)
       const _abh = (b.abholungen || []).filter(a => a && a.signaturPng);
-      const _kg = (x) => x ? String(Math.round(x * 10) / 10).replace('.', ',') : '';
+      const _kg = (x) => x ? kgTxt(x) : '';
       const sigImg = _abh.length
         ? _abh.map(a => {
             const d = new Date(a.ts).toLocaleString('de-AT', {weekday:'short', day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit'});
@@ -1346,7 +1433,7 @@
           <span style="color:var(--text3);font-size:.75rem">${status} ${datum}</span>
         </div>
         <div style="color:var(--text2);font-size:.75rem;margin-top:.15rem">
-          🧀 ${Math.round(kAbg*10)/10}kg${kNat?' (+ '+Math.round(kNat*10)/10+' Natur)':''} · 🧈 ${Math.round(btAbg*10)/10}kg${btNat?' (+ '+Math.round(btNat*10)/10+' Natur)':''}
+          🧀 ${kgTxt(kAbg)}kg${kNat?' (+ '+kgTxt(kNat)+' Natur)':''} · 🧈 ${kgTxt(btAbg)}kg${btNat?' (+ '+kgTxt(btNat)+' Natur)':''}
         </div>
       </div>`;
     }).join('');

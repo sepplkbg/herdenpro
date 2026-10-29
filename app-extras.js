@@ -12,6 +12,12 @@
   // ═══ A13: Was ist neu ═══════════════════════════════════════════════════
   // Neueste Version oben. Nur Punkte, die Nutzer merken.
   const CHANGELOG = [
+    { v: 'v54.52', punkte: [
+      'Sennerei-Abholung: Käse und Butter in kg mit Komma eintragen (z.B. 10,52)',
+      'Sennerei-PDF: Naturalrückgabe und Klötze landen jetzt in der richtigen Spalte; Laib-Feld startet leer',
+      'Sennerei-PDF nochmal einlesen überschreibt bereits erfasste Abholungen nicht mehr',
+      'Große Schrift: Seitentitel und Papierkorb besser lesbar'
+    ]},
     { v: 'v54.51', punkte: [
       'Neu unter „Mehr“: 🗑 Papierkorb – gelöschte Einträge 30 Tage lang zurückholen'
     ]},
