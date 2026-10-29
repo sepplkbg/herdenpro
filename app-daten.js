@@ -101,6 +101,8 @@
     else if(/^behandlungen\//.test(e.pfad)) text = [kuhTxt(d.kuhId), d.medikament, d.diagnose, d.datum ? new Date(d.datum).toLocaleDateString('de-AT') : ''].filter(Boolean).join(' · ');
     else if(/^besamungen\//.test(e.pfad)) text = [kuhTxt(d.kuhId), d.datum ? new Date(d.datum).toLocaleDateString('de-AT') : ''].filter(Boolean).join(' · ');
     else if(/^milch\//.test(e.pfad)) text = (d.datum ? new Date(d.datum).toLocaleDateString('de-AT') : '') + ' ' + (d.zeit || '') + (d.prokuh ? ' · ' + Object.keys(d.prokuh).length + ' Kühe' : '');
+    else if(/^sennerei\/wochen\//.test(e.pfad)) text = 'Woche ' + (d.wocheNr || e.pfad.split('/').pop()) + (d.jahr ? ' / ' + d.jahr : '') + (d.bauern ? ' · ' + Object.keys(d.bauern).length + ' Bauern' : '');
+    else if(/^sennerei\/verkaeufe\//.test(e.pfad)) text = [d.datumTs ? new Date(d.datumTs).toLocaleDateString('de-AT') : '', (d.positionen || []).map(p => p.name).join(', '), d.summe != null ? String((Math.round(d.summe * 100) / 100).toFixed(2)).replace('.', ',') + ' €' : ''].filter(Boolean).join(' · ');
     else text = d.name || d.titel || d.text || d.bezeichnung || d.medikament || d.produkt || d.kaeufer || (typeof d === 'string' ? d : '');
     return { icon: a[1], art: a[2], text: String(text || '').slice(0, 90) };
   }

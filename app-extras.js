@@ -12,6 +12,10 @@
   // ═══ A13: Was ist neu ═══════════════════════════════════════════════════
   // Neueste Version oben. Nur Punkte, die Nutzer merken.
   const CHANGELOG = [
+    { v: 'v54.54', punkte: [
+      'Lager und Kraftfutter: Mengen und Preise mit Komma eintragen (z.B. 2,5)',
+      'Papierkorb zeigt bei Sennerei-Wochen und Verkäufen, worum es geht'
+    ]},
     { v: 'v54.53', punkte: [
       'Kuh-Fenster: Warnung, wenn die Milch einer Kuh deutlich abfällt oder der Schalmtest schlechter wird',
       'Sennerei-Verkauf → 🧾 Abschluss: Tagessumme, Kassensturz und PDF',

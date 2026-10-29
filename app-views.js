@@ -4778,11 +4778,11 @@ function renderLager() {
           <label class="inp-label">Einheit</label>
           <select id="la-einheit" class="inp" style="width:8rem">${['Stück','kg','g','Liter','ml','Packung','Box','Karton','Flasche','Tube','Paar'].map(e=>`<option>${e}</option>`).join('')}</select>
           <label class="inp-label">Aktueller Bestand</label>
-          <input id="la-bestand" class="inp" type="number" step="0.1" inputmode="decimal" placeholder="0" style="width:7.5rem" />
+          <input id="la-bestand" class="inp" type="text" inputmode="decimal" autocomplete="off" oninput="hpKgEingabe&&hpKgEingabe(this)" placeholder="0" style="width:7.5rem" />
           <label class="inp-label">Mindestbestand (Alarm)</label>
-          <input id="la-mindest" class="inp" type="number" step="0.1" inputmode="decimal" placeholder="0" style="width:7.5rem" />
+          <input id="la-mindest" class="inp" type="text" inputmode="decimal" autocomplete="off" oninput="hpKgEingabe&&hpKgEingabe(this)" placeholder="0" style="width:7.5rem" />
           <label class="inp-label">Preis pro Einheit (€)</label>
-          <input id="la-preis" class="inp" type="number" step="0.01" inputmode="decimal" placeholder="0.00" style="width:7.5rem" />
+          <input id="la-preis" class="inp" type="text" inputmode="decimal" autocomplete="off" oninput="hpKgEingabe&&hpKgEingabe(this)" placeholder="0,00" style="width:7.5rem" />
           <label class="inp-label">Ablaufdatum (optional)</label>
           <input id="la-ablauf" class="inp" type="date" />
           <div class="form-actions">
@@ -4801,7 +4801,7 @@ function renderLager() {
           <input type="hidden" id="lv-artikel-id" />
           <div id="lv-artikel-info" style="margin-bottom:.6rem;font-size:.85rem;color:var(--text2)"></div>
           <label class="inp-label">Menge verbraucht</label>
-          <input id="lv-menge" class="inp" type="number" step="0.1" inputmode="decimal" style="width:7.5rem" />
+          <input id="lv-menge" class="inp" type="text" inputmode="decimal" autocomplete="off" oninput="hpKgEingabe&&hpKgEingabe(this)" style="width:7.5rem" />
           <input id="lv-notiz" class="inp" placeholder="Notiz" />
           <div class="form-actions">
             <button class="btn-secondary" onclick="closeForm('lager-verbrauch-overlay')">Abbrechen</button>
@@ -4819,9 +4819,9 @@ function renderLager() {
           <input type="hidden" id="lz-artikel-id" />
           <div id="lz-artikel-info" style="margin-bottom:.6rem;font-size:.85rem;color:var(--text2)"></div>
           <label class="inp-label">Menge zugegangen</label>
-          <input id="lz-menge" class="inp" type="number" step="0.1" inputmode="decimal" style="width:7.5rem" />
+          <input id="lz-menge" class="inp" type="text" inputmode="decimal" autocomplete="off" oninput="hpKgEingabe&&hpKgEingabe(this)" style="width:7.5rem" />
           <label class="inp-label">Preis gesamt (€)</label>
-          <input id="lz-preis" class="inp" type="number" step="0.01" inputmode="decimal" style="width:7.5rem" />
+          <input id="lz-preis" class="inp" type="text" inputmode="decimal" autocomplete="off" oninput="hpKgEingabe&&hpKgEingabe(this)" style="width:7.5rem" />
           <input id="lz-notiz" class="inp" placeholder="Lieferant / Notiz" />
           <div class="form-actions">
             <button class="btn-secondary" onclick="closeForm('lager-zugang-overlay')">Abbrechen</button>
@@ -4832,7 +4832,7 @@ function renderLager() {
     </div>
   `;
 }
-window.showLagerArtikelForm=function(id){const ov=document.getElementById('lager-artikel-overlay');if(!ov){navigate('lager');setTimeout(()=>showLagerArtikelForm(id),150);return;}const a=id?(window._lagerData?.artikel?.[id]||{}):{};document.getElementById('la-edit-id').value=id||'';document.getElementById('la-titel').textContent=id?'Artikel bearbeiten':'Artikel hinzufügen';document.getElementById('la-kategorie').value=a.kategorie||'Verbrauchsmaterial';document.getElementById('la-name').value=a.name||'';document.getElementById('la-beschreibung').value=a.beschreibung||'';document.getElementById('la-einheit').value=a.einheit||'Stück';document.getElementById('la-bestand').value=a.bestand||'';document.getElementById('la-mindest').value=a.mindestBestand||'';document.getElementById('la-preis').value=a.preis||'';document.getElementById('la-ablauf').value=a.ablaufdatum||'';ov.style.display='flex';};
+window.showLagerArtikelForm=function(id){const ov=document.getElementById('lager-artikel-overlay');if(!ov){navigate('lager');setTimeout(()=>showLagerArtikelForm(id),150);return;}const a=id?(window._lagerData?.artikel?.[id]||{}):{};document.getElementById('la-edit-id').value=id||'';document.getElementById('la-titel').textContent=id?'Artikel bearbeiten':'Artikel hinzufügen';document.getElementById('la-kategorie').value=a.kategorie||'Verbrauchsmaterial';document.getElementById('la-name').value=a.name||'';document.getElementById('la-beschreibung').value=a.beschreibung||'';document.getElementById('la-einheit').value=a.einheit||'Stück';document.getElementById('la-bestand').value=a.bestand?String(a.bestand).replace('.',','):'';document.getElementById('la-mindest').value=a.mindestBestand?String(a.mindestBestand).replace('.',','):'';document.getElementById('la-preis').value=a.preis?String(a.preis).replace('.',','):'';document.getElementById('la-ablauf').value=a.ablaufdatum||'';ov.style.display='flex';};
 window.saveLagerArtikel=async function(){const name=document.getElementById('la-name')?.value.trim();if(!name){alert('Name Pflicht');return;}const id=document.getElementById('la-edit-id')?.value;const data={kategorie:document.getElementById('la-kategorie')?.value,name,beschreibung:document.getElementById('la-beschreibung')?.value.trim()||'',einheit:document.getElementById('la-einheit')?.value,bestand:parseFloat(document.getElementById('la-bestand')?.value)||0,mindestBestand:parseFloat(document.getElementById('la-mindest')?.value)||0,preis:parseFloat(document.getElementById('la-preis')?.value)||0,ablaufdatum:document.getElementById('la-ablauf')?.value||'',updatedAt:Date.now()};if(id)await update(ref(db,'lager/artikel/'+id),data);else await push(ref(db,'lager/artikel'),data);closeForm('lager-artikel-overlay');showSaveToast&&showSaveToast('Artikel gespeichert');};
 window.deleteLagerArtikel=async function(id){if(confirm('Artikel löschen?'))await remove(ref(db,'lager/artikel/'+id));};
 window.showLagerVerbrauchForm=function(id){const ov=document.getElementById('lager-verbrauch-overlay');if(!ov){navigate('lager');setTimeout(()=>showLagerVerbrauchForm(id),150);return;}const a=window._lagerData?.artikel?.[id]||{};document.getElementById('lv-artikel-id').value=id;document.getElementById('lv-artikel-info').textContent=a.name+' · Bestand: '+(a.bestand||0)+' '+(a.einheit||'');document.getElementById('lv-menge').value='';document.getElementById('lv-notiz').value='';ov.style.display='flex';};
@@ -8696,9 +8696,9 @@ function renderKraftfutter() {
         <div class="form-header"><h3>⚙ KF Einstellungen</h3><button class="close-btn" onclick="closeForm('kf-vorrat-overlay')">✕</button></div>
         <div class="form-body">
           <label class="inp-label">📦 Aktueller Vorrat (kg)</label>
-          <input id="kf-vorrat-kg" class="inp" type="number" step="0.5" inputmode="decimal" placeholder="z.B. 500" value="${vorratKg||''}" />
+          <input id="kf-vorrat-kg" class="inp" type="text" inputmode="decimal" autocomplete="off" oninput="hpKgEingabe&&hpKgEingabe(this)" placeholder="z.B. 500" value="${vorratKg?String(vorratKg).replace('.',','):''}" />
           <label class="inp-label">Standardmenge pro Kuh pro Tag (kg)</label>
-          <input id="kf-standard-kg" class="inp" type="number" step="0.1" inputmode="decimal" placeholder="z.B. 2.0" value="${standardKg||''}" />
+          <input id="kf-standard-kg" class="inp" type="text" inputmode="decimal" autocomplete="off" oninput="hpKgEingabe&&hpKgEingabe(this)" placeholder="z.B. 2,0" value="${standardKg?String(standardKg).replace('.',','):''}" />
           <div class="form-actions">
             <button class="btn-secondary" onclick="closeForm('kf-vorrat-overlay')">Abbrechen</button>
             <button class="btn-primary" onclick="saveKfEinstell()">Speichern</button>
@@ -8713,7 +8713,7 @@ function renderKraftfutter() {
         <div class="form-header"><h3>📥 Lieferung erfassen</h3><button class="close-btn" onclick="closeForm('kf-lieferung-overlay')">✕</button></div>
         <div class="form-body">
           <label class="inp-label">Menge (kg) *</label>
-          <input id="kfl-kg" class="inp" type="number" step="10" inputmode="decimal" placeholder="z.B. 1000" />
+          <input id="kfl-kg" class="inp" type="text" inputmode="decimal" autocomplete="off" oninput="hpKgEingabe&&hpKgEingabe(this)" placeholder="z.B. 1000" />
           <label class="inp-label">Datum</label>
           <input id="kfl-datum" class="inp" type="date" value="${isoDate(new Date())}" />
           <input id="kfl-notiz" class="inp" placeholder="Notiz (z.B. Lieferant, Sorte)" />
@@ -8735,7 +8735,7 @@ function renderKraftfutter() {
             ${kueheList.map(([id,k])=>`<option value="${id}">#${k.nr} ${k.name||''}</option>`).join('')}
           </select>
           <label class="inp-label">Extramenge pro Tag (kg)</label>
-          <input id="kf-menge" class="inp" type="number" step="0.1" inputmode="decimal" placeholder="z.B. 1.5" />
+          <input id="kf-menge" class="inp" type="text" inputmode="decimal" autocomplete="off" oninput="hpKgEingabe&&hpKgEingabe(this)" placeholder="z.B. 1,5" />
           <label class="inp-label">Ab wann</label>
           <input id="kf-datum" class="inp" type="date" value="${isoDate(new Date())}" />
           <textarea id="kf-notiz" class="inp" rows="2" placeholder="Grund / Futtermittel"></textarea>
