@@ -259,7 +259,10 @@ window.exportSyncJSON = function() {
     version: '1.0',
     saison: saisonInfo,
     bauern: bauernArray,
-    kuehe: Object.values(kuehe),
+    // v54.56 (LNMachinery): Feld "trocken" fuer die Almabrechnung (Excel).
+    // true = ganze Saison trocken (Laktation "trocken"); "trockengestellt"
+    // waehrend der Saison bleibt fuer die Abrechnung eine Melkkuh.
+    kuehe: Object.values(kuehe).map(k => Object.assign({}, k, { trocken: k.laktation === 'trocken' })),
     milch_wochen: milchArray,
     behandlungen: behandlArray,
     kraftfutter: kfArray,
