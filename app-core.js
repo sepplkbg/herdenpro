@@ -15,8 +15,34 @@ function ref(db, path) {
   if(typeof db === 'string') return firebase.database().ref(db);
   return firebase.database().ref();
 }
+// Live-Verbindung zu einem DB-Bereich. Bricht Firebase die Verbindung ab
+// (z.B. PERMISSION_DENIED nach abgelaufener Anmeldung), wird sie NICHT mehr von
+// selbst aufgebaut – die App zeigte dann alte Daten (gelöschte Einträge blieben
+// sichtbar). Darum: Anmeldung erneuern und neu verbinden (v54.55).
 function onValue(refObj, callback, errCallback) {
-  refObj.on('value', function(snap) { callback(snap); }, errCallback||function(){});
+  let versuch = 0;
+  const pfad = (function(){ try { return decodeURIComponent(refObj.toString().substring(refObj.root.toString().length)); } catch(e) { return '?'; } })();
+  const verbinden = function() {
+    refObj.on('value', function(snap) {
+      versuch = 0;
+      if(window._hpSyncAbgebrochen) delete window._hpSyncAbgebrochen[pfad];
+      callback(snap);
+    }, function(err) {
+      console.warn('[Sync] Verbindung zu "' + pfad + '" abgebrochen:', err && err.message);
+      window._hpSyncAbgebrochen = window._hpSyncAbgebrochen || {};
+      window._hpSyncAbgebrochen[pfad] = Date.now();
+      try { (errCallback || function(){})(err); } catch(e) {}
+      const warte = Math.min(300000, 3000 * Math.pow(2, versuch++));   // 3 s, 6 s, 12 s … max. 5 min
+      setTimeout(async function() {
+        try {
+          const u = firebase.auth && firebase.auth().currentUser;
+          if(u) await u.getIdToken(true);
+        } catch(e) {}
+        verbinden();
+      }, warte);
+    });
+  };
+  verbinden();
 }
 function set(refObj, val) { return refObj.set(val); }
 function update(refObj, val) { return refObj.update(val); }

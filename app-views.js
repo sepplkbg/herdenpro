@@ -2520,6 +2520,8 @@ window.deleteBehandlung=async id=>{
   if(!id||!confirm('Behandlung wirklich löschen?'))return;
   try{
     await remove(ref(db,'behandlungen/'+id));
+    // Sofort aus der Anzeige nehmen (nicht erst auf die Live-Verbindung warten)
+    try{ if(behandlungen&&behandlungen[id]){ delete behandlungen[id]; window.behandlungen=behandlungen; if(typeof render==='function')render(); } }catch(e){}
     if(typeof window.showSaveToast==='function')window.showSaveToast('Behandlung gelöscht');
   }catch(e){
     console.error('[deleteBehandlung]',e);

@@ -12,6 +12,10 @@
   // ═══ A13: Was ist neu ═══════════════════════════════════════════════════
   // Neueste Version oben. Nur Punkte, die Nutzer merken.
   const CHANGELOG = [
+    { v: 'v54.55', punkte: [
+      'Gelöschte Behandlungen verschwinden sofort',
+      'Abgerissene Live-Verbindung (z.B. nach abgelaufener Anmeldung) baut sich selbst wieder auf – keine veralteten Daten mehr'
+    ]},
     { v: 'v54.54', punkte: [
       'Lager und Kraftfutter: Mengen und Preise mit Komma eintragen (z.B. 2,5)',
       'Papierkorb zeigt bei Sennerei-Wochen und Verkäufen, worum es geht'
