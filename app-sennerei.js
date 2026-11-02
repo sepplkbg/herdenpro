@@ -625,12 +625,25 @@
         }
       });
       const tages = letzterM + letzterA;
-      if(tages > 0) {
+      // v54.58: Wird die Kuh noch gemolken? Trocken / trockengestellt / Trockenstell-Behandlung
+      // nach der letzten Messung / vorzeitig abgetrieben → KEINE (alte) Milch mehr anzeigen.
+      const letzteMessung = Math.max(tsM, tsA);
+      const trockenBeh = Object.values(window.behandlungen || {}).some(bh => bh && bh.kuhId === kid && bh.datum &&
+        window.hpIstTrockenstellBehandlung && window.hpIstTrockenstellBehandlung(bh) &&
+        new Date(bh.datum).setHours(0,0,0,0) >= new Date(letzteMessung || 0).setHours(0,0,0,0));
+      let status = '';
+      if(k.vorzeitigAbtrieb && k.vorzeitigAbtrieb.datum) status = 'abgetrieben';
+      else if(k.laktation === 'trocken' || k.laktation === 'trockengestellt' || trockenBeh) status = 'trocken';
+      if(status) {
+        kuehePergreifTag.push({ nr: k.nr, name: k.name, status });
+      } else if(tages > 0) {
         sumTagesmilch += tages;
         kuhCount++;
         kuehePergreifTag.push({ nr: k.nr, name: k.name, m: letzterM, a: letzterA, tages });
       }
     });
+    // gemolkene Kühe zuerst, dann trocken/abgetrieben – jeweils nach Nummer
+    kuehePergreifTag.sort((x, y) => (!!x.status - !!y.status) || (parseInt(x.nr) || 0) - (parseInt(y.nr) || 0));
     return { sum: sumTagesmilch, count: kuhCount, kuehe: kuehePergreifTag, gesamtKuehe: meineKuehe.length };
   }
 
@@ -721,13 +734,15 @@
     const isAbgeholt = !!b.abgeholtAm;
     const tm = _sennereiTagesmilchFuerBauer(b.name);
     let tagesmilchHtml = '';
-    if(tm && tm.count > 0) {
-      const kuhZeilen = tm.kuehe.map(k => `<div style="display:flex;justify-content:space-between;padding:.2rem .3rem;font-size:.8rem;border-bottom:1px solid var(--border)">
+    if(tm && tm.kuehe.length > 0) {
+      const kuhZeilen = tm.kuehe.map(k => `<div style="display:flex;justify-content:space-between;gap:.4rem;flex-wrap:wrap;padding:.2rem .3rem;font-size:.8rem;border-bottom:1px solid var(--border)${k.status ? ';opacity:.6' : ''}">
         <span>#${k.nr} ${k.name||''}</span>
-        <span style="color:var(--text3)">M ${k.m||'–'}L · A ${k.a||'–'}L · <b style="color:var(--gold)">T ${Math.round(k.tages*10)/10}L</b></span>
+        ${k.status
+          ? `<span style="color:#6abfdb;font-weight:700">${k.status === 'trocken' ? '💧 trocken' : '↓ abgetrieben'}</span>`
+          : `<span style="color:var(--text3)">M ${k.m||'–'}L · A ${k.a||'–'}L · <b style="color:var(--gold)">T ${Math.round(k.tages*10)/10}L</b></span>`}
       </div>`).join('');
       tagesmilchHtml = `
-        <div class="section-title">🥛 Letzte Tagesmilch (${tm.count} von ${tm.gesamtKuehe} Kühen)</div>
+        <div class="section-title">🥛 Letzte Tagesmilch (${tm.count} von ${tm.gesamtKuehe} Kühen gemolken)</div>
         <div class="card-section" style="padding:.3rem;margin-bottom:.8rem">
           ${kuhZeilen}
           <div style="padding:.4rem .3rem;font-weight:700;color:var(--gold);border-top:2px solid var(--gold);margin-top:.2rem">

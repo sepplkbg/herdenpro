@@ -12,6 +12,9 @@
   // ═══ A13: Was ist neu ═══════════════════════════════════════════════════
   // Neueste Version oben. Nur Punkte, die Nutzer merken.
   const CHANGELOG = [
+    { v: 'v54.58', punkte: [
+      'Sennerei-Abholung: Bei „Letzte Tagesmilch“ zählen nur noch Kühe, die gemolken werden – trockene Kühe stehen als „trocken“ da'
+    ]},
     { v: 'v54.57', punkte: [
       'Sennerei-Abholung: Abholliste aus der Almabrechnung (Excel) direkt als Datei einlesen – genauer als das PDF',
       'Woche → 📤 Für Excel exportieren: Abholungen zurück an die Almabrechnung'
