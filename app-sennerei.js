@@ -6,7 +6,7 @@
 //  Phase B (später): Abholung + Touch-Signatur + PDF-Export
 // ══════════════════════════════════════════════════════════════════════════════
 (function() {
-  const VERSION = '4.3';
+  const VERSION = '4.4';
   window.SENNEREI_VERSION = VERSION;
 
   // ── Utilities ──
@@ -123,7 +123,7 @@
     // 4) Für jedes Paar: Name + Werte extrahieren
     const bauern = [];
     // Noise-Words (Header/Footer die niemals als Bauer-Name gelten dürfen)
-    const NOISE_WORDS = /^(Bauer|Produkt|Verk%|Soll|Guthaben|Vorwoche|Zum|Abholen|Klötze|Abgeholt|Naturalr\.?|Anspruch|abgeholt|Chargen|Abholung|Gesamt|Unterschrift|Neu|Max\.?|verkaufbar|Wochenabholung|Woche|Abholungsliste|Sennerei|Nasserein|Nassereinalm|Sommer|Engineering|by|LN|Machinery|Erstellt:?|K:|B:|kg|\|)$/i;
+    const NOISE_WORDS = /^(Bauer|Produkt|Verk%|Soll|Guthaben|Vorwoche|Zum|Abholen|Klötze|Abgeholt|Naturalr\.?|Anspruch|abgeholt|Chargen|Abholung|Gesamt|Unterschrift|Neu|Max\.?|verkaufbar|Wochenabholung|Woche|Abholungsliste|Sennerei|Nasserein|Nassereinalm|Sommer|Engineering|by|LN|Machinery|LNMachinery|Almabrechnung|Erstellt:?|K:|B:|kg|\|)$/i;
 
     paare.forEach((paar, idx) => {
       // ENGES Y-Fenster für Namen: max 22pt ÜBER Käse-Zeile (für 2-zeilige Namen wie "Achenrainer\nSimon")
@@ -369,14 +369,15 @@
       <div class="page-header">
         <h2>📦 Sennerei-Abholung</h2>
         <div style="display:flex;gap:.4rem">
-          <button class="btn-primary" onclick="sennereiUploadPdf()">📥 Woche via PDF importieren</button>
+          <button class="btn-primary" onclick="sennereiUploadPdf()">📥 Abholliste einlesen (Datei/PDF)</button>
         </div>
       </div>
       ${typeof window._renderSennereiTabs === 'function' ? window._renderSennereiTabs('abholung') : ''}
 
       <div style="background:var(--bg3);border:1px solid var(--border);border-radius:12px;padding:.8rem;margin-bottom:.8rem">
         <div style="font-size:.85rem;color:var(--text2);line-height:1.5">
-          Lade jede Woche die aktuelle Abholungsliste (PDF von deinem Sennerei-System) hoch.
+          Lade jede Woche die Abholliste aus der Almabrechnung hoch – am besten die Datei
+          <b>Abholliste_W…json</b> (Excel: „Abholliste für App“), alternativ das PDF.
           Die App liest die Werte aus, matcht die Bauern und speichert die Woche.
           Danach kannst du für jeden Bauer die Abholung digital erfassen.
         </div>
@@ -387,7 +388,7 @@
         window._sennereiLadeFehler
           ? '<div class="empty-state">⚠ Wochen konnten nicht geladen werden (keine Verbindung?).<br><button class="btn-secondary" style="margin-top:.6rem" onclick="sennereiInvalidateCache();render()">↻ Nochmal versuchen</button></div>'
           : wochen.length === 0
-          ? '<div class="empty-state">Noch keine Wochen importiert.<br>Tippe oben auf „📥 Woche via PDF importieren" um zu starten.</div>'
+          ? '<div class="empty-state">Noch keine Wochen importiert.<br>Tippe oben auf „📥 Abholliste einlesen" um zu starten.</div>'
           : ''}
       <div class="card-list">
         ${wochen.map(w => {
@@ -455,9 +456,12 @@
         <span style="color:var(--gold);font-weight:600">${abgeholtCount} / ${bauern.length} abgeholt</span>
       </div>
 
-      <div class="section-title" style="display:flex;justify-content:space-between;align-items:center">
+      <div class="section-title" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:.4rem">
         <span>📊 Wochenauswertung</span>
-        <button class="btn-xs" onclick="sennereiDruckeWoche('${wid}')" title="Wochen-Übersicht als PDF drucken">📄 PDF drucken</button>
+        <div style="display:flex;flex-wrap:wrap;gap:.35rem">
+          <button class="btn-xs" onclick="sennereiDruckeWoche('${wid}')" title="Wochen-Übersicht als PDF drucken">📄 PDF drucken</button>
+          <button class="btn-xs" onclick="sennereiExportFuerExcel('${wid}')" title="Abholungen dieser Woche als Datei für die Almabrechnung (Excel) herunterladen">📤 Für Excel exportieren</button>
+        </div>
       </div>
       <div class="card-section" style="padding:.7rem .8rem;margin-bottom:.8rem;font-size:.85rem">
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:.4rem">
@@ -1125,24 +1129,99 @@
   /* v54.31: alte, überschriebene Fassung von window.sennereiSpeichereAbholung entfernt (toter Code) */
 
   // ══════════════════════════════════════════════════════════════════════════════
+  // v4.4 (LNMachinery): DATEI-AUSTAUSCH MIT DER ALMABRECHNUNG (Excel)
+  //   Einlesen : Abholliste_W<nn>_<Alm>.json  (Format "almabrechnung-abholliste")
+  //   Export   : Abholung_<wocheId>_fuer_Excel.json (Format "herdenpro-abholung")
+  // ══════════════════════════════════════════════════════════════════════════════
+  window.sennereiParseJson = async function(file) {
+    const text = await file.text();
+    let d;
+    try { d = JSON.parse(text.replace(/^\uFEFF/, '')); }
+    catch(e) { throw new Error('Die Datei ist keine gültige Abholliste (JSON fehlerhaft).'); }
+    if(!d || d.format !== 'almabrechnung-abholliste') throw new Error('Das ist keine Abholliste aus der Almabrechnung.');
+    const num = v => { const x = parseFloat(v); return isFinite(x) ? Math.round(x * 100) / 100 : 0; };
+    const prod = p => {
+      p = p || {};
+      return {
+        verkProzent: num(p.verkProzent), soll: num(p.soll), guthabenVorwoche: num(p.guthabenVorwoche),
+        zumAbholen: num(p.zumAbholen), klotze: parseInt(p.klotze) || 0, abgeholt: num(p.abgeholt),
+        naturalrAnspruch: num(p.naturalrAnspruch), naturalrAbgeholt: num(p.naturalrAbgeholt),
+        chargen: Array.isArray(p.chargen) ? p.chargen.filter(Boolean).map(String) : []
+      };
+    };
+    const woche = parseInt(d.woche) || null;
+    const jahr = parseInt(d.saison) || new Date().getFullYear();
+    return {
+      wocheId: d.wocheId || (woche ? (jahr + '-W' + String(woche).padStart(2, '0')) : isoWochenId()),
+      wocheNr: woche,
+      jahr: jahr,
+      startDatum: d.startDatum || null,
+      endeDatum: d.endeDatum || null,
+      maxVerkaufbar: { kaese: num(d.maxVerkaufbar && d.maxVerkaufbar.kaese), butter: num(d.maxVerkaufbar && d.maxVerkaufbar.butter) },
+      bauern: (d.bauern || []).filter(b => b && b.name).map(b => ({
+        name: String(b.name), nameNorm: normalisierName(b.name), kaese: prod(b.kaese), butter: prod(b.butter)
+      }))
+    };
+  };
+
+  window.sennereiExportFuerExcel = async function(wid) {
+    try {
+      let woche = null;
+      if(firebase && firebase.database) {
+        const snap = await firebase.database().ref('sennerei/wochen/' + wid).once('value');
+        woche = snap.val();
+      }
+      if(!woche) woche = (_wochenCache || []).find(w => w.id === wid);
+      if(!woche) { alert('Woche nicht gefunden.'); return; }
+      const r2 = v => Math.round((parseFloat(v) || 0) * 100) / 100;
+      const teil = p => ({ abgeholt: r2(p && p.abgeholt), naturalrAbgeholt: r2(p && p.naturalrAbgeholt), chargen: (p && p.chargen) || [] });
+      const bauern = Object.values(woche.bauern || {}).filter(b => b && b.name).map(b => ({
+        name: b.name,
+        kaese: teil(b.kaese),
+        butter: teil(b.butter),
+        abgeholtAm: b.abgeholtAm ? new Date(b.abgeholtAm).toISOString() : null,
+        anzahlAbholungen: Array.isArray(b.abholungen) ? b.abholungen.length : (b.abgeholtAm ? 1 : 0)
+      })).sort((a, b) => a.name.localeCompare(b.name));
+      const daten = {
+        format: 'herdenpro-abholung', version: 1, app: 'HerdenPro', appVersion: VERSION,
+        wocheId: wid, wocheNr: woche.wocheNr || null, jahr: woche.jahr || null,
+        startDatum: woche.startDatum || null, endeDatum: woche.endeDatum || null,
+        exportiertAm: new Date().toISOString(), bauern: bauern
+      };
+      const blob = new Blob([JSON.stringify(daten, null, 1)], { type: 'application/json' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = 'Abholung_' + wid + '_fuer_Excel.json';
+      document.body.appendChild(a); a.click();
+      setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1500);
+      const offen = bauern.filter(b => !b.abgeholtAm).length;
+      if(window.showSaveToast) window.showSaveToast('📤 Datei für Excel gespeichert' + (offen ? ' – ' + offen + ' Bauern noch ohne Abholung' : ''));
+    } catch(err) {
+      console.error('[Sennerei] Export für Excel:', err);
+      alert('Export fehlgeschlagen:\n\n' + (err.message || err));
+    }
+  };
+
+  // ══════════════════════════════════════════════════════════════════════════════
   // PDF-UPLOAD
   // ══════════════════════════════════════════════════════════════════════════════
   window.sennereiUploadPdf = function() {
     const inp = document.createElement('input');
     inp.type = 'file';
-    inp.accept = 'application/pdf,.pdf';
+    inp.accept = 'application/pdf,.pdf,application/json,.json';
     inp.style.display = 'none';
     inp.onchange = async (e) => {
       const file = e.target.files && e.target.files[0];
       if(!file) return;
       try {
-        if(window.showSaveToast) window.showSaveToast('⏳ PDF wird geparst…');
-        const parsed = await window.parseSennereiPdf(file);
+        const istJson = /\.json$/i.test(file.name || '') || file.type === 'application/json';
+        if(window.showSaveToast) window.showSaveToast(istJson ? '⏳ Abholliste wird gelesen…' : '⏳ PDF wird geparst…');
+        const parsed = istJson ? await window.sennereiParseJson(file) : await window.parseSennereiPdf(file);
         // Vorschau anzeigen
         window.sennereiZeigeImportVorschau(parsed);
       } catch(err) {
         console.error('[Sennerei] PDF-Parse fail:', err);
-        alert('Fehler beim PDF-Parsen:\n\n' + (err.message || err) + '\n\nIst das die richtige PDF-Datei?');
+        alert('Fehler beim Einlesen:\n\n' + (err.message || err) + '\n\nIst das die richtige Datei (Abholliste_W….json oder PDF)?');
       }
     };
     document.body.appendChild(inp);
@@ -1370,7 +1449,7 @@
 </div>
 <div class="footer">
   <span>Nassereinalm | Sommer ${new Date().getFullYear()}</span>
-  <span>Engineering by LN Machinery</span>
+  <span>Engineering by LNMachinery</span>
 </div>
 </body></html>`;
 
