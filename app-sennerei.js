@@ -10,6 +10,103 @@
   window.SENNEREI_VERSION = VERSION;
 
   // ── Utilities ──
+  // ── v54.59: Unterschriften liegen NICHT mehr in den Wochen-Daten ──────────
+  // Vorher steckte jede Unterschrift als großes PNG (bis 100+ KB) zweimal in
+  // sennerei/wochen/... → die Wochenliste wurde viele MB groß, lud am Handy
+  // nicht mehr (Zeitüberschreitung) und blockierte das Speichern.
+  // Jetzt: kleines JPEG unter sennerei/unterschriften/<woche>/<bauer>/<ts>,
+  // in der Abholung steht nur noch  signiert: '<ts>'.
+  const SIG_ROOT = 'sennerei/unterschriften';
+  const _sigCache = {};          // { wid: { bid: { key: dataUrl } } }
+  const _sigLaedt = {};
+  function sigVerkleinern(canvas) {
+    const maxW = 600, maxH = 600;
+    const f = Math.min(1, maxW / (canvas.width || 1), maxH / (canvas.height || 1));
+    const c = document.createElement('canvas');
+    c.width = Math.max(1, Math.round(canvas.width * f));
+    c.height = Math.max(1, Math.round(canvas.height * f));
+    const x = c.getContext('2d');
+    x.fillStyle = '#ffffff'; x.fillRect(0, 0, c.width, c.height);
+    x.drawImage(canvas, 0, 0, c.width, c.height);
+    return c.toDataURL('image/jpeg', 0.8);
+  }
+  async function ladeUnterschriften(wid) {
+    if(_sigCache[wid]) return _sigCache[wid];
+    if(_sigLaedt[wid]) return _sigLaedt[wid];
+    _sigLaedt[wid] = firebase.database().ref(SIG_ROOT + '/' + wid).once('value')
+      .then(s => { _sigCache[wid] = s.val() || {}; return _sigCache[wid]; })
+      .catch(e => { console.warn('[Sennerei] Unterschriften laden:', e && e.message); return {}; })
+      .finally(() => { delete _sigLaedt[wid]; });
+    return _sigLaedt[wid];
+  }
+  // Bild einer Abholung (neu: aus SIG_ROOT, alt: direkt im Eintrag)
+  function sigSrc(wid, bid, a) {
+    if(!a) return null;
+    if(a.signaturPng) return a.signaturPng;
+    if(!a.signiert) return null;
+    const m = (_sigCache[wid] || {})[bid] || {};
+    return m[a.signiert] || null;
+  }
+  function sigLetzte(wid, bid, b) {
+    if(!b) return null;
+    if(b.unterschriftPng) return b.unterschriftPng;
+    if(b.unterschriftAusgelagert === 'letzte') return ((_sigCache[wid] || {})[bid] || {}).letzte || null;
+    return null;
+  }
+  // Bestehende Wochen einmalig umbauen (Unterschriften auslagern) – atomar pro Woche
+  let _auslagernLaeuft = null;
+  async function wochenSchluessel() {
+    const u = firebase.auth && firebase.auth().currentUser;
+    const tok = u ? await u.getIdToken() : null;
+    const base = String((firebase.app().options || {}).databaseURL || '').replace(/\/$/, '');
+    const r = await fetch(base + '/sennerei/wochen.json?shallow=true' + (tok ? '&auth=' + encodeURIComponent(tok) : ''), { cache: 'no-store' });
+    if(!r.ok) throw new Error('HTTP ' + r.status);
+    return Object.keys((await r.json()) || {}).sort();
+  }
+  function auslagernUpdates(wid, w) {
+    const upd = {};
+    Object.entries((w && w.bauern) || {}).forEach(([bid, b]) => {
+      if(!b) return;
+      const base = 'sennerei/wochen/' + wid + '/bauern/' + bid;
+      const abh = Object.entries(b.abholungen || {});
+      abh.forEach(([idx, a]) => {
+        if(!a || !a.signaturPng) return;
+        const key = String(a.ts || ('i' + idx));
+        upd[SIG_ROOT + '/' + wid + '/' + bid + '/' + key] = a.signaturPng;
+        upd[base + '/abholungen/' + idx + '/signaturPng'] = null;
+        upd[base + '/abholungen/' + idx + '/signiert'] = key;
+      });
+      if(b.unterschriftPng) {
+        const doppelt = abh.some(([, a]) => a && a.signaturPng === b.unterschriftPng);
+        if(!doppelt) upd[SIG_ROOT + '/' + wid + '/' + bid + '/letzte'] = b.unterschriftPng;
+        upd[base + '/unterschriftPng'] = null;
+        upd[base + '/unterschriftAusgelagert'] = doppelt ? 'abholung' : 'letzte';
+      }
+    });
+    return upd;
+  }
+  function unterschriftenAuslagern() {
+    if(_auslagernLaeuft) return _auslagernLaeuft;
+    _auslagernLaeuft = (async () => {
+      const db = firebase.database();
+      const fertig = (await db.ref('sennerei/meta/unterschriftenAusgelagert').once('value')).val();
+      if(fertig) return;
+      const keys = await wochenSchluessel();
+      for(let i = 0; i < keys.length; i++) {
+        window._sennereiOptimierung = { i: i + 1, n: keys.length };
+        if(window.currentView === 'sennerei' && typeof render === 'function') render();
+        const w = (await Promise.race([
+          db.ref('sennerei/wochen/' + keys[i]).once('value'),
+          new Promise((_, rej) => setTimeout(() => rej(new Error('Zeitüberschreitung beim Optimieren')), 120000))
+        ])).val();
+        const upd = auslagernUpdates(keys[i], w);
+        if(Object.keys(upd).length) await db.ref().update(upd);
+      }
+      await db.ref('sennerei/meta/unterschriftenAusgelagert').set(Date.now());
+    })().finally(() => { window._sennereiOptimierung = null; _auslagernLaeuft = null; });
+    return _auslagernLaeuft;
+  }
+  window._hpSennereiAuslagern = unterschriftenAuslagern;
   // kg-Werte: Komma erlaubt, max. 2 Nachkommastellen (z.B. 10,52)
   function kgTxt(n) {
     const x = Math.round((parseFloat(n) || 0) * 100) / 100;
@@ -266,11 +363,13 @@
   // ── Wochen laden/speichern ──
   window.sennereiLadeWochen = function(callback) {
     if(!firebase || !firebase.database) return callback && callback([]);
-    // v54.43: nicht ewig „Lade Wochen…“ – nach 10 s mit Fehlermeldung abbrechen
-    Promise.race([
+    // v54.59: zuerst (einmalig) Unterschriften auslagern, dann sind die Wochen klein
+    unterschriftenAuslagern().catch(e => console.warn('[Sennerei] Auslagern:', e && e.message))
+    // v54.43: nicht ewig „Lade Wochen…“ – nach 30 s mit Fehlermeldung abbrechen
+    .then(() => Promise.race([
       firebase.database().ref('sennerei/wochen').orderByKey().limitToLast(20).once('value'),
-      new Promise((_, rej) => setTimeout(() => rej(new Error('Zeitüberschreitung')), 10000))
-    ])
+      new Promise((_, rej) => setTimeout(() => rej(new Error('Zeitüberschreitung')), 30000))
+    ]))
       .then(snap => {
         const val = snap.val() || {};
         const wochen = Object.entries(val).map(([id, w]) => ({ id, ...w })).sort((a,b) => b.id.localeCompare(a.id));
@@ -316,7 +415,7 @@
       Object.entries(alt).forEach(([id, a]) => {
         if(!a || !a.abgeholtAm) return;
         const n = bauern[id] || (bauern[id] = { name: a.name, kaese: a.kaese || null, butter: a.butter || null });
-        ['unterschriftPng', 'abholungen', 'abgeholtAm', 'abgeholtVon'].forEach(f => { if(a[f] != null) n[f] = a[f]; });
+        ['unterschriftPng', 'unterschriftAusgelagert', 'abholungen', 'abgeholtAm', 'abgeholtVon'].forEach(f => { if(a[f] != null) n[f] = a[f]; });
         [['kaese', ['abgeholt', 'naturalrAbgeholt', 'chargen', 'klotze']], ['butter', ['abgeholt', 'naturalrAbgeholt', 'chargen']]].forEach(([art, felder]) => {
           if(!a[art]) return;
           n[art] = n[art] || {};
@@ -348,10 +447,29 @@
   let _wochenCache = null;   // null = noch nie geladen, [] = geladen aber leer
   let _wochenLoading = false;
 
+  let _wochenAlt = null;      // v54.59: letzter Stand bleibt sichtbar, während neu geladen wird
   window.sennereiInvalidateCache = function() {
+    if(_wochenCache) _wochenAlt = _wochenCache;
     _wochenCache = null;
     _wochenLoading = false;
   };
+  function _wochenNeuLaden() {
+    if(_wochenCache !== null || _wochenLoading) return;
+    _wochenLoading = true;
+    window._sennereiLadeFehler = null;
+    window.sennereiLadeWochen(w => {
+      _wochenLoading = false;
+      if(window._sennereiLadeFehler && _wochenAlt) return;   // Fehler: alten Stand behalten
+      _wochenCache = w || [];
+      _wochenAlt = null;
+      if(/^sennerei/.test(window.currentView || '') && typeof render === 'function') render();
+    });
+  }
+  // Woche suchen – auch während eines Neu-Ladens (z.B. nach App-Wechsel) nicht „nicht gefunden“
+  function findeWoche(id) {
+    if(_wochenCache === null) _wochenNeuLaden();
+    return (_wochenCache || _wochenAlt || []).find(w => w.id === id);
+  }
 
   window.renderSennerei = function() {
     // Nur EINMAL laden (nicht nach jedem render neu triggern → verhindert Flackern)
@@ -360,11 +478,12 @@
       window._sennereiLadeFehler = null;
       window.sennereiLadeWochen(w => {
         _wochenCache = w || [];
+        _wochenAlt = null;
         _wochenLoading = false;
         if(window.currentView === 'sennerei' && typeof render === 'function') render();
       });
     }
-    const wochen = _wochenCache || [];
+    const wochen = _wochenCache || _wochenAlt || [];
     return `
       <div class="page-header">
         <h2>📦 Sennerei-Abholung</h2>
@@ -384,7 +503,7 @@
       </div>
 
       <div class="section-title">Aktuelle & vergangene Wochen</div>
-      ${_wochenCache === null ? '<div class="empty-state">⏳ Lade Wochen…</div>' :
+      ${(_wochenCache === null && !_wochenAlt) ? '<div class="empty-state">' + (window._sennereiOptimierung ? '⏳ Abholungen werden einmalig optimiert (Woche ' + window._sennereiOptimierung.i + ' von ' + window._sennereiOptimierung.n + ')…<br><span style="font-size:.8rem">Bitte App offen lassen.</span>' : '⏳ Lade Wochen…') + '</div>' :
         window._sennereiLadeFehler
           ? '<div class="empty-state">⚠ Wochen konnten nicht geladen werden (keine Verbindung?).<br><button class="btn-secondary" style="margin-top:.6rem" onclick="sennereiInvalidateCache();render()">↻ Nochmal versuchen</button></div>'
           : wochen.length === 0
@@ -424,7 +543,7 @@
 
   window.renderSennereiWoche = function() {
     const wid = window._sennereiAktiveWoche;
-    const woche = (_wochenCache || []).find(w => w.id === wid);
+    const woche = findeWoche(wid);
     if(!woche) {
       return `
         <div class="page-header"><h2>🥛 Sennerei-Woche</h2><button class="btn-secondary" onclick="navigate('sennerei')">← Zurück</button></div>
@@ -516,7 +635,7 @@
     // Bei ERSTER Abholung: mit bestehenden Werten (falls Import), sonst 0.
     // Bei NACHFOLGE-Abholung (bereits abgeholt): mit 0 starten — wir geben nur
     // die ZUSÄTZLICHE Menge ein, die dann zur Summe addiert wird.
-    const woche = (_wochenCache || []).find(w => w.id === window._sennereiAktiveWoche);
+    const woche = findeWoche(window._sennereiAktiveWoche);
     const b = woche && woche.bauern && woche.bauern[bid];
     const istNachfolge = !!(b && b.abgeholtAm);
     window._sennereiWizardData = {
@@ -570,7 +689,7 @@
         for(let i = 3; i < imgData.data.length; i += 4) {
           if(imgData.data[i] > 0) { hasContent = true; break; }
         }
-        if(hasContent) data.signaturPng = canvas.toDataURL('image/png');
+        if(hasContent) data.signaturPng = sigVerkleinern(canvas);
       }
     }
     window._sennereiWizardData = data;
@@ -653,7 +772,7 @@
   window.renderSennereiBauer = function() {
     const wid = window._sennereiAktiveWoche;
     const bid = window._sennereiAktiverBauer;
-    const woche = (_wochenCache || []).find(w => w.id === wid);
+    const woche = findeWoche(wid);
     if(!woche || !woche.bauern || !woche.bauern[bid]) {
       return `
         <div class="page-header"><h2>🥛 Bauer</h2><button class="btn-secondary" onclick="navigate('sennerei_woche')">← Zurück</button></div>
@@ -756,7 +875,11 @@
     const restK = Math.max(0, Math.round(((k.zumAbholen||0) - (k.abgeholt||0)) * 100) / 100);
     const restB = Math.max(0, Math.round(((bt.zumAbholen||0) - (bt.abgeholt||0)) * 100) / 100);
     // Historie einzelner Abholungen (falls mehrfach)
-    const abholungen = (b.abholungen || []);
+    const abholungen = Object.values(b.abholungen || {}).filter(Boolean);
+    const _wid = woche && woche.id, _bid = window._sennereiAktiverBauer;
+    if(abholungen.some(a => a.signiert) && _wid && !_sigCache[_wid]) {
+      ladeUnterschriften(_wid).then(() => { if(window.currentView === 'sennerei_bauer' && typeof render === 'function') render(); });
+    }
     const historieHtml = abholungen.length > 0 ? `
       <div class="section-title">📋 Bisherige Abholungen (${abholungen.length})</div>
       <div class="card-section" style="padding:.4rem;margin-bottom:.8rem">
@@ -764,11 +887,11 @@
           <div style="padding:.4rem .5rem;border-bottom:${idx < abholungen.length-1 ? '1px solid var(--border)' : 'none'};font-size:.83rem">
             <div style="display:flex;justify-content:space-between;color:var(--text3);font-size:.72rem;margin-bottom:.2rem">
               <span>${new Date(a.ts).toLocaleString('de-AT',{weekday:'short',day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})}</span>
-              <span>${a.signaturPng ? '✍ signiert' : '<span style="color:var(--orange)">ohne Unterschrift</span>'}</span>
+              <span>${(a.signaturPng || a.signiert) ? '✍ signiert' : '<span style="color:var(--orange)">ohne Unterschrift</span>'}</span>
             </div>
             ${(a.kaese && a.kaese.abgeholt) ? `<div>🧀 ${kgTxt(a.kaese.abgeholt)} kg${a.kaese.naturalrAbgeholt?' (+ '+kgTxt(a.kaese.naturalrAbgeholt)+' Natur)':''}${(a.kaese.chargen||[]).length?' · '+a.kaese.chargen.join(', '):''}</div>` : ''}
             ${(a.butter && a.butter.abgeholt) ? `<div>🧈 ${kgTxt(a.butter.abgeholt)} kg${a.butter.naturalrAbgeholt?' (+ '+kgTxt(a.butter.naturalrAbgeholt)+' Natur)':''}${(a.butter.chargen||[]).length?' · '+a.butter.chargen.join(', '):''}</div>` : ''}
-            ${a.signaturPng ? `<img src="${a.signaturPng}" alt="Unterschrift" style="display:block;max-height:44px;max-width:180px;margin-top:.3rem;background:#fff;border-radius:4px;padding:2px">` : ''}
+            ${sigSrc(_wid, _bid, a) ? `<img src="${sigSrc(_wid, _bid, a)}" alt="Unterschrift" style="display:block;max-height:44px;max-width:180px;margin-top:.3rem;background:#fff;border-radius:4px;padding:2px">` : ''}
           </div>`).join('')}
       </div>` : '';
 
@@ -969,7 +1092,7 @@
     const bid = window._sennereiAktiverBauer;
     const data = window._sennereiWizardData || {};
     if(!wid || !bid) return;
-    const woche = (_wochenCache || []).find(w => w.id === wid);
+    const woche = findeWoche(wid);
     if(!woche || !woche.bauern[bid]) { alert('Bauer nicht gefunden'); return; }
     if(!data.signaturPng) {
       if(!confirm('Keine Unterschrift vorhanden. Trotzdem speichern?')) return;
@@ -1024,29 +1147,35 @@
       const uid = firebase.auth && firebase.auth().currentUser && firebase.auth().currentUser.uid;
       const nowTs = Date.now();
 
-      // Neuer Historien-Eintrag
+      // Neuer Historien-Eintrag (Unterschrift separat unter SIG_ROOT)
+      const sigKey = data.signaturPng ? String(nowTs) : null;
       const neueAbholung = {
         ts: nowTs,
         kaese: zusatzK,
         butter: zusatzB,
-        signaturPng: data.signaturPng || null,
+        signiert: sigKey,
         byUser: uid || null
       };
-      const alleAbholungen = [...(bAlt.abholungen || []), neueAbholung];
+      const alleAbholungen = [...Object.values(bAlt.abholungen || {}).filter(Boolean), neueAbholung];
 
       const _retry = window.withAuthRetry || (async fn => await fn());
       await _retry(() => firebase.database().ref(path + '/kaese').update(kaeseUpdate));
       await _retry(() => firebase.database().ref(path + '/butter').update(butterUpdate));
+      if(sigKey) {
+        await _retry(() => firebase.database().ref(SIG_ROOT + '/' + wid + '/' + bid + '/' + sigKey).set(data.signaturPng));
+        _sigCache[wid] = _sigCache[wid] || {};
+        _sigCache[wid][bid] = Object.assign({}, _sigCache[wid][bid] || {}, { [sigKey]: data.signaturPng });
+      }
       await _retry(() => firebase.database().ref(path).update({
-        unterschriftPng: data.signaturPng || null,   // Letzte Signatur (Legacy-Feld)
-        abholungen: alleAbholungen,                    // Historie aller Signaturen
+        unterschriftPng: null,                          // Legacy-Feld nicht mehr befüllen
+        abholungen: alleAbholungen,                    // Historie (ohne Bilder)
         abgeholtAm: nowTs,                              // Letzte Abholung
         abgeholtVon: uid || null
       }));
       // Lokal spiegeln
       Object.assign(woche.bauern[bid].kaese || {}, kaeseUpdate);
       Object.assign(woche.bauern[bid].butter || {}, butterUpdate);
-      woche.bauern[bid].unterschriftPng = data.signaturPng;
+      woche.bauern[bid].unterschriftPng = null;
       woche.bauern[bid].abholungen = alleAbholungen;
       woche.bauern[bid].abgeholtAm = nowTs;
       woche.bauern[bid].abgeholtVon = uid;
@@ -1186,7 +1315,7 @@
         const snap = await firebase.database().ref('sennerei/wochen/' + wid).once('value');
         woche = snap.val();
       }
-      if(!woche) woche = (_wochenCache || []).find(w => w.id === wid);
+      if(!woche) woche = findeWoche(wid);
       if(!woche) { alert('Woche nicht gefunden.'); return; }
       const r2 = v => Math.round((parseFloat(v) || 0) * 100) / 100;
       const teil = p => ({ abgeholt: r2(p && p.abgeholt), naturalrAbgeholt: r2(p && p.naturalrAbgeholt), chargen: (p && p.chargen) || [] });
@@ -1306,7 +1435,10 @@
     const btn = document.querySelector('#sennerei-import-overlay .btn-primary');
     if(btn) { btn.disabled = true; btn.textContent = '⏳ Speichere…'; }
     try {
-      const id = await window.sennereiSpeichereWoche(parsed);
+      const id = await Promise.race([
+        window.sennereiSpeichereWoche(parsed),
+        new Promise((_, rej) => setTimeout(() => rej(new Error('Keine Antwort vom Server nach 60 Sekunden. Bitte Verbindung prüfen und danach nachsehen, ob die Woche trotzdem gespeichert wurde.')), 60000))
+      ]);
       window.sennereiInvalidateCache();
       document.getElementById('sennerei-import-overlay')?.remove();
       window._sennereiImportPending = null;
@@ -1322,9 +1454,14 @@
   // ══════════════════════════════════════════════════════════════════════════════
   // PDF-DRUCK: Wochen-Übersicht (mit ausgefüllten Werten + Unterschriften)
   // ══════════════════════════════════════════════════════════════════════════════
-  window.sennereiDruckeWoche = function(wid) {
-    const woche = (_wochenCache || []).find(w => w.id === wid);
+  window.sennereiDruckeWoche = async function(wid) {
+    const woche = findeWoche(wid);
     if(!woche) { alert('Woche nicht gefunden'); return; }
+    // Fenster sofort öffnen (sonst blockiert der Browser das Popup), dann Unterschriften laden
+    const win = window.open('', '_blank');
+    if(!win) { alert('Popup blockiert. Bitte im Browser Popups für diese Seite erlauben.'); return; }
+    try { win.document.write('<p style="font-family:Georgia,serif;padding:24px">⏳ Unterschriften werden geladen…</p>'); } catch(e) {}
+    await ladeUnterschriften(wid);
     const bauern = Object.entries(woche.bauern || {}).sort((a,b) => (a[1].name||'').localeCompare(b[1].name||''));
 
     const fmt = (n) => n == null || n === 0 ? '' : kgTxt(n);
@@ -1340,15 +1477,15 @@
       const kaeseGesamt = (k.abgeholt||0) + (k.naturalrAbgeholt||0);
       const butterGesamt = (bt.abgeholt||0) + (bt.naturalrAbgeholt||0);
       // v54.28: ALLE Unterschriften (jede Abholung einzeln quittiert), sonst letzte (Altdaten)
-      const _abh = (b.abholungen || []).filter(a => a && a.signaturPng);
+      const _abh = Object.values(b.abholungen || {}).filter(a => a && sigSrc(wid, bid, a));
       const _kg = (x) => x ? kgTxt(x) : '';
       const sigImg = _abh.length
         ? _abh.map(a => {
             const d = new Date(a.ts).toLocaleString('de-AT', {weekday:'short', day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit'});
             const m = [a.kaese && a.kaese.abgeholt ? 'K ' + _kg(a.kaese.abgeholt) : '', a.butter && a.butter.abgeholt ? 'B ' + _kg(a.butter.abgeholt) : ''].filter(Boolean).join(' · ');
-            return '<div class="sig-e"><img src="' + a.signaturPng + '" style="max-height:30px;max-width:110px;object-fit:contain"><span>' + escapeHtml(d) + (m ? ' · ' + m + ' kg' : '') + '</span></div>';
+            return '<div class="sig-e"><img src="' + sigSrc(wid, bid, a) + '" style="max-height:30px;max-width:110px;object-fit:contain"><span>' + escapeHtml(d) + (m ? ' · ' + m + ' kg' : '') + '</span></div>';
           }).join('')
-        : (b.unterschriftPng ? '<img src="' + b.unterschriftPng + '" style="max-height:35px;max-width:110px;object-fit:contain">' : '');
+        : (sigLetzte(wid, bid, b) ? '<img src="' + sigLetzte(wid, bid, b) + '" style="max-height:35px;max-width:110px;object-fit:contain">' : '');
       rows += `
         <tr class="bauer-erste">
           <td rowspan="2" class="bauer">${escapeHtml(b.name)}</td>
@@ -1468,9 +1605,7 @@
 </div>
 </body></html>`;
 
-    // Neues Fenster öffnen und Print-Dialog triggern
-    const win = window.open('', '_blank');
-    if(!win) { alert('Popup blockiert. Bitte im Browser Popups für diese Seite erlauben.'); return; }
+    // Druck in das vorab geöffnete Fenster schreiben
     win.document.open();
     win.document.write(html);
     win.document.close();
