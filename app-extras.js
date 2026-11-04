@@ -12,6 +12,11 @@
   // ═══ A13: Was ist neu ═══════════════════════════════════════════════════
   // Neueste Version oben. Nur Punkte, die Nutzer merken.
   const CHANGELOG = [
+    { v: 'v54.60', punkte: [
+      'Saisonstart: Die Almabrechnung (Excel) kann direkt hochgeladen werden – Kühe werden über Ohrmarke bzw. Bauer + Name erkannt, „trocken“ wird übernommen, Besamungen werden korrigiert statt doppelt angelegt',
+      'Neue Kuh: Nummer wird vorgeschlagen (Melkkühe fortlaufend, trockene ab 200)',
+      'Sennerei → Produktion: Butter-Etiketten einstellen und drucken (🏷)'
+    ]},
     { v: 'v54.59', punkte: [
       'Sennerei-Abholung: Wochen laden wieder schnell – Unterschriften werden kleiner und getrennt gespeichert (einmalige Umstellung beim ersten Öffnen)',
       'Abholung bleibt offen, wenn man kurz in eine andere App wechselt (vorher: „Bauer nicht gefunden“)'

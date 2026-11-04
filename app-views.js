@@ -2198,6 +2198,12 @@ window.showKuhForm=function(id=null){
     document.getElementById('f-rasse').value='';
     const ohrm=document.getElementById('f-ohrmarke'); if(ohrm) ohrm.value='';
     const lak=document.getElementById('f-laktation'); if(lak) lak.value='melkend';
+    // v1.0 Almabrechnung (LNMachinery): Nummer vorschlagen – Melkkühe lückenlos, trockene ab trockenStartNr
+    if(window.hpKuhNrVorschlag) {
+      const nrEl=document.getElementById('f-nr');
+      nrEl.value=String(window.hpKuhNrVorschlag(false)); nrEl.dataset.vorschlag=nrEl.value;
+      if(lak) lak.onchange=function(){ if(nrEl.value===nrEl.dataset.vorschlag){ nrEl.value=String(window.hpKuhNrVorschlag(this.value==='trocken')); nrEl.dataset.vorschlag=nrEl.value; } };
+    }
     const ntz=document.getElementById('f-notiz'); if(ntz) ntz.value='';
     document.querySelectorAll('#f-gruppen-box .f-gruppe-cb').forEach(cb => cb.checked = false);
     document.getElementById('kuh-form-title').textContent='Kuh erfassen';
@@ -6922,6 +6928,7 @@ function renderBackup() {
         </label>
       </div>
       <div id="saisonstart-status" style="margin-top:.5rem;font-size:.78rem;color:var(--text3)"></div>
+      <div style="margin-top:.4rem;font-size:.72rem;color:var(--text3)">Tipp: Auch die Almabrechnung (Excel, .xlsm) kann hier direkt hochgeladen werden – sie enthält ein Blatt „Saisonstart“.</div>
     </div>
 
     <div class="section-title" style="color:#7acbff">🥛 Milch CSV Re-Import</div>

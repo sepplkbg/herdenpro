@@ -262,7 +262,7 @@ window.exportSyncJSON = function() {
     // v54.56 (LNMachinery): Feld "trocken" fuer die Almabrechnung (Excel).
     // true = ganze Saison trocken (Laktation "trocken"); "trockengestellt"
     // waehrend der Saison bleibt fuer die Abrechnung eine Melkkuh.
-    kuehe: Object.values(kuehe).map(k => Object.assign({}, k, { trocken: k.laktation === 'trocken' })),
+    kuehe: Object.entries(kuehe).map(([id, k]) => Object.assign({}, k, { id: id, trocken: k.laktation === 'trocken' })),
     milch_wochen: milchArray,
     behandlungen: behandlArray,
     kraftfutter: kfArray,
@@ -963,6 +963,13 @@ window.importSaisonstartExcel = async function(input) {
     const wb = XLSX.read(buf, {type:'array', cellDates:true, bookVBA:false});
     const ws = wb.Sheets['Saisonstart'] || wb.Sheets[wb.SheetNames[0]];
     if(!ws) { alert('Kein Sheet gefunden.'); return; }
+    // v54.58 (LNMachinery): Saisonstart direkt aus der Almabrechnung (Excel, Blatt "Saisonstart")
+    //   - erkennt die Datei am Titel in A1, Spalte M "trocken" (optional)
+    //   - Kuh-Erkennung: Ohrmarke -> Bauer + Name -> (Almabrechnung: Nr beim selben Bauern, sonst: Nr)
+    //   - Besamung aus der Almabrechnung wird bei Korrektur geaendert statt doppelt angelegt
+    const _istAlm = /almabrechnung/i.test(String((ws['A1'] || {}).v || ''));
+    const _hatTrocken = /trocken/i.test(String((ws['M4'] || {}).v || ''));
+    const _omNorm = s => String(s || '').toUpperCase().replace(/[\s\-\.]/g, '');
 
     // Ab Zeile 8 (Header in Zeile 4, Beispiele 5–7, Daten ab 8)
     // v54.21: ab Excel-Zeile 5 lesen (range:4). Vorher Zeile 8 → wer laut Anleitung die
@@ -1030,6 +1037,8 @@ window.importSaisonstartExcel = async function(input) {
       const gruppenRaw   = String(row[9]||'').trim();
       const notiz        = String(row[10]||'').trim();
       const besDatum     = parseExcelDatum(row[11]);
+      const _trRaw       = String(row[12] == null ? '' : row[12]).trim().toUpperCase();
+      const istTrocken   = ['JA','J','X','1','TRUE','YES','✓','✔'].includes(_trRaw);
 
       // ─── BAUER: Wenn Name in der Zeile steht ───────────────────────
       if(bauerName) {
@@ -1076,7 +1085,13 @@ window.importSaisonstartExcel = async function(input) {
       const gListe = gruppenRaw ? gruppenRaw.split(/[,;\/]/).map(s=>s.trim()).filter(Boolean) : [];
       const gruppeString = gListe.join(', ');
 
-      const existingKuh = Object.entries(kuehe||{}).find(([,k])=>String(k.nr)===kuhNr);
+      let existingKuh = null;
+      { const _om = _omNorm(ohrmarke), _lb = lastBauer.toLowerCase(), _kn = kuhName.toLowerCase();
+        if(_om) existingKuh = Object.entries(kuehe||{}).find(([,k]) => _omNorm(k.ohrmarke) === _om) || null;
+        if(!existingKuh && _kn) existingKuh = Object.entries(kuehe||{}).find(([,k]) =>
+          String(k.bauer||'').trim().toLowerCase() === _lb && String(k.name||'').trim().toLowerCase() === _kn) || null;
+        if(!existingKuh) existingKuh = Object.entries(kuehe||{}).find(([,k]) => String(k.nr) === kuhNr &&
+          (!_istAlm || String(k.bauer||'').trim().toLowerCase() === _lb)) || null; }
       const kuhData = {
         nr: kuhNr,
         name: kuhName,
@@ -1087,6 +1102,7 @@ window.importSaisonstartExcel = async function(input) {
         gruppe: gruppeString,        // Komma-getrennte Gruppen-Namen für Filter & Anzeige
         updatedAt: ts
       };
+      if(_hatTrocken) kuhData.laktation = istTrocken ? 'trocken' : 'melkend';   // v54.58
       let kuhId;
       if(existingKuh) {
         kuhId = existingKuh[0];
@@ -1097,7 +1113,7 @@ window.importSaisonstartExcel = async function(input) {
       } else {
         kuhData.createdAt = ts;
         kuhData.almStatus = 'oben';
-        kuhData.laktation = 'melkend';
+        if(!_hatTrocken) kuhData.laktation = 'melkend';
         kuhId = _neuKey('kuehe');
         neueKuehe[kuhNr] = { key: kuhId, data: kuhData };
         kuhCount++;
@@ -1109,7 +1125,24 @@ window.importSaisonstartExcel = async function(input) {
       }
 
       // ─── BESAMUNG: nur wenn Datum gesetzt ──────────────────────────
-      if(besDatum && kuhId) {
+      // v54.58: Besamung aus der Almabrechnung -> vorhandenen Excel-Eintrag korrigieren
+      let _besAlmId = null;
+      if(besDatum && kuhId && _istAlm) {
+        const _ex = Object.entries(besamungen||{}).find(([,b]) => b && b.kuhId === kuhId && b.quelle === 'almabrechnung');
+        if(_ex) {
+          _besAlmId = _ex[0];
+          if(!_ex[1].datum || Math.abs(_ex[1].datum - besDatum) >= 86400000) {
+            const g2 = new Date(besDatum); g2.setMonth(g2.getMonth()+9); g2.setDate(g2.getDate()+10);
+            const t2 = new Date(g2.getTime()); t2.setDate(t2.getDate()-56);
+            U['besamungen/' + _besAlmId + '/datum'] = besDatum;
+            U['besamungen/' + _besAlmId + '/erwartetGeburt'] = g2.getTime();
+            U['besamungen/' + _besAlmId + '/trockenstell'] = t2.getTime();
+            U['besamungen/' + _besAlmId + '/updatedAt'] = ts;
+            bsCount++;
+          }
+        }
+      }
+      if(besDatum && kuhId && !_besAlmId) {
         const dupe = Object.values(besamungen||{}).concat(neueBes).find(b =>
           b.kuhId === kuhId && b.datum && Math.abs(b.datum - besDatum) < 86400000);
         if(!dupe) {
@@ -1123,7 +1156,7 @@ window.importSaisonstartExcel = async function(input) {
             kuhId, datum: besDatum, status: 'besamt',
             erwartetGeburt: geburt.getTime(),
             trockenstell: trock.getTime(),
-            quelle: 'saisonstart_import',
+            quelle: _istAlm ? 'almabrechnung' : 'saisonstart_import',
             createdAt: ts
           });
           bsCount++;

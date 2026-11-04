@@ -186,7 +186,8 @@
 
       <div class="section-title" style="display:flex;justify-content:space-between;align-items:center">
         <span>📋 Einträge (${eintraege.length})</span>
-        <button class="btn-xs" onclick="_prodDruckePDF()" title="Zeitraum als PDF drucken">📄 PDF drucken</button>
+        <span style="display:flex;gap:.3rem"><button class="btn-xs" onclick="sennereiEtikettenEinstellungen()" title="Butter-Etiketten einstellen">🏷 Etiketten</button>
+        <button class="btn-xs" onclick="_prodDruckePDF()" title="Zeitraum als PDF drucken">📄 PDF drucken</button></span>
       </div>
       ${eintraege.length === 0
         ? '<div class="empty-state">Keine Einträge in diesem Zeitraum.<br>Tippe oben auf „+ Neu" um zu starten.</div>'
@@ -212,6 +213,7 @@
                   ${e.notiz ? `<div style="font-size:.72rem;color:var(--text3);margin-top:.15rem;font-style:italic">📝 ${_esc(e.notiz)}</div>` : ''}
                 </div></div>
                 <div class="list-card-right" style="display:flex;align-items:center;gap:.3rem">
+                  ${(parseFloat(e.butterKg) || 0) > 0 ? `<button class="btn-xs" onclick="event.stopPropagation();sennereiButterEtiketten('${e.id}')" title="Butter-Etiketten drucken">🏷</button>` : ''}
                   <button class="btn-xs-danger" onclick="event.stopPropagation();_prodLoeschen('${e.id}','${_esc(e.datum)}')">✕</button>
                 </div>
               </div>`;
