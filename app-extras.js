@@ -12,6 +12,9 @@
   // ═══ A13: Was ist neu ═══════════════════════════════════════════════════
   // Neueste Version oben. Nur Punkte, die Nutzer merken.
   const CHANGELOG = [
+    { v: 'v54.62', punkte: [
+      'Butter-Etiketten: Ein angebrochener Bogen wird weiterverwendet – der nächste Druck beginnt automatisch beim nächsten freien Etikett (vor dem Druck änderbar, 1 = neuer Bogen)'
+    ]},
     { v: 'v54.61', punkte: [
       'Sennerei: Neuer Knopf „📤 Für Excel“ bei Produktion und Verkauf – speichert Produktion und Verkäufe der Saison als Datei für die Almabrechnung',
       'Sennerei-Abholung: „📥 Almabrechnung einlesen“ liest die Abholliste der Woche direkt aus der Excel-Datei. Saisonstart: „📥 Kühe aus Almabrechnung“. Neu überall: „📤 Alles für Excel“ (alle Daten in einer Datei)'

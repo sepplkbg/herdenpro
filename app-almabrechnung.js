@@ -1,6 +1,6 @@
 // ══════════════════════════════════════════════════════════════════════════════
 // HerdenPro – Austausch mit der Almabrechnung (Excel) + Butter-Etiketten
-// Engineering by LNMachinery  ·  v1.3 (HerdenPro v54.61)
+// Engineering by LNMachinery  ·  v1.4 (HerdenPro v54.62)
 // ──────────────────────────────────────────────────────────────────────────────
 //  1. (entfallen in v1.1: Bauern & Kühe aus Excel kommen über den
 //     Saisonstart-Import – die Almabrechnung enthält ein Blatt "Saisonstart")
@@ -76,7 +76,7 @@
     ['spalten', 'Bogen: Spalten', 'number'], ['zeilen', 'Bogen: Zeilen', 'number'],
     ['breiteMm', 'Etikettenbreite (mm)', 'number'], ['hoeheMm', 'Etikettenhöhe (mm)', 'number'],
     ['randObenMm', 'Rand oben (mm)', 'number'], ['randLinksMm', 'Rand links (mm)', 'number'],
-    ['startNr', 'Start bei Etikett Nr. (angebrochener Bogen)', 'number']
+    ['startNr', 'Nächster Druck beginnt bei Etikett Nr. (1 = neuer Bogen; stellt sich nach jedem Druck selbst weiter)', 'number']
   ];
 
   window.sennereiEtikettenEinstellungen = function() {
@@ -123,6 +123,14 @@
     if(antwort === null) return;
     const anzahl = parseInt(antwort) || 0;
     if(anzahl < 1) return;
+    // v54.62: angebrochenen Bogen weiterverwenden – Start beim nächsten freien Etikett
+    const proBogen0 = (parseInt(_et.spalten) || 3) * (parseInt(_et.zeilen) || 8);
+    const startAlt = Math.min(proBogen0, Math.max(1, parseInt(_et.startNr) || 1));
+    const startAntwort = prompt('Auf welchem Etikett des Bogens soll der Druck beginnen?\n\n' +
+      (startAlt > 1 ? 'Der letzte Bogen ist bis Etikett ' + (startAlt - 1) + ' bedruckt → weiter bei ' + startAlt + '.\n' : '') +
+      '1 = neuer, leerer Bogen (1 bis ' + proBogen0 + ')', String(startAlt));
+    if(startAntwort === null) return;
+    const startNr = Math.min(proBogen0, Math.max(1, parseInt(startAntwort) || 1));
 
     let mhd = '_____________';
     const tage = parseInt(_et.mhdTage);
@@ -144,7 +152,7 @@
     const bw = parseFloat(_et.breiteMm) || 70, bh = parseFloat(_et.hoeheMm) || 37;
     const ro = parseFloat(_et.randObenMm) || 0, rl = parseFloat(_et.randLinksMm) || 0;
     const proBogen = sp * ze;
-    let pos = Math.max(0, (parseInt(_et.startNr) || 1) - 1);
+    let pos = startNr - 1;
     let html = '<!DOCTYPE html><html><head><meta charset="utf-8"><title>Butter-Etiketten</title><style>' +
       '@page{size:A4;margin:0}body{margin:0;font-family:Calibri,Arial,sans-serif}' +
       '.bogen{position:relative;width:210mm;height:297mm;page-break-after:always}' +
@@ -164,6 +172,11 @@
     const w = window.open('', '_blank');
     if(!w) { alert('Der Browser hat das Druckfenster blockiert. Bitte Pop-ups für diese Seite erlauben.'); return; }
     w.document.open(); w.document.write(html); w.document.close();
+    // nächstes freies Etikett merken (für alle Geräte)
+    const naechste = (pos % proBogen) + 1;
+    _et.startNr = naechste;
+    try { db().ref('sennerei/etiketten/startNr').set(naechste).catch(() => {}); } catch(err) {}
+    toast('🏷 ' + anzahl + ' Etiketten · nächster Druck beginnt bei Etikett ' + naechste + (naechste === 1 ? ' (neuer Bogen)' : ''));
   };
 
   // ══════════════════════════════════════════════════════════════════════════
