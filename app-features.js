@@ -5703,7 +5703,7 @@ function _csvCell(v) {
   return s;
 }
 
-window.exportMilchMolkerei=function(){
+window.milchCsvText=function(){   // v54.61 (LNMachinery): gleicher Inhalt wie der CSV-Export, als Text
   // Auf Datum+Zeit aggregierte Gruppen exportieren (mehrere Melker \u2192 1 Zeile)
   const grupiertMap = new Map();
   Object.values(milchEintraege).forEach(e => {
@@ -5760,6 +5760,10 @@ window.exportMilchMolkerei=function(){
     const notiz = _csvCell(g.notizen.join(' \u00b7 '));
     csv+=[datum,zeit,g.molkerei?'Ja':'Nein',kuhWerte,gesamtVal,notiz].join(';')+'\n';
   });
+  return csv;
+};
+window.exportMilchMolkerei=function(){
+  const csv=window.milchCsvText();
   const a=document.createElement('a');
   a.href=URL.createObjectURL(new Blob(['\ufeff'+csv],{type:'text/csv;charset=utf-8'}));
   a.download='Milch_ProKuh_'+isoDate(new Date())+'.csv';

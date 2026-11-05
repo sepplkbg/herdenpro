@@ -1,6 +1,6 @@
 // ══════════════════════════════════════════════════════════════════════════════
 // HerdenPro – Austausch mit der Almabrechnung (Excel) + Butter-Etiketten
-// Engineering by LNMachinery  ·  v1.1 (HerdenPro v54.60)
+// Engineering by LNMachinery  ·  v1.3 (HerdenPro v54.61)
 // ──────────────────────────────────────────────────────────────────────────────
 //  1. (entfallen in v1.1: Bauern & Kühe aus Excel kommen über den
 //     Saisonstart-Import – die Almabrechnung enthält ein Blatt "Saisonstart")
@@ -9,6 +9,10 @@
 //  3. Butter-Etiketten bei Sennerei → Produktion
 //       Anzahl = Butter-kg ÷ Klotzgewicht, Charge aus dem Eintrag,
 //       MHD ab Produktionsdatum; Druck auf A4-Etikettenbogen.
+//  5. allesFuerExcel()   EINE Datei mit allem für Excel ("herdenpro-alles")
+//  6. almabrechnungEinlesen()  .xlsm hochladen: Saisonstart (Kühe) + Abholliste (Blatt "App-Abholliste")
+//  4. sennereiPVFuerExcel()  Produktion + Verkäufe der Saison als Datei
+//       "Produktion_Verkauf_fuer_Excel_<Datum>.json" (Format "herdenpro-produktion-verkauf").
 // ══════════════════════════════════════════════════════════════════════════════
 (function() {
   'use strict';
@@ -160,5 +164,138 @@
     const w = window.open('', '_blank');
     if(!w) { alert('Der Browser hat das Druckfenster blockiert. Bitte Pop-ups für diese Seite erlauben.'); return; }
     w.document.open(); w.document.write(html); w.document.close();
+  };
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // 4. PRODUKTION + VERKAUF FÜR DIE ALMABRECHNUNG (Excel)
+  // ══════════════════════════════════════════════════════════════════════════
+  window.sennereiPVFuerExcel = function() {
+    const r2 = v => Math.round((parseFloat(v) || 0) * 1000) / 1000;
+    const preis = window.sennereiPreisliste || {};
+    const produktion = Object.values(window.sennereiProduktion || {})
+      .filter(e => e && e.datum)
+      .map(e => ({ datum: e.datum, kaeseKg: r2(e.kaeseKg), butterKg: r2(e.butterKg) }))
+      .sort((a, b) => a.datum.localeCompare(b.datum));
+    const verkaeufe = Object.values(window.sennereiVerkaeufe || {})
+      .filter(v => v && v.datum && Array.isArray(v.positionen))
+      .map(v => ({ datum: v.datum, positionen: v.positionen.filter(Boolean).map(p => ({
+          name: p.name || '', mengeKg: r2(p.mengeKg),
+          kategorie: p.kategorie || (preis[p.preisId] && preis[p.preisId].kategorie) || '' })) }))
+      .sort((a, b) => a.datum.localeCompare(b.datum));
+    if(!produktion.length && !verkaeufe.length) { alert('Es sind noch keine Produktionen oder Verkäufe erfasst.'); return; }
+    const daten = { format: 'herdenpro-produktion-verkauf', version: 1, app: 'HerdenPro',
+                    exportiertAm: new Date().toISOString(), produktion, verkaeufe };
+    const blob = new Blob([JSON.stringify(daten, null, 1)], { type: 'application/json' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    const d = new Date();
+    a.download = 'Produktion_Verkauf_fuer_Excel_' + d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0') + '.json';
+    document.body.appendChild(a); a.click();
+    setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1500);
+    toast('📤 Datei für Excel gespeichert: ' + produktion.length + ' Produktionstage, ' + verkaeufe.length + ' Verkäufe');
+  };
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // 5. ALLES FÜR EXCEL (eine Datei)
+  // ══════════════════════════════════════════════════════════════════════════
+  window.allesFuerExcel = async function() {
+    try {
+      toast('⏳ Datei für Excel wird erstellt…');
+      const r2 = v => Math.round((parseFloat(v) || 0) * 1000) / 1000;
+      const kuehe = window.kuehe || {};
+      const kuhListe = Object.entries(kuehe).map(([id, k]) => Object.assign({}, k, { id, trocken: k.laktation === 'trocken' }));
+      const behandlungen = Object.entries(window.behandlungen || {}).map(([id, b]) => {
+        const k = kuehe[b.kuhId] || {};
+        return { id, kuhId: b.kuhId, kuhNr: k.nr || '', kuhName: k.name || '', bauer: k.bauer || '',
+                 datum: b.datum || null, datumEnde: b.datumEnde || null, medizinQuelle: b.medizinQuelle || '',
+                 diagnose: b.diagnose || '', medikament: b.medikament || '', dosis: b.dosis || '' };
+      });
+      // Abholungen aller Wochen (aktueller Stand aus der Datenbank)
+      let wochen = {};
+      try {   // v54.61: max. 30 s warten (offline sonst endlos)
+        wochen = (await Promise.race([firebase.database().ref('sennerei/wochen').once('value'),
+          new Promise((_, rej) => setTimeout(() => rej(new Error('Zeitüberschreitung')), 30000))])).val() || {};
+      } catch(e) { console.warn('[Almabrechnung] Abholungen nicht geladen:', e); toast('⚠ Abholungen konnten nicht geladen werden – Datei ohne Abholungen'); }
+      const teil = p => ({ abgeholt: r2(p && p.abgeholt), naturalrAbgeholt: r2(p && p.naturalrAbgeholt), chargen: (p && p.chargen) || [] });
+      const abholungen = Object.entries(wochen).map(([wid, w]) => ({
+        format: 'herdenpro-abholung', wocheId: wid, wocheNr: w.wocheNr || null, jahr: w.jahr || null,
+        startDatum: w.startDatum || null, endeDatum: w.endeDatum || null,
+        bauern: Object.values(w.bauern || {}).filter(b => b && b.name).map(b => ({
+          name: b.name, kaese: teil(b.kaese), butter: teil(b.butter),
+          abgeholtAm: b.abgeholtAm ? new Date(b.abgeholtAm).toISOString() : null,
+          anzahlAbholungen: b.abholungen ? Object.values(b.abholungen).filter(Boolean).length : (b.abgeholtAm ? 1 : 0) }))
+      }));
+      const preis = window.sennereiPreisliste || {};
+      const produktion = Object.values(window.sennereiProduktion || {}).filter(e => e && e.datum)
+        .map(e => ({ datum: e.datum, kaeseKg: r2(e.kaeseKg), butterKg: r2(e.butterKg) }));
+      const verkaeufe = Object.values(window.sennereiVerkaeufe || {}).filter(v => v && v.datum && Array.isArray(v.positionen))
+        .map(v => ({ datum: v.datum, positionen: v.positionen.filter(Boolean).map(p => ({
+            name: p.name || '', mengeKg: r2(p.mengeKg),
+            kategorie: p.kategorie || (preis[p.preisId] && preis[p.preisId].kategorie) || '' })) }));
+      const daten = {
+        format: 'herdenpro-alles', version: 1, app: 'HerdenPro', exportiertAm: new Date().toISOString(),
+        bauern: Object.values(window.bauern || {}), kuehe: kuhListe,
+        besamungen: Object.values(window.besamungen || {}), behandlungen,
+        milch_wochen: [], milchCsv: (window.milchCsvText ? window.milchCsvText() : ''),
+        abholungen, produktion, verkaeufe
+      };
+      const blob = new Blob([JSON.stringify(daten)], { type: 'application/json' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      const d = new Date(), p2 = n => String(n).padStart(2, '0');
+      a.download = 'HerdenPro_Alles_fuer_Excel_' + d.getFullYear() + '-' + p2(d.getMonth() + 1) + '-' + p2(d.getDate()) + '_' + p2(d.getHours()) + p2(d.getMinutes()) + '.json';
+      document.body.appendChild(a); a.click();
+      setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1500);
+      toast('📤 Alles für Excel gespeichert – in Excel „ALLES AUS APP EINLESEN“');
+    } catch(err) {
+      console.error('[Almabrechnung] Alles für Excel:', err);
+      alert('Export fehlgeschlagen:\n\n' + (err.message || err));
+    }
+  };
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // 6. ALMABRECHNUNG EINLESEN (Saisonstart + Abholliste aus EINER Datei)
+  // ══════════════════════════════════════════════════════════════════════════
+  function _xlsxLaden() {
+    return new Promise((ok, fehler) => {
+      if(typeof XLSX !== 'undefined') return ok();
+      const s = document.createElement('script');
+      s.src = 'lib/xlsx.full.min.js'; s.onload = () => ok(); s.onerror = () => fehler(new Error('Excel-Bibliothek nicht geladen'));
+      document.head.appendChild(s);
+    });
+  }
+
+  // v54.61: was = 'kuehe' (nur beim Saisonstart: Kühe aus Blatt "Saisonstart")
+  //         sonst (Sennerei): NUR die Abholliste – Kühe bleiben unverändert
+  window.almabrechnungEinlesen = function(was) {
+    const nurKuehe = was === 'kuehe';
+    const inp = document.createElement('input');
+    inp.type = 'file';
+    inp.accept = '.xlsm,.xlsx';
+    inp.onchange = async () => {
+      const file = inp.files && inp.files[0];
+      if(!file) return;
+      try {
+        await _xlsxLaden();
+        // 1) Kühe über den Saisonstart-Import der App – nur zum Saisonstart
+        if(nurKuehe) {
+          if(window.importSaisonstartExcel) await window.importSaisonstartExcel({ files: [file], value: '' });
+          return;
+        }
+        // 2) Abholliste der gewählten Woche (Blatt "App-Abholliste", JSON in A1, A2, ...)
+        const wb = XLSX.read(await file.arrayBuffer(), { type: 'array' });
+        const ws = wb.Sheets['App-Abholliste'];
+        if(!ws) { alert('In der Almabrechnung ist keine Abholliste enthalten.\nIn Excel die Woche in der Abholung wählen und die Datei speichern.'); return; }
+        let text = '';
+        for(let r = 1; r <= 200; r++) { const c = ws['A' + r]; if(!c || c.v == null) break; text += String(c.v); }
+        if(!text) { alert('Die Abholliste in der Almabrechnung ist leer.'); return; }
+        const parsed = await window.sennereiParseJson({ name: 'abholliste.json', text: async () => text });
+        if(window.sennereiZeigeImportVorschau) window.sennereiZeigeImportVorschau(parsed);
+      } catch(err) {
+        console.error('[Almabrechnung] Einlesen:', err);
+        alert('Einlesen fehlgeschlagen:\n\n' + (err.message || err));
+      }
+    };
+    inp.click();
   };
 })();

@@ -487,8 +487,10 @@
     return `
       <div class="page-header">
         <h2>📦 Sennerei-Abholung</h2>
-        <div style="display:flex;gap:.4rem">
-          <button class="btn-primary" onclick="sennereiUploadPdf()">📥 Abholliste einlesen (Datei/PDF)</button>
+        <div style="display:flex;gap:.4rem;flex-wrap:wrap">
+          <button class="btn-primary" onclick="almabrechnungEinlesen('abholung')" title="Almabrechnung (.xlsm): Abholliste der gewählten Woche (Kühe bleiben unverändert)">📥 Almabrechnung einlesen</button>
+          <button class="btn-secondary" onclick="allesFuerExcel()" title="Eine Datei mit allen Daten für die Almabrechnung (Excel)">📤 Alles für Excel</button>
+          <button class="btn-secondary" onclick="sennereiUploadPdf()" title="Notlösung: Abholliste als Datei oder PDF">Abholliste (Datei/PDF)</button>
         </div>
       </div>
       ${typeof window._renderSennereiTabs === 'function' ? window._renderSennereiTabs('abholung') : ''}

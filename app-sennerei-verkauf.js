@@ -633,6 +633,7 @@
       <div class="section-title" style="display:flex;justify-content:space-between">
         <span>🏆 Beste Produkte</span>
         <button class="btn-xs" onclick="_svDruckePDF()">📄 PDF</button>
+        <button class="btn-xs" onclick="sennereiPVFuerExcel()" title="Produktion und Verkäufe der Saison als Datei für die Almabrechnung (Excel)">📤 Für Excel</button>
       </div>
       <div class="card-section" style="padding:.4rem .7rem;margin-bottom:.7rem">
         ${topProdukte.map((p, i) => {

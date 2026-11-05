@@ -12,6 +12,10 @@
   // ═══ A13: Was ist neu ═══════════════════════════════════════════════════
   // Neueste Version oben. Nur Punkte, die Nutzer merken.
   const CHANGELOG = [
+    { v: 'v54.61', punkte: [
+      'Sennerei: Neuer Knopf „📤 Für Excel“ bei Produktion und Verkauf – speichert Produktion und Verkäufe der Saison als Datei für die Almabrechnung',
+      'Sennerei-Abholung: „📥 Almabrechnung einlesen“ liest die Abholliste der Woche direkt aus der Excel-Datei. Saisonstart: „📥 Kühe aus Almabrechnung“. Neu überall: „📤 Alles für Excel“ (alle Daten in einer Datei)'
+    ]},
     { v: 'v54.60', punkte: [
       'Saisonstart: Die Almabrechnung (Excel) kann direkt hochgeladen werden – Kühe werden über Ohrmarke bzw. Bauer + Name erkannt, „trocken“ wird übernommen, Besamungen werden korrigiert statt doppelt angelegt',
       'Neue Kuh: Nummer wird vorgeschlagen (Melkkühe fortlaufend, trockene ab 200)',

@@ -187,6 +187,7 @@
       <div class="section-title" style="display:flex;justify-content:space-between;align-items:center">
         <span>📋 Einträge (${eintraege.length})</span>
         <span style="display:flex;gap:.3rem"><button class="btn-xs" onclick="sennereiEtikettenEinstellungen()" title="Butter-Etiketten einstellen">🏷 Etiketten</button>
+        <button class="btn-xs" onclick="sennereiPVFuerExcel()" title="Produktion und Verkäufe der Saison als Datei für die Almabrechnung (Excel)">📤 Für Excel</button>
         <button class="btn-xs" onclick="_prodDruckePDF()" title="Zeitraum als PDF drucken">📄 PDF drucken</button></span>
       </div>
       ${eintraege.length === 0
