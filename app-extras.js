@@ -12,6 +12,9 @@
   // ═══ A13: Was ist neu ═══════════════════════════════════════════════════
   // Neueste Version oben. Nur Punkte, die Nutzer merken.
   const CHANGELOG = [
+    { v: 'v54.65', punkte: [
+      'Anrechenbare Milch: Zeitraum ist jetzt immer „seit der letzten Messung“ (passt auch, wenn nicht genau alle 7 Tage gemessen wird); jede Kuh mit Abzug bekommt einen fertigen Hinweistext (gemessen, verworfene Melkungen, Grund, anrechenbar)'
+    ]},
     { v: 'v54.64', punkte: [
       'Milch bei Wartezeit: „Alles für Excel“ enthält jetzt pro Kuh und Messung die anrechenbare Milch (gemessen × nicht verworfene Melkungen ÷ 7) und Summen pro Bauer – Excel muss nichts mehr von Hand abziehen',
       'Milch-Export (xlsx): neue Blätter „Anrechenbar“ und „Pro Bauer“; im Kommentar der roten Zellen steht, wie viele Melkungen verworfen wurden'

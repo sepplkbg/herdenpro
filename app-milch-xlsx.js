@@ -32,18 +32,45 @@
     return per;
   }
   window.hpMilchWzPerioden = _wzPerioden;
-  window.hpMilchWzAnteil = function(kuhId, datumTs, zeit, perioden) {
+  // v54.65: Zeitraum = seit der letzten Messung (gleiche Melkzeit, ganze Herde) bis inkl. Messtag.
+  //         Erste Messung der Saison: 7 Tage. Ergebnis enthält einen fertigen Hinweistext.
+  const _fmtT = ts => new Date(ts).toLocaleDateString('de-AT', { day: '2-digit', month: '2-digit' });
+  window.hpMilchWzAnteil = function(kuhId, datumTs, zeit, perioden, vorherTs, liter) {
     const list = (perioden || _wzPerioden())[kuhId] || [];
     const d0 = new Date(datumTs); d0.setHours(0, 0, 0, 0);
+    let tage = 7;
+    if(vorherTs) {
+      const v0 = new Date(vorherTs); v0.setHours(0, 0, 0, 0);
+      const t = Math.round((d0.getTime() - v0.getTime()) / 86400000);
+      if(t >= 1) tage = t;
+    }
     const std = zeit === 'abend' ? 18 : 6;
-    let wz = 0; const gruende = new Set();
-    for(let i = 0; i < 7; i++) {
+    let wz = 0; const treffer = [];
+    for(let i = 0; i < tage; i++) {
       const tag = new Date(d0); tag.setDate(d0.getDate() - i);
       const ts = tag.getTime() + std * 3600000;
       const p = list.find(x => ts >= x.von && ts <= x.bis);
-      if(p) { wz++; gruende.add(p.grund); }
+      if(p) { wz++; if(!treffer.includes(p)) treffer.push(p); }
     }
-    return { wz, von: 7, faktor: (7 - wz) / 7, grund: [...gruende].join(', ') };
+    const faktor = (tage - wz) / tage;
+    const ab = new Date(d0); ab.setDate(d0.getDate() - tage + 1);
+    const grund = treffer.map(p => p.grund + ', ' + _fmtT(p.von) + '–' + _fmtT(p.bis)).join('; ');
+    const k = v => String(Math.round(v * 100) / 100).replace('.', ',');
+    const hinweis = wz > 0
+      ? (liter != null ? k(liter) + ' L gemessen · ' : '') + wz + ' von ' + tage + ' ' + (zeit === 'abend' ? 'Abend' : 'Morgen') + 'melkungen verworfen (' + grund + ')' +
+        (liter != null ? ' → ' + k(liter * faktor) + ' L anrechenbar' : '')
+      : '';
+    return { wz, von: tage, melkungen: tage, faktor, zeitraumVon: ab.getTime(), zeitraumBis: d0.getTime(), grund, hinweis };
+  };
+  // Vorherige Messung derselben Melkzeit (ganze Herde) zu jedem Termin
+  window.hpMilchVorherTermin = function(termine) {
+    const letzte = {}, erg = new Map();
+    termine.slice().sort((a, b) => a.ts - b.ts).forEach(t => {
+      const z = t.zeit || 'morgen';
+      erg.set(t, letzte[z] != null ? letzte[z] : null);
+      letzte[z] = t.ts;
+    });
+    return erg;
   };
 
   window.exportMilchXLSX = async function() {
@@ -145,6 +172,7 @@
     // Freeze: erste Zeile + erste 3 Spalten
     ws.views = [{ state: 'frozen', xSplit: 3, ySplit: 1 }];
 
+    const _vorher = window.hpMilchVorherTermin(termine);
     // Datenzeilen
     let terminCounter = 0;
     let sumMolkerei = 0, sumSennerei = 0, sumVerworfen = 0, sumGesamt = 0;
@@ -195,8 +223,8 @@
             const tage = Math.max(1, Math.ceil((p.bis - p.von) / 86400000));
             return von + '–' + bis + ' (' + tage + ' Tage) — ' + p.grund;
           }).join('\n');
-          const _ant = window.hpMilchWzAnteil(id, t.ts, t.zeit, wzPerKuh);
-          const _anrTxt = (cell.value > 0) ? '\n→ ' + _ant.wz + ' von 7 Melkungen verworfen · anrechenbar ' + String(Math.round(cell.value * _ant.faktor * 10) / 10).replace('.', ',') + ' L' : '';
+          const _ant = window.hpMilchWzAnteil(id, t.ts, t.zeit, wzPerKuh, _vorher.get(t), cell.value || 0);
+          const _anrTxt = (cell.value > 0 && _ant.wz > 0) ? '\n→ ' + _ant.hinweis : '';
           cell.note = { texts: [{ text: 'Wartezeit diese Woche:\n' + details + _anrTxt }], margins: { insetmode: 'auto' } };
           if(cell.value != null && cell.value !== 0) sumVerworfen += cell.value;
         } else if(cell.value != null && cell.value !== 0) {
@@ -256,7 +284,7 @@
         let wert = 0;
         t.eintraege.forEach(e => { const v = _mW(e.prokuh[id]); if(v > wert) wert = v; });
         if(!(wert > 0)) { werte.push(null); return; }
-        const ant = window.hpMilchWzAnteil(id, t.ts, t.zeit, wzPerKuh);
+        const ant = window.hpMilchWzAnteil(id, t.ts, t.zeit, wzPerKuh, _vorher.get(t), wert);
         const anr = Math.round(wert * ant.faktor * 100) / 100;
         werte.push(anr); summe += anr;
         if(ant.wz > 0) rot.push({ idx: werte.length - 1, ant, wert });
@@ -271,11 +299,11 @@
         const cell = row.getCell(4 + idx);
         cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF8D7DA' } };
         cell.font = { color: { argb: 'FFAA1F1F' }, bold: true };
-        cell.note = { texts: [{ text: 'Gemessen ' + String(wert).replace('.', ',') + ' L · ' + ant.wz + ' von 7 Melkungen verworfen' + (ant.grund ? ' (' + ant.grund + ')' : '') }], margins: { insetmode: 'auto' } };
+        cell.note = { texts: [{ text: ant.hinweis }], margins: { insetmode: 'auto' } };
       });
     });
     wsA.addRow([]);
-    const legA = wsA.addRow(['Erklärung:', '', '', 'Anrechenbar = gemessen × (7 − verworfene Melkungen) ÷ 7. Eine Messung steht für die 7 Tage bis zum Messtag. Rot = Wartezeit in dieser Woche.']);
+    const legA = wsA.addRow(['Erklärung:', '', '', 'Anrechenbar = gemessen × (Melkungen − verworfene Melkungen) ÷ Melkungen. Eine Messung steht für die Zeit seit der letzten Messung (gleiche Melkzeit) bis zum Messtag; erste Messung: 7 Tage. Rot = Milch in diesem Zeitraum teilweise verworfen.']);
     wsA.mergeCells(legA.number, 4, legA.number, 3 + kuhListe.length + 1);
     legA.getCell(4).font = { italic: true, color: { argb: 'FF666666' } };
 

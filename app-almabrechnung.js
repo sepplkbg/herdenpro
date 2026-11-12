@@ -267,15 +267,20 @@
         termine.set(key, t);
       });
       const milchMessungen = [], proBauer = new Map();
-      [...termine.values()].sort((a, b) => a.iso.localeCompare(b.iso) || (a.zeit === 'morgen' ? -1 : 1)).forEach(t => {
+      const _tListe = [...termine.values()];
+      const _vorher = window.hpMilchVorherTermin ? window.hpMilchVorherTermin(_tListe) : new Map();
+      const _isoL = ts => { const d = new Date(ts); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); };
+      _tListe.sort((a, b) => a.iso.localeCompare(b.iso) || (a.zeit === 'morgen' ? -1 : 1)).forEach(t => {
         const kat = t.molkerei ? 'Molkerei' : 'Sennerei';
         Object.entries(t.werte).forEach(([kid, liter]) => {
           if(!(liter > 0)) return;
           const k = kuehe[kid] || {};
-          const ant = window.hpMilchWzAnteil ? window.hpMilchWzAnteil(kid, t.ts, t.zeit, perioden) : { wz: 0, faktor: 1, grund: '' };
+          const ant = window.hpMilchWzAnteil ? window.hpMilchWzAnteil(kid, t.ts, t.zeit, perioden, _vorher.get(t), liter)
+                                             : { wz: 0, melkungen: 7, faktor: 1, grund: '', hinweis: '', zeitraumVon: t.ts, zeitraumBis: t.ts };
           const anr = r2(liter * ant.faktor);
           milchMessungen.push({ datum: t.iso, zeit: t.zeit, kategorie: kat, kuhId: kid, kuhNr: k.nr || '', kuhName: k.name || '', bauer: k.bauer || '',
-            liter: r2(liter), wzMelkungen: ant.wz, melkungen: 7, anrechenbar: anr, grund: ant.grund });
+            liter: r2(liter), zeitraumVon: _isoL(ant.zeitraumVon), zeitraumBis: _isoL(ant.zeitraumBis), melkungen: ant.melkungen,
+            wzMelkungen: ant.wz, anrechenbar: anr, grund: ant.grund, hinweis: ant.hinweis });
           const key = t.iso + '|' + t.zeit + '|' + (k.bauer || '');
           const pb = proBauer.get(key) || { datum: t.iso, zeit: t.zeit, kategorie: kat, bauer: k.bauer || '', gemessen: 0, verworfen: 0, anrechenbar: 0 };
           pb.gemessen = r2(pb.gemessen + liter); pb.anrechenbar = r2(pb.anrechenbar + anr); pb.verworfen = r2(pb.gemessen - pb.anrechenbar);
@@ -283,8 +288,8 @@
         });
       });
       const daten = {
-        format: 'herdenpro-alles', version: 2, app: 'HerdenPro', exportiertAm: new Date().toISOString(),
-        milchRegel: 'anrechenbar = liter × (7 − wzMelkungen) ÷ 7; Messung steht für die 7 Tage bis zum Messtag; verworfen ab der Melkung nach der Behandlung',
+        format: 'herdenpro-alles', version: 3, app: 'HerdenPro', exportiertAm: new Date().toISOString(),
+        milchRegel: 'anrechenbar = liter × (melkungen − wzMelkungen) ÷ melkungen; Zeitraum = seit der letzten Messung derselben Melkzeit bis inkl. Messtag (erste Messung: 7 Tage); verworfen ab der Melkung nach der Behandlung',
         milchMessungen, milchProBauer: [...proBauer.values()],
         bauern: Object.values(window.bauern || {}), kuehe: kuhListe,
         besamungen: Object.values(window.besamungen || {}), behandlungen,
