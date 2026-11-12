@@ -6003,8 +6003,13 @@ window.renderBenutzer = function() {
     m.label + '</label>'
   ).join('');
   
-  return '<div class="page-header"><h2>👤 Benutzer</h2></div>' +
-    '<div id="benutzer-liste"><div style="text-align:center;color:var(--text3)">⏳ Lade…</div></div>' +
+  // v54.66: Liste wurde beim Öffnen nie geladen → jetzt sofort laden (max. alle 20 s neu),
+  //         bis dahin letzten Stand zeigen
+  if(!window._benutzerLaedt && (!window._benutzerGeladenTs || Date.now() - window._benutzerGeladenTs > 20000)) {
+    setTimeout(() => window.loadBenutzerListe && window.loadBenutzerListe(), 0);
+  }
+  return '<div class="page-header"><h2>👤 Benutzer</h2><button class="btn-secondary" onclick="window._benutzerGeladenTs=0;loadBenutzerListe()" title="Neu laden">↻</button></div>' +
+    '<div id="benutzer-liste">' + (window._benutzerHtml || '<div style="text-align:center;color:var(--text3)">⏳ Lade…</div>') + '</div>' +
     '<div class="section-title" style="margin-top:.8rem">Neuen Benutzer anlegen</div>' +
     '<div class="card-section">' +
     '<input id="nb-email" class="inp" type="email" placeholder="E-Mail *" style="margin-bottom:.4rem" />' +
@@ -6040,12 +6045,29 @@ window.applyRolePreset = function(rolle) {
 };
 
 
+// v54.66: „Zuletzt online“ – jeder Benutzer meldet sich unter onlineStatus/<uid> (nur Admin darf lesen)
+function _hpZuletztText(ts) {
+  if(!ts) return '<span style="color:var(--text3)">noch nie (seit dem Update)</span>';
+  const min = Math.floor((Date.now() - ts) / 60000);
+  let t, farbe = 'var(--text3)';
+  if(min < 3) { t = 'gerade online'; farbe = 'var(--green)'; }
+  else if(min < 60) { t = 'vor ' + min + ' Min.'; farbe = 'var(--green)'; }
+  else if(min < 24 * 60) t = 'heute ' + new Date(ts).toLocaleTimeString('de-AT', { hour: '2-digit', minute: '2-digit' });
+  else t = new Date(ts).toLocaleString('de-AT', { weekday: 'short', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+  return '<span style="color:' + farbe + '">' + (min < 3 ? '● ' : '') + t + '</span>';
+}
+
 window.loadBenutzerListe = async function() {
   const el = document.getElementById('benutzer-liste');
-  if(!el) return;
+  if(!el || window._benutzerLaedt) return;
+  window._benutzerLaedt = true;
+  const _zeit = (p, ms) => Promise.race([p, new Promise((_, rej) => setTimeout(() => rej(new Error('Zeitüberschreitung')), ms))]);
   try {
-    const snap = await firebase.database().ref('benutzer').get();
+    const snap = await _zeit(firebase.database().ref('benutzer').get(), 20000);
     const data = snap.val() || {};
+    let online = {};
+    try { online = (await _zeit(firebase.database().ref('onlineStatus').get(), 10000)).val() || {}; }
+    catch(e) { online = null; }   // Regel noch nicht veröffentlicht oder offline
     const roleLabels = {admin:'Admin',hirte:'Hirte',molkerei:'Molkerei',milchmesser:'Milchmesser',sennerei:'Sennerei'};
     const roleColors = {admin:'var(--gold)',hirte:'var(--green)',molkerei:'#7acbff',milchmesser:'#c87ee8'};
     
@@ -6061,6 +6083,7 @@ window.loadBenutzerListe = async function() {
           <div>
             <div class="list-card-title">${u.name||u.email||'–'}</div>
             <div class="list-card-sub">${u.email||''}</div>
+            ${online ? `<div style="font-size:.72rem;margin-top:.1rem">Zuletzt online: ${_hpZuletztText(online[uid] && online[uid].ts)}${online[uid] && online[uid].version ? ' <span style="color:var(--text3)">· ' + String(online[uid].version).replace(/[<>&"]/g, '') + '</span>' : ''}</div>` : ''}
             ${u.erlaubteModule && u.erlaubteModule.length > 0 ? `<div style="font-size:.65rem;color:var(--text3)">${u.erlaubteModule.length} Module</div>` : ''}
           </div>
         </div>
@@ -6077,11 +6100,42 @@ window.loadBenutzerListe = async function() {
             <button class="btn-xs-danger" onclick="deleteBenutzer('${uid}','${u.email||''}')">✕</button>` : 
             '<span style="font-size:.7rem;color:var(--text3)">(du)</span>'}
         </div>
-      </div>`).join('');
+      </div>`).join('') +
+      (online === null ? '<div style="font-size:.72rem;color:var(--text3);padding:.4rem .2rem">„Zuletzt online“ kann noch nicht angezeigt werden – Firebase-Regel für <b>onlineStatus</b> fehlt.</div>' : '');
+    window._benutzerHtml = el.innerHTML;
+    window._benutzerGeladenTs = Date.now();
   } catch(e) {
-    el.innerHTML = '<div class="empty-state">Fehler beim Laden</div>';
+    el.innerHTML = '<div class="empty-state">Benutzer konnten nicht geladen werden (' + String(e && e.message || e).replace(/[<>&"]/g, '') + ').<br><button class="btn-secondary" style="margin-top:.5rem" onclick="window._benutzerGeladenTs=0;loadBenutzerListe()">↻ Nochmal versuchen</button></div>';
+  } finally {
+    window._benutzerLaedt = false;
+    const neu = document.getElementById('benutzer-liste');   // Seite wurde inzwischen neu gezeichnet?
+    if(neu && neu !== el && window._benutzerHtml) neu.innerHTML = window._benutzerHtml;
   }
 };
+
+// Eigenen „Zuletzt online“-Stand melden: beim Start, beim Zurückkehren in die App, alle 5 Min.
+(function() {
+  let _letzt = 0;
+  function melden() {
+    try {
+      const u = firebase.auth().currentUser;
+      if(!u || document.visibilityState === 'hidden' || Date.now() - _letzt < 60000) return;
+      _letzt = Date.now();
+      firebase.database().ref('onlineStatus/' + u.uid).set({
+        ts: firebase.database.ServerValue.TIMESTAMP,
+        version: localStorage.getItem('hp_version') || ''
+      }).catch(() => {});   // ohne Regel: still ignorieren
+    } catch(e) {}
+  }
+  // Firebase wird erst beim Seitenstart initialisiert → danach anmelden
+  function anhaengen(n) {
+    try { if(firebase.apps && firebase.apps.length) { firebase.auth().onAuthStateChanged(u => { if(u) setTimeout(melden, 3000); }); return; } } catch(e) {}
+    if(n < 30) setTimeout(() => anhaengen(n + 1), 1000);
+  }
+  anhaengen(0);
+  document.addEventListener('visibilitychange', () => { if(document.visibilityState === 'visible') melden(); });
+  setInterval(melden, 5 * 60000);
+})();
 
 window.createBenutzer = async function() {
   const email = document.getElementById('nb-email')?.value.trim();

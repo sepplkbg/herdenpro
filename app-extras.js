@@ -12,6 +12,9 @@
   // ═══ A13: Was ist neu ═══════════════════════════════════════════════════
   // Neueste Version oben. Nur Punkte, die Nutzer merken.
   const CHANGELOG = [
+    { v: 'v54.66', punkte: [
+      'Benutzer (Admin): Liste lädt wieder sofort; bei jedem Benutzer steht „Zuletzt online“ (und welche App-Version er hat)'
+    ]},
     { v: 'v54.65', punkte: [
       'Anrechenbare Milch: Zeitraum ist jetzt immer „seit der letzten Messung“ (passt auch, wenn nicht genau alle 7 Tage gemessen wird); jede Kuh mit Abzug bekommt einen fertigen Hinweistext (gemessen, verworfene Melkungen, Grund, anrechenbar)'
     ]},
