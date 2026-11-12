@@ -12,6 +12,10 @@
   // ═══ A13: Was ist neu ═══════════════════════════════════════════════════
   // Neueste Version oben. Nur Punkte, die Nutzer merken.
   const CHANGELOG = [
+    { v: 'v54.64', punkte: [
+      'Milch bei Wartezeit: „Alles für Excel“ enthält jetzt pro Kuh und Messung die anrechenbare Milch (gemessen × nicht verworfene Melkungen ÷ 7) und Summen pro Bauer – Excel muss nichts mehr von Hand abziehen',
+      'Milch-Export (xlsx): neue Blätter „Anrechenbar“ und „Pro Bauer“; im Kommentar der roten Zellen steht, wie viele Melkungen verworfen wurden'
+    ]},
     { v: 'v54.63', punkte: [
       'Sennerei-Abholung: Eigener großer Ziffernblock bei Butter und Käse – die Handy-Tastatur verdeckt nichts mehr',
       '„Nächstes ▸“ springt ins nächste Feld, nach dem letzten Feld geht es zum nächsten Schritt; ◂ Zurück / Weiter ▸ immer direkt über dem Ziffernblock',

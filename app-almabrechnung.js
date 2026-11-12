@@ -248,8 +248,44 @@
         .map(v => ({ datum: v.datum, positionen: v.positionen.filter(Boolean).map(p => ({
             name: p.name || '', mengeKg: r2(p.mengeKg),
             kategorie: p.kategorie || (preis[p.preisId] && preis[p.preisId].kategorie) || '' })) }));
+      // v54.64: Milch pro Kuh und Messung MIT Abzug für verworfene Milch (Wartezeit/Milchsperre)
+      //   gleiche Werte wie milchCsv (je Datum+Zeit gilt der zuletzt eingetragene Wert)
+      const _mW = window.milchWert || (v => typeof v === 'number' ? v : (v && v.wert != null ? parseFloat(v.wert) || 0 : parseFloat(v) || 0));
+      const perioden = window.hpMilchWzPerioden ? window.hpMilchWzPerioden() : {};
+      const termine = new Map();
+      Object.values(window.milchEintraege || {}).forEach(e => {
+        if(!e || !e.datum || !e.prokuh) return;
+        const d = new Date(e.datum), zeit = e.zeit || 'morgen';
+        const iso = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+        const key = iso + '_' + zeit;
+        const t = termine.get(key) || { iso, zeit, ts: e.datum, molkerei: false, werte: {}, wts: {} };
+        if(e.molkerei) t.molkerei = true;
+        Object.entries(e.prokuh).forEach(([kid, v]) => {
+          const w = _mW(v), vts = (v && typeof v === 'object' && v.ts) ? v.ts : 0;
+          if(t.werte[kid] == null || vts > (t.wts[kid] || 0)) { t.werte[kid] = w; t.wts[kid] = vts; }
+        });
+        termine.set(key, t);
+      });
+      const milchMessungen = [], proBauer = new Map();
+      [...termine.values()].sort((a, b) => a.iso.localeCompare(b.iso) || (a.zeit === 'morgen' ? -1 : 1)).forEach(t => {
+        const kat = t.molkerei ? 'Molkerei' : 'Sennerei';
+        Object.entries(t.werte).forEach(([kid, liter]) => {
+          if(!(liter > 0)) return;
+          const k = kuehe[kid] || {};
+          const ant = window.hpMilchWzAnteil ? window.hpMilchWzAnteil(kid, t.ts, t.zeit, perioden) : { wz: 0, faktor: 1, grund: '' };
+          const anr = r2(liter * ant.faktor);
+          milchMessungen.push({ datum: t.iso, zeit: t.zeit, kategorie: kat, kuhId: kid, kuhNr: k.nr || '', kuhName: k.name || '', bauer: k.bauer || '',
+            liter: r2(liter), wzMelkungen: ant.wz, melkungen: 7, anrechenbar: anr, grund: ant.grund });
+          const key = t.iso + '|' + t.zeit + '|' + (k.bauer || '');
+          const pb = proBauer.get(key) || { datum: t.iso, zeit: t.zeit, kategorie: kat, bauer: k.bauer || '', gemessen: 0, verworfen: 0, anrechenbar: 0 };
+          pb.gemessen = r2(pb.gemessen + liter); pb.anrechenbar = r2(pb.anrechenbar + anr); pb.verworfen = r2(pb.gemessen - pb.anrechenbar);
+          proBauer.set(key, pb);
+        });
+      });
       const daten = {
-        format: 'herdenpro-alles', version: 1, app: 'HerdenPro', exportiertAm: new Date().toISOString(),
+        format: 'herdenpro-alles', version: 2, app: 'HerdenPro', exportiertAm: new Date().toISOString(),
+        milchRegel: 'anrechenbar = liter × (7 − wzMelkungen) ÷ 7; Messung steht für die 7 Tage bis zum Messtag; verworfen ab der Melkung nach der Behandlung',
+        milchMessungen, milchProBauer: [...proBauer.values()],
         bauern: Object.values(window.bauern || {}), kuehe: kuhListe,
         besamungen: Object.values(window.besamungen || {}), behandlungen,
         milch_wochen: [], milchCsv: (window.milchCsvText ? window.milchCsvText() : ''),
