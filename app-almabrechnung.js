@@ -71,13 +71,16 @@
     ['mhdTage', 'Mindestens haltbar: Tage ab Produktion', 'number'],
     ['rohmilch', '„hergestellt aus Rohmilch" drucken', 'checkbox'],
     ['preisKg', 'Preis (€ je kg)', 'number'],
-    ['klotzKg', 'Klotzgewicht (kg)', 'number'],
+    ['klotzKg', 'Klotzgewicht (kg) – gilt auch bei der Abholung (Klötze → kg)', 'number'],
     ['hersteller', 'Hersteller (Name, Adresse)', 'text'],
     ['spalten', 'Bogen: Spalten', 'number'], ['zeilen', 'Bogen: Zeilen', 'number'],
     ['breiteMm', 'Etikettenbreite (mm)', 'number'], ['hoeheMm', 'Etikettenhöhe (mm)', 'number'],
     ['randObenMm', 'Rand oben (mm)', 'number'], ['randLinksMm', 'Rand links (mm)', 'number'],
     ['startNr', 'Nächster Druck beginnt bei Etikett Nr. (1 = neuer Bogen; stellt sich nach jedem Druck selbst weiter)', 'number']
   ];
+
+  // v54.63: Klotzgewicht auch für die Abholung (Butter: Klötze → kg)
+  window.hpButterKlotzKg = () => parseFloat(_et.klotzKg) || 0.5;
 
   window.sennereiEtikettenEinstellungen = function() {
     const alt = document.getElementById('et-overlay'); if(alt) alt.remove();

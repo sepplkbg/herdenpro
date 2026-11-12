@@ -12,6 +12,12 @@
   // ═══ A13: Was ist neu ═══════════════════════════════════════════════════
   // Neueste Version oben. Nur Punkte, die Nutzer merken.
   const CHANGELOG = [
+    { v: 'v54.63', punkte: [
+      'Sennerei-Abholung: Eigener großer Ziffernblock bei Butter und Käse – die Handy-Tastatur verdeckt nichts mehr',
+      '„Nächstes ▸“ springt ins nächste Feld, nach dem letzten Feld geht es zum nächsten Schritt; ◂ Zurück / Weiter ▸ immer direkt über dem Ziffernblock',
+      'Butter: Klötze eingeben – die kg rechnet die App (Klotzgewicht aus den Etiketten-Einstellungen, Vorgabe 0,5 kg). „✓ Vorschlag übernehmen“ trägt z. B. 3 Klötze = 1,5 kg mit einem Tipp ein, darunter steht, ob es mehr oder weniger als zum Abholen ist',
+      'Für Buchstaben in den Chargen: ⌨ ABC schaltet auf die normale Tastatur um'
+    ]},
     { v: 'v54.62', punkte: [
       'Butter-Etiketten: Ein angebrochener Bogen wird weiterverwendet – der nächste Druck beginnt automatisch beim nächsten freien Etikett (vor dem Druck änderbar, 1 = neuer Bogen)'
     ]},

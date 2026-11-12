@@ -114,7 +114,7 @@
   }
   function kgFeld(id, wert, placeholder) {
     const v = (wert === '' || wert == null || +wert === 0) ? '' : kgTxt(wert);
-    return `<input id="${id}" class="inp" type="text" inputmode="decimal" autocomplete="off" value="${v}" placeholder="${placeholder == null ? '' : String(placeholder).replace('.', ',')}" oninput="hpKgEingabe(this)" style="margin-bottom:.5rem" />`;
+    return `<input id="${id}" class="inp" type="text" inputmode="none" data-np="kg" enterkeyhint="next" autocomplete="off" value="${v}" placeholder="${placeholder == null ? '' : String(placeholder).replace('.', ',')}" oninput="hpKgEingabe(this)" style="margin-bottom:.5rem" />`;
   }
   // Nur Ziffern + EIN Komma, höchstens 2 Nachkommastellen
   window.hpKgEingabe = function(el) {
@@ -649,7 +649,7 @@
         chargen: istNachfolge ? '' : (b?.kaese?.chargen || []).join(', ')
       },
       butter: {
-        klotze: 0,   // Butter-Klötze kommen aus dem PDF, nicht aus der Eingabe
+        klotze: 0,   // v54.63: tatsächlich abgeholte Klötze (Eingabe); Vorschlag kommt aus dem PDF
         abgeholt: istNachfolge ? 0 : (b?.butter?.abgeholt || 0),
         naturalrAbgeholt: istNachfolge ? 0 : (b?.butter?.naturalrAbgeholt || 0),
         chargen: istNachfolge ? '' : (b?.butter?.chargen || []).join(', ')
@@ -697,7 +697,315 @@
     window._sennereiWizardData = data;
   }
 
+
+  // ══════════════════════════════════════════════════════════════════════════════
+  // v54.63 (LNMachinery): EIGENER ZIFFERNBLOCK bei der Abholung (Schritt Butter/Käse)
+  //  - Handy-Tastatur bleibt zu → nichts wird verdeckt
+  //  - „Weiter" springt ins nächste Feld, nach dem letzten Feld zum nächsten Schritt
+  //  - Leiste mit ◂ Zurück / Weiter ▸ immer direkt über dem Block
+  //  - Kopfzeile wird kompakt, Feld rutscht automatisch in den sichtbaren Bereich
+  //  - ⌨ schaltet für ein Feld auf die Handy-Tastatur (z. B. Buchstaben in Chargen)
+  // ══════════════════════════════════════════════════════════════════════════════
+  let _npId = null;
+  const _npSysTastatur = new Set();   // Felder, für die der Nutzer die Handy-Tastatur gewählt hat
+
+  function _npStil() {
+    if(document.getElementById('hp-np-style')) return;
+    const st = document.createElement('style');
+    st.id = 'hp-np-style';
+    st.textContent = `
+      #hp-np{position:fixed;left:0;right:0;bottom:0;z-index:9000;background:var(--bg2,#132311);border-top:2px solid var(--gold2,#b88a28);
+        box-shadow:0 -6px 24px rgba(0,0,0,.5);padding:.35rem .4rem calc(.4rem + env(safe-area-inset-bottom,0px));user-select:none;-webkit-user-select:none}
+      #hp-np .np-leiste{display:flex;gap:.35rem;align-items:center;margin-bottom:.35rem}
+      #hp-np .np-leiste button{background:var(--bg3,#1c2f19);color:var(--text2,#ccc);border:1px solid var(--border2,#3a4a36);border-radius:9px;
+        padding:.5rem .5rem;font-size:.8rem;font-weight:700;font-family:inherit;cursor:pointer;white-space:nowrap}
+      #hp-np .np-leiste .np-titel{flex:1;min-width:0;text-align:center;font-size:.78rem;color:var(--gold,#d4a84b);font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+      #hp-np .np-leiste .np-vor{background:var(--gold,#d4a84b);color:#000;border-color:var(--gold,#d4a84b)}
+      #hp-np .np-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:.35rem}
+      #hp-np .np-grid button{height:3rem;border-radius:10px;border:1px solid var(--border2,#3a4a36);background:var(--bg,#0c1a09);color:var(--text,#eee);
+        font-size:1.5rem;font-weight:700;font-family:inherit;cursor:pointer;-webkit-tap-highlight-color:transparent;touch-action:manipulation}
+      #hp-np .np-grid button:active{background:rgba(212,168,75,.35)}
+      #hp-np .np-grid .np-k{font-size:1rem;color:var(--text2,#ccc)}
+      #hp-np .np-grid .np-next{grid-column:span 2;background:var(--gold,#d4a84b);color:#000;font-size:1.15rem;border-color:var(--gold,#d4a84b)}
+      #hp-np .np-grid button[disabled]{opacity:.3}
+      [data-np].np-aktiv{border-color:var(--gold,#d4a84b)!important;box-shadow:0 0 0 3px rgba(212,168,75,.35)}
+      body.hp-np-offen #main-content{padding-bottom:calc(var(--hp-np-h,300px) + 1rem)!important}
+      body.hp-np-offen .sb-wiz-foot{display:none!important}
+      body.hp-np-offen .sb-wiz-steps, body.hp-kb-offen .sb-wiz-steps{display:none!important}
+      body.hp-np-offen .sb-wiz-schritt, body.hp-kb-offen .sb-wiz-schritt{padding:.2rem .5rem!important;margin-bottom:.35rem!important}
+      body.hp-np-offen .sb-wiz-head, body.hp-kb-offen .sb-wiz-head{margin-bottom:.35rem!important}
+      body.hp-np-offen .sb-wiz-head h2, body.hp-kb-offen .sb-wiz-head h2{font-size:1.05rem!important}
+      body.hp-np-offen .sb-wiz-head button, body.hp-kb-offen .sb-wiz-head button{padding:.35rem .6rem!important;font-size:.8rem!important}
+      #hp-kb-leiste{position:fixed;left:0;right:0;z-index:9000;display:none;gap:.35rem;padding:.3rem .4rem;background:var(--bg2,#132311);border-top:1px solid var(--gold2,#b88a28)}
+      #hp-kb-leiste button{flex:1;background:var(--bg3,#1c2f19);color:var(--text2,#ccc);border:1px solid var(--border2,#3a4a36);border-radius:9px;padding:.5rem;font-size:.85rem;font-weight:700;font-family:inherit}
+      #hp-kb-leiste .np-vor{background:var(--gold,#d4a84b);color:#000}
+    `;
+    document.head.appendChild(st);
+  }
+
+  function _npFelder() {
+    return [...document.querySelectorAll('#main-content [data-np]')].filter(el => el.type !== 'hidden' && el.offsetParent !== null);
+  }
+  function _npFeldName(el) {
+    const lbl = el && el.previousElementSibling;
+    const t = lbl && lbl.classList && lbl.classList.contains('inp-label') ? lbl.textContent : '';
+    const name = String(t || '').replace(/\s*—.*$/, '').trim();
+    if(/^Tatsächlich abgeholt/i.test(name)) return 'Abgeholt (kg)';
+    if(/^Chargen/i.test(name)) return 'Chargen';
+    if(/^Naturalr/i.test(name)) return 'Naturalrückgabe (kg)';
+    return name || 'Eingabe';
+  }
+  // Feld zwischen Kopf und Ziffernblock sichtbar machen
+  function grenzeVorab(unten) { return (unten != null ? unten : window.innerHeight) - Math.max(document.getElementById('main-content').getBoundingClientRect().top, 0); }
+  function _npSichtbar(el, unten) {
+    const sc = document.getElementById('main-content');
+    if(!el || !sc) return;
+    let r = el.getBoundingClientRect();
+    // Chargen: auch die Chargen-Knöpfe darunter zeigen
+    if(el.dataset && el.dataset.np === 'charge') {
+      let n = el.nextElementSibling, unt = r.bottom;
+      for(let i = 0; i < 2 && n; i++, n = n.nextElementSibling) unt = Math.max(unt, n.getBoundingClientRect().bottom);
+      r = { top: r.top, bottom: Math.min(unt, r.top + (grenzeVorab(unten) - 60)) };
+    }
+    const oben = Math.max(sc.getBoundingClientRect().top, 0) + 8;
+    const grenze = (unten != null ? unten : window.innerHeight) - 12;
+    // Feld mit seiner Beschriftung zeigen
+    const lbl = el.previousElementSibling;
+    const top = lbl && lbl.classList && lbl.classList.contains('inp-label') ? Math.min(lbl.getBoundingClientRect().top, r.top) : r.top;
+    if(r.bottom > grenze) sc.scrollBy({ top: r.bottom - grenze + 40, behavior: 'smooth' });
+    else if(top < oben) sc.scrollBy({ top: top - oben - 10, behavior: 'smooth' });
+  }
+
+  function _npZeichnen() {
+    _npStil();
+    let np = document.getElementById('hp-np');
+    if(!np) {
+      np = document.createElement('div');
+      np.id = 'hp-np';
+      // Fokus nie aus dem Feld nehmen (sonst springt der Cursor / Tastatur)
+      np.addEventListener('mousedown', e => e.preventDefault());
+      np.addEventListener('touchstart', e => { if(e.target.closest('button')) { e.preventDefault(); e.target.closest('button').click(); } }, { passive: false });
+      document.body.appendChild(np);
+    }
+    const el = document.getElementById(_npId);
+    const art = el ? el.dataset.np : 'kg';
+    const felder = _npFelder();
+    const letztes = el && felder.indexOf(el) === felder.length - 1;
+    const step = window._sennereiWizardStep || 1;
+    np.innerHTML =
+      '<div class="np-leiste">' +
+        '<button onclick="sennereiWizardZurueck()">◂ Zurück</button>' +
+        '<div class="np-titel">' + String(_npFeldName(el)).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c]) + '</div>' +
+        '<button onclick="_npZuKnopf()" title="Ziffernblock schließen">▾</button>' +
+        '<button class="np-vor" onclick="sennereiWizardWeiter()">' + (step < 6 ? 'Weiter ▸' : '✓') + '</button>' +
+      '</div>' +
+      '<div class="np-grid">' +
+        ['7','8','9','⌫','4','5','6','C','1','2','3',','].map(k => {
+          const kl = (k === '⌫' || k === 'C') ? ' class="np-k"' : '';
+          const dis = (k === ',' && art === 'int') ? ' disabled' : '';
+          return '<button' + kl + dis + ' onclick="_npTaste(\'' + k + '\')">' + (k === 'C' ? 'Leeren' : k) + '</button>';
+        }).join('') +
+        '<button class="np-k" onclick="_npSysTast()" title="Handy-Tastatur für dieses Feld">⌨ ABC</button>' +
+        '<button onclick="_npTaste(\'0\')">0</button>' +
+        '<button class="np-next" onclick="_npNaechstes()">' + (letztes ? 'Fertig ▸' : 'Nächstes ▸') + '</button>' +
+      '</div>';
+    document.body.classList.add('hp-np-offen');
+    const h = np.getBoundingClientRect().height;
+    document.documentElement.style.setProperty('--hp-np-h', Math.round(h) + 'px');
+    document.querySelectorAll('[data-np].np-aktiv').forEach(x => { if(x !== el) x.classList.remove('np-aktiv'); });
+    if(el) {
+      el.classList.add('np-aktiv');
+      setTimeout(() => _npSichtbar(el, window.innerHeight - h), 30);
+    }
+  }
+
+  function _npAuf(el) {
+    if(!el || !el.dataset.np || _npSysTastatur.has(el.id)) return;
+    _npId = el.id;
+    _npZeichnen();
+  }
+  function _npZu() {
+    _npId = null;
+    const np = document.getElementById('hp-np');
+    if(np) np.remove();
+    document.body.classList.remove('hp-np-offen');
+    document.querySelectorAll('[data-np].np-aktiv').forEach(x => x.classList.remove('np-aktiv'));
+  }
+  window._npZuKnopf = function() {
+    const el = document.getElementById(_npId);
+    _npZu();
+    if(el) el.blur();
+  };
+
+  window._npTaste = function(k) {
+    const el = document.getElementById(_npId);
+    if(!el) { _npZu(); return; }
+    const art = el.dataset.np;
+    let v = String(el.value || '');
+    if(k === '⌫') v = v.replace(/,\s*$/, '').slice(0, -1);
+    else if(k === 'C') v = '';
+    else if(k === ',') {
+      if(art === 'int') return;
+      if(art === 'charge') { if(v.trim() && !/,\s*$/.test(v)) v = v.trim() + ', '; }
+      else if(!v.includes(',')) v = (v || '0') + ',';
+    } else {
+      if(art === 'kg') { const i = v.indexOf(','); if(i >= 0 && v.length - i > 2) return; if(v === '0') v = ''; }
+      if(art === 'int' && v.length >= 4) return;
+      v += k;
+    }
+    el.value = v;
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+    if(navigator.vibrate) navigator.vibrate(8);
+  };
+
+  window._npNaechstes = function() {
+    const el = document.getElementById(_npId);
+    const felder = _npFelder();
+    const i = el ? felder.indexOf(el) : -1;
+    const naechstes = felder[i + 1];
+    if(naechstes) {
+      if(_npSysTastatur.has(naechstes.id)) { _npZu(); naechstes.focus(); return; }
+      _npId = naechstes.id;
+      try { naechstes.focus({ preventScroll: true }); } catch(e) { naechstes.focus(); }
+      _npZeichnen();
+    } else {
+      sennereiWizardWeiter();
+    }
+  };
+
+  // Für dieses Feld die normale Handy-Tastatur verwenden (Buchstaben, Sonderzeichen)
+  window._npSysTast = function() {
+    const el = document.getElementById(_npId);
+    if(!el) return;
+    _npSysTastatur.add(el.id);
+    el.setAttribute('inputmode', el.dataset.np === 'charge' ? 'text' : 'decimal');
+    _npZu();
+    el.blur();
+    setTimeout(() => el.focus(), 60);
+  };
+
+  // Nach jedem neuen Zeichnen der Seite: Einstellungen wiederherstellen, Block wieder anhängen
+  function _npNachRender() {
+    if(window.currentView !== 'sennerei_bauer') { _npZu(); return; }
+    _npSysTastatur.forEach(id => { const x = document.getElementById(id); if(x) x.setAttribute('inputmode', x.dataset.np === 'charge' ? 'text' : 'decimal'); });
+    if(_npId) {
+      const el = document.getElementById(_npId);
+      if(el) { try { el.focus({ preventScroll: true }); } catch(e) {} _npZeichnen(); }
+      else _npZu();
+    }
+  }
+
+  // Eingaben laufend merken – ein Neu-Zeichnen (z. B. Live-Daten) verliert nichts mehr
+  document.addEventListener('input', e => {
+    if(window.currentView !== 'sennerei_bauer' || !e.target.closest || !e.target.closest('#main-content')) return;
+    const st = window._sennereiWizardStep;
+    if(st === 2 || st === 3) { try { _sennereiSaveCurrentStepData(); } catch(err) {} }
+  });
+
+  document.addEventListener('focusin', e => {
+    const el = e.target;
+    if(window.currentView !== 'sennerei_bauer' || !el || !el.dataset) return;
+    if(el.dataset.np && !_npSysTastatur.has(el.id)) { _npAuf(el); return; }
+    if(document.getElementById('hp-np') && el.closest && el.closest('#main-content') && /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName)) _npZu();
+    // Handy-Tastatur: Feld nach dem Aufgehen der Tastatur sichtbar machen
+    setTimeout(() => _kbPruefen(), 350);
+  });
+  // Antippen eines Feldes öffnet den Block auch dann, wenn es schon den Fokus hatte
+  document.addEventListener('click', e => {
+    const el = e.target;
+    if(window.currentView !== 'sennerei_bauer' || !el || !el.dataset || !el.dataset.np) return;
+    if(!document.getElementById('hp-np') || _npId !== el.id) _npAuf(el);
+  });
+  // Weiter-/Enter-Taste der Handy-Tastatur → nächstes Feld bzw. nächster Schritt
+  document.addEventListener('keydown', e => {
+    if(e.key !== 'Enter' || window.currentView !== 'sennerei_bauer') return;
+    const el = e.target;
+    if(!el || !el.dataset || !el.dataset.np) return;
+    e.preventDefault();
+    const felder = _npFelder();
+    const n = felder[felder.indexOf(el) + 1];
+    if(n) { if(_npSysTastatur.has(n.id)) n.focus(); else { el.blur(); n.focus(); } }
+    else { el.blur(); sennereiWizardWeiter(); }
+  });
+
+  // ── Handy-Tastatur offen? → kompakte Kopfzeile + Leiste direkt über der Tastatur ──
+  function _kbPruefen() {
+    const vv = window.visualViewport;
+    const offen = !!(vv && window.currentView === 'sennerei_bauer' && !document.getElementById('hp-np') &&
+      (window.innerHeight - vv.height) > 150 && document.activeElement && /^(INPUT|TEXTAREA)$/.test(document.activeElement.tagName));
+    document.body.classList.toggle('hp-kb-offen', offen);
+    let bar = document.getElementById('hp-kb-leiste');
+    if(!offen) { if(bar) bar.style.display = 'none'; return; }
+    _npStil();
+    if(!bar) {
+      bar = document.createElement('div');
+      bar.id = 'hp-kb-leiste';
+      bar.addEventListener('mousedown', e => e.preventDefault());
+      bar.innerHTML = '<button onclick="sennereiWizardZurueck()">◂ Zurück</button>' +
+        '<button onclick="_kbNaechstes()">Nächstes Feld</button>' +
+        '<button class="np-vor" onclick="sennereiWizardWeiter()">Weiter ▸</button>';
+      document.body.appendChild(bar);
+    }
+    bar.style.display = 'flex';
+    const bh = bar.getBoundingClientRect().height || 44;
+    bar.style.top = Math.round(vv.offsetTop + vv.height - bh) + 'px';
+    bar.style.bottom = 'auto';
+    _npSichtbar(document.activeElement, vv.offsetTop + vv.height - bh);
+  }
+  window._kbNaechstes = function() {
+    const el = document.activeElement;
+    const felder = _npFelder();
+    const n = felder[felder.indexOf(el) + 1];
+    if(n) n.focus(); else { if(el) el.blur(); sennereiWizardWeiter(); }
+  };
+  if(window.visualViewport) {
+    window.visualViewport.addEventListener('resize', () => _kbPruefen());
+    window.visualViewport.addEventListener('scroll', () => _kbPruefen());
+  }
+  document.addEventListener('focusout', () => setTimeout(_kbPruefen, 200));
+
+  // ── Butter: Klötze → kg (Klotzgewicht aus den Etiketten-Einstellungen, Vorgabe 0,5 kg) ──
+  function _butterKlotzKg() {
+    const g = window.hpButterKlotzKg ? parseFloat(window.hpButterKlotzKg()) : NaN;
+    return g > 0 ? g : 0.5;
+  }
+  function _butterDiffText(kg, ziel) {
+    kg = parseFloat(String(kg == null ? '' : kg).replace(',', '.'));
+    if(!(kg > 0) || !(ziel > 0)) return '';
+    const diff = Math.round((kg - ziel) * 100) / 100;
+    if(diff === 0) return '<span style="color:var(--green)">✓ genau die Menge zum Abholen</span>';
+    return diff > 0
+      ? '<span style="color:#ff9632">▲ ' + kgTxt(diff) + ' kg mehr als zum Abholen (' + kgTxt(ziel) + ' kg)</span>'
+      : '<span style="color:#6abfdb">▼ ' + kgTxt(-diff) + ' kg weniger als zum Abholen (' + kgTxt(ziel) + ' kg)</span>';
+  }
+  function _butterDiffZeigen() {
+    const el = document.getElementById('sb-b-diff'), f = document.getElementById('sb-b-abgeholt');
+    if(el && f) el.innerHTML = _butterDiffText(f.value, parseFloat(el.dataset.ziel) || 0);
+  }
+  // Klötze geändert → kg neu rechnen (kg bleibt danach von Hand änderbar)
+  window.sennereiButterKlotzeEingabe = function() {
+    const k = document.getElementById('sb-b-klotze'), f = document.getElementById('sb-b-abgeholt');
+    if(!k || !f) return;
+    const n = parseInt(k.value) || 0;
+    f.value = n > 0 ? kgTxt(Math.round(n * _butterKlotzKg() * 100) / 100) : '';
+    _butterDiffZeigen();
+  };
+  document.addEventListener('input', e => { if(e.target && e.target.id === 'sb-b-abgeholt') _butterDiffZeigen(); });
+  // Abholvorschlag mit einem Tipp übernehmen
+  window.sennereiButterVorschlag = function(klotze) {
+    const k = document.getElementById('sb-b-klotze');
+    if(k) k.value = klotze;
+    sennereiButterKlotzeEingabe();
+    try { _sennereiSaveCurrentStepData(); } catch(e) {}
+    if(navigator.vibrate) navigator.vibrate(15);
+    const f = document.getElementById('sb-b-abgeholt');
+    if(window.showSaveToast) window.showSaveToast('✓ ' + klotze + ' Klötze = ' + (f ? f.value : '') + ' kg Butter übernommen');
+    const c = document.getElementById('sb-b-chargen');
+    if(c) { c.focus(); _npAuf(c); }
+  };
+
   window.sennereiWizardWeiter = function() {
+    _npZu();
     _sennereiSaveCurrentStepData();
     const step = window._sennereiWizardStep || 1;
     if(step < 6) {
@@ -707,6 +1015,7 @@
     }
   };
   window.sennereiWizardZurueck = function() {
+    _npZu();
     _sennereiSaveCurrentStepData();
     const step = window._sennereiWizardStep || 1;
     if(step > 1) {
@@ -784,9 +1093,10 @@
     const b = woche.bauern[bid];
     const step = window._sennereiWizardStep || 1;
     const data = window._sennereiWizardData || {};
+    setTimeout(_npNachRender, 0);   // v54.63: Ziffernblock nach neuem Zeichnen wieder an das Feld hängen
 
     const stepNames = ['Übersicht', 'Butter', 'Käse', 'Zwischenbilanz', 'Unterschrift', 'Bestätigung'];
-    const stepIndicator = '<div style="display:flex;justify-content:center;gap:.3rem;margin-bottom:.8rem">' +
+    const stepIndicator = '<div class="sb-wiz-steps" style="display:flex;justify-content:center;gap:.3rem;margin-bottom:.8rem">' +
       stepNames.map((n, i) => {
         const active = (i + 1) === step;
         const done = (i + 1) < step;
@@ -832,17 +1142,17 @@
       headerAction = '<button onclick="sennereiWizardFinalSpeichern()" style="background:var(--green);color:#000;border:none;padding:.55rem 1rem;border-radius:10px;font-size:.9rem;font-weight:800;cursor:pointer;font-family:inherit;white-space:nowrap;box-shadow:0 2px 8px rgba(77,184,78,.35)">' + (istN ? '✓ Speichern (+)' : '✓ Speichern') + '</button>';
     }
     return `
-      <div class="page-header" style="display:flex;align-items:center;justify-content:space-between;gap:.4rem;flex-wrap:nowrap">
-        <h2 style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin:0">🥛 ${b.name}</h2>
+      <div class="page-header sb-wiz-head" style="display:flex;align-items:center;justify-content:space-between;gap:.4rem;flex-wrap:nowrap">
+        <h2 style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin:0;font-size:1.35rem">🥛 ${b.name}</h2>
         ${headerAction}
         <button class="btn-secondary" onclick="navigate('sennerei_woche')" style="padding:.55rem .9rem">✕</button>
       </div>
       ${stepIndicator}
-      <div style="background:var(--bg3);border:1px solid var(--border);border-radius:10px;padding:.4rem .7rem;margin-bottom:.6rem;font-size:.75rem;color:var(--text3);text-align:center">
+      <div class="sb-wiz-schritt" style="background:var(--bg3);border:1px solid var(--border);border-radius:10px;padding:.4rem .7rem;margin-bottom:.6rem;font-size:.75rem;color:var(--text3);text-align:center">
         Schritt ${step} / 6 · <b style="color:var(--gold)">${stepNames[step-1]}</b>
       </div>
       ${body}
-      <div class="form-actions" style="position:sticky;bottom:0;background:linear-gradient(180deg,transparent,var(--bg) 30%);padding-top:1rem">
+      <div class="form-actions sb-wiz-foot" style="position:sticky;bottom:0;background:linear-gradient(180deg,transparent,var(--bg) 30%);padding-top:1rem">
         ${footerButtons}
       </div>
     `;
@@ -922,6 +1232,11 @@
     const d = data.butter || {};
     const klotzeVorschlag = bt.klotze || 0;   // aus PDF
     const chargenChips = _sennereiChargenChips('butter', 'sb-b-chargen');
+    // v54.63: Klötze erfassen, kg = Klötze × Klotzgewicht (Einstellung bei den Butter-Etiketten)
+    const gewicht = _butterKlotzKg();
+    const ziel = Math.max(0, Math.round(((bt.zumAbholen || 0) - (b.abgeholtAm ? (bt.abgeholt || 0) : 0)) * 100) / 100);
+    const vorschlagKl = (!b.abgeholtAm && parseInt(klotzeVorschlag) > 0) ? parseInt(klotzeVorschlag) : (ziel > 0 ? Math.ceil(ziel / gewicht - 0.001) : 0);
+    const vorschlagKg = Math.round(vorschlagKl * gewicht * 100) / 100;
     return `
       <div class="section-title">🧈 Butter</div>
       <div class="card-section" style="padding:.7rem .8rem;margin-bottom:.8rem">
@@ -933,11 +1248,14 @@
             <span style="font-size:.72rem;color:var(--text3);font-weight:400">(aus PDF)</span>
           </div>
         </div>
-        <input type="hidden" id="sb-b-klotze" value="${d.klotze || 0}" />
+        ${vorschlagKl > 0 ? `<button type="button" class="btn-primary" onclick="sennereiButterVorschlag(${vorschlagKl})" style="width:100%;white-space:normal;margin-bottom:.7rem">✓ Vorschlag übernehmen: ${vorschlagKl} Klötze = ${kgTxt(vorschlagKg)} kg</button>` : ''}
+        <label class="inp-label">Klötze (Stück) — je ${kgTxt(gewicht)} kg</label>
+        <input id="sb-b-klotze" class="inp" type="text" inputmode="none" data-np="int" enterkeyhint="next" autocomplete="off" value="${d.klotze || ''}" oninput="sennereiButterKlotzeEingabe()" style="margin-bottom:.5rem" />
         <label class="inp-label">Tatsächlich abgeholt (kg)</label>
-        ${kgFeld('sb-b-abgeholt', d.abgeholt, bt.zumAbholen || 0)}
+        ${kgFeld('sb-b-abgeholt', d.abgeholt, '')}
+        <div id="sb-b-diff" data-ziel="${ziel}" style="font-size:.78rem;margin:-.25rem 0 .6rem;min-height:1em">${_butterDiffText(d.abgeholt, ziel)}</div>
         <label class="inp-label">Chargen (Produktionsdatum, kommagetrennt) — z.B. 1208, 1508</label>
-        <input id="sb-b-chargen" class="inp" type="text" placeholder="z.B. 1208, 1508" value="${d.chargen || ''}" style="margin-bottom:.4rem" />
+        <input id="sb-b-chargen" class="inp" type="text" inputmode="none" data-np="charge" enterkeyhint="next" autocomplete="off" placeholder="z.B. 1208, 1508" value="${d.chargen || ''}" style="margin-bottom:.4rem" />
         ${chargenChips}
         ${bt.naturalrAnspruch ? `<label class="inp-label" style="margin-top:.6rem">Naturalrückgabe abgeholt (kg) — Anspruch: ${kgTxt(bt.naturalrAnspruch)} kg</label>
           ${kgFeld('sb-b-natabg', d.naturalrAbgeholt, '')}` : '<input type="hidden" id="sb-b-natabg" value="0" />'}
@@ -963,11 +1281,11 @@
           </div>
         </div>
         <label class="inp-label">Laib (Stück)</label>
-        <input id="sb-k-klotze" class="inp" type="number" step="1" min="0" inputmode="numeric" value="${d.klotze || ''}" style="margin-bottom:.5rem" />
+        <input id="sb-k-klotze" class="inp" type="text" inputmode="none" data-np="int" enterkeyhint="next" autocomplete="off" value="${d.klotze || ''}" style="margin-bottom:.5rem" />
         <label class="inp-label">Tatsächlich abgeholt (kg)</label>
         ${kgFeld('sb-k-abgeholt', d.abgeholt, abholvorschlagK)}
         <label class="inp-label">Chargen (Produktionsdatum, kommagetrennt) — z.B. 1208, 1508</label>
-        <input id="sb-k-chargen" class="inp" type="text" placeholder="z.B. 1208, 1508" value="${d.chargen || ''}" style="margin-bottom:.4rem" />
+        <input id="sb-k-chargen" class="inp" type="text" inputmode="none" data-np="charge" enterkeyhint="next" autocomplete="off" placeholder="z.B. 1208, 1508" value="${d.chargen || ''}" style="margin-bottom:.4rem" />
         ${chargenChips}
         ${k.naturalrAnspruch ? `<label class="inp-label" style="margin-top:.6rem">Naturalrückgabe abgeholt (kg) — Anspruch: ${kgTxt(k.naturalrAnspruch)} kg</label>
           ${kgFeld('sb-k-natabg', d.naturalrAbgeholt, '')}` : '<input type="hidden" id="sb-k-natabg" value="0" />'}
@@ -1022,7 +1340,7 @@
       <div class="card-section" style="padding:.7rem .8rem;margin-bottom:.8rem">
         <div style="font-weight:700;color:var(--gold);margin-bottom:.3rem">🧈 Butter</div>
         <div style="font-size:.9rem;padding-left:.5rem">
-          Abgeholt: <b>${kgTxt(bt.abgeholt)} kg</b><br>
+          ${bt.klotze ? 'Klötze: <b>' + bt.klotze + '</b><br>' : ''}Abgeholt: <b>${kgTxt(bt.abgeholt)} kg</b><br>
           ${bt.naturalrAbgeholt ? 'Naturalrückgabe: <b>' + kgTxt(bt.naturalrAbgeholt) + ' kg</b><br>' : ''}
           ${chargenB ? 'Chargen: ' + chargenB + '<br>' : ''}
         </div>
@@ -1070,7 +1388,7 @@
         <div style="font-size:1rem;font-weight:700;color:var(--gold);margin-bottom:.4rem">${b.name}</div>
         <div style="font-weight:700;margin-bottom:.2rem">🧈 Butter</div>
         <div style="font-size:.9rem;padding-left:.5rem;margin-bottom:.5rem">
-          Abgeholt: <b>${kgTxt(bt.abgeholt)} kg</b>${bt.naturalrAbgeholt ? ' · Naturalr.: <b>' + kgTxt(bt.naturalrAbgeholt) + ' kg</b>' : ''}${bt.chargen ? '<br>Chargen: ' + bt.chargen : ''}
+          ${bt.klotze ? 'Klötze: <b>' + bt.klotze + '</b> · ' : ''}Abgeholt: <b>${kgTxt(bt.abgeholt)} kg</b>${bt.naturalrAbgeholt ? ' · Naturalr.: <b>' + kgTxt(bt.naturalrAbgeholt) + ' kg</b>' : ''}${bt.chargen ? '<br>Chargen: ' + bt.chargen : ''}
         </div>
         <div style="font-weight:700;margin-bottom:.2rem">🧀 Käse</div>
         <div style="font-size:.9rem;padding-left:.5rem;margin-bottom:.5rem">
@@ -1136,7 +1454,8 @@
         verkProzent: kAlt.verkProzent || 0
       };
       const butterUpdate = {
-        klotze: (parseInt(bkAlt.klotze) || 0) + zusatzB.klotze,   // = Klötze aus PDF (Eingabe ist 0)
+        klotze: parseInt(bkAlt.klotze) || 0,   // = Klötze-Vorschlag aus PDF (bleibt unverändert)
+        klotzeAbgeholt: (bAlt.abgeholtAm ? (parseInt(bkAlt.klotzeAbgeholt) || 0) : 0) + zusatzB.klotze,   // v54.63: tatsächlich abgeholte Klötze
         abgeholt: Math.round(((parseFloat(bkAlt.abgeholt) || 0) + zusatzB.abgeholt) * 100) / 100,
         naturalrAbgeholt: Math.round(((parseFloat(bkAlt.naturalrAbgeholt) || 0) + zusatzB.naturalrAbgeholt) * 100) / 100,
         chargen: _uniq([...(bkAlt.chargen || []), ...zusatzB.chargen]),
