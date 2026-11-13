@@ -4477,6 +4477,7 @@ function initAuth() {
       // User-Info aktualisieren (frisches Firebase-User-Objekt hat auch Auth-Details)
       window._currentUser = {...user, ...userData};
       window._currentRole = userData.rolle || 'hirte';
+      try { window._hpProfilWatch && window._hpProfilWatch(user.uid); } catch(e) {}
 
       // Fix A: Auto-Token-Refresh starten (alle 25 min proaktiv erneuern)
       try { if(typeof window.startAuthRefreshLoop === 'function') window.startAuthRefreshLoop(); } catch(e) {}
@@ -5996,11 +5997,12 @@ function applyRoleToModules() {
     const allowed = new Set(user.erlaubteModule);
     if(role === 'admin') { allowed.add('benutzer'); allowed.add('papierkorb'); }
     window.ALLE_MODULE = window._origAlleModule.filter(m => allowed.has(m.id) || m.id === '__drucken__');
+    allowed.add('dashboard');
     const nav = (window._mainNav||['dashboard','herde','saison','milch']).filter(id => allowed.has(id));
-    if(nav.length < 2) {
-      window._mainNav = ['dashboard', ...Array.from(allowed).filter(id=>id!=='dashboard').slice(0,3)];
-      localStorage.setItem('mainNav', JSON.stringify(window._mainNav));
-    }
+    // v54.68: nicht mehr erlaubte Menüs auch aus der unteren Leiste entfernen
+    window._mainNav = nav.length >= 2 ? nav
+      : ['dashboard', ...window.ALLE_MODULE.map(m => m.id).filter(id => id !== 'dashboard' && id !== '__drucken__' && !nav.includes(id))].slice(0, 4);
+    localStorage.setItem('mainNav', JSON.stringify(window._mainNav));
   } else {
     const hidden = (ROLE_HIDDEN_MODULES && ROLE_HIDDEN_MODULES[role]) || [];
     window.ALLE_MODULE = window._origAlleModule.filter(m => !hidden.includes(m.id));
@@ -6108,15 +6110,16 @@ window.loadBenutzerListe = async function() {
       return;
     }
     
+    window._benutzerDaten = data;
     el.innerHTML = Object.entries(data).map(([uid, u]) => `
       <div class="list-card">
-        <div class="list-card-left">
+        <div class="list-card-left" style="cursor:pointer;flex:1" onclick="benutzerBearbeiten('${uid}')" title="Antippen zum Bearbeiten">
           <div style="width:36px;height:36px;border-radius:50%;background:var(--bg3);display:flex;align-items:center;justify-content:center;font-size:1.1rem">👤</div>
           <div>
             <div class="list-card-title">${u.name||u.email||'–'}</div>
             <div class="list-card-sub">${u.email||''}</div>
             ${online ? `<div style="font-size:.72rem;margin-top:.1rem">Zuletzt online: ${_hpZuletztText(online[uid] && online[uid].ts)}${online[uid] && online[uid].version ? ' <span style="color:var(--text3)">· ' + String(online[uid].version).replace(/[<>&"]/g, '') + '</span>' : ''}</div>` : ''}
-            ${u.erlaubteModule && u.erlaubteModule.length > 0 ? `<div style="font-size:.65rem;color:var(--text3)">${u.erlaubteModule.length} Module</div>` : ''}
+            <div style="font-size:.68rem;color:var(--gold2,var(--gold))">${u.erlaubteModule && u.erlaubteModule.length > 0 ? u.erlaubteModule.length + ' Menüs' : 'Menüs nach Rolle'} · ✏️ antippen zum Bearbeiten</div>
           </div>
         </div>
         <div style="display:flex;align-items:center;gap:.4rem">
@@ -6236,6 +6239,153 @@ window.deleteBenutzer = async function(uid, email) {
   // Add note
   alert('✓ Benutzer aus der App entfernt.\nHinweis: Für vollständige Löschung auch in Firebase Console → Authentication löschen.');
   loadBenutzerListe();
+};
+
+// ══════════════════════════════════════════════════════════════
+//  v54.68: BENUTZER BEARBEITEN – Benutzer antippen → Name, Rolle, sichtbare Menüs
+//  Änderungen wirken beim betroffenen Benutzer sofort live (Profil-Listener).
+// ══════════════════════════════════════════════════════════════
+window._benutzerDaten = window._benutzerDaten || {};
+
+function _hpEsc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+// Alle wählbaren Module (gleiche Quelle wie beim Anlegen)
+function _hpWaehlbareModule() {
+  const src = (window._origAlleModule && window._origAlleModule.length) ? window._origAlleModule : (window.ALLE_MODULE || []);
+  return [{ id: 'dashboard', icon: '⌂', label: 'Start' }].concat(
+    src.filter(m => m.id && m.id !== '__drucken__' && m.id !== 'mehr' && m.id !== 'dashboard')
+       .map(m => ({ id: m.id, icon: m.icon || '', label: m.label || m.id })));
+}
+
+// Welche Module sieht ein Benutzer aktuell? (eigene Auswahl, sonst Rollen-Standard)
+function _hpModuleVonBenutzer(u) {
+  const alle = _hpWaehlbareModule().map(m => m.id);
+  if(u && Array.isArray(u.erlaubteModule) && u.erlaubteModule.length) return new Set(u.erlaubteModule.concat('dashboard'));
+  const hidden = (ROLE_HIDDEN_MODULES[(u && u.rolle) || 'hirte']) || [];
+  return new Set(alle.filter(id => !hidden.includes(id)));
+}
+
+window.benutzerBearbeiten = function(uid) {
+  const u = window._benutzerDaten[uid];
+  if(!u) { window.showSaveToast && showSaveToast('Benutzer nicht gefunden – Liste neu laden'); return; }
+  const istIch = uid === firebase.auth().currentUser?.uid;
+  const aktiv = _hpModuleVonBenutzer(u);
+  const rolle = u.rolle || 'hirte';
+  const rollen = [['hirte','🌿 Hirte'],['milchmesser','🥛 Milchmesser'],['molkerei','🧀 Molkerei'],['sennerei','🥛 Sennerei'],['admin','⚙ Admin']];
+
+  const cbs = _hpWaehlbareModule().map(m => {
+    const fix = m.id === 'dashboard' || (istIch && (m.id === 'benutzer'));
+    return '<label style="display:flex;align-items:center;gap:.45rem;font-size:.85rem;padding:.4rem .5rem;border-radius:8px;background:var(--bg3);cursor:' + (fix ? 'default' : 'pointer') + '">' +
+      '<input type="checkbox" class="bb-modul-cb" value="' + _hpEsc(m.id) + '"' + (aktiv.has(m.id) || fix ? ' checked' : '') + (fix ? ' disabled' : '') +
+      ' style="accent-color:var(--gold);width:18px;height:18px" />' +
+      '<span>' + _hpEsc(m.icon) + ' ' + _hpEsc(m.label) + '</span></label>';
+  }).join('');
+
+  let ov = document.getElementById('bb-overlay');
+  if(ov) ov.remove();
+  ov = document.createElement('div');
+  ov.id = 'bb-overlay';
+  ov.style.cssText = 'position:fixed;inset:0;z-index:9000;background:rgba(0,0,0,.6);display:flex;align-items:flex-end;justify-content:center';
+  ov.innerHTML =
+    '<div style="background:var(--bg2);width:100%;max-width:560px;max-height:92vh;overflow:auto;border-radius:16px 16px 0 0;padding:1rem 1rem calc(1rem + env(safe-area-inset-bottom));box-shadow:0 -6px 30px rgba(0,0,0,.5)">' +
+      '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:.6rem">' +
+        '<h3 style="margin:0;color:var(--gold)">👤 Benutzer bearbeiten</h3>' +
+        '<button class="btn-secondary" onclick="document.getElementById(\'bb-overlay\').remove()">✕</button></div>' +
+      '<div style="font-size:.78rem;color:var(--text3);margin-bottom:.6rem">' + _hpEsc(u.email || '') + '</div>' +
+      '<div class="section-label" style="margin-bottom:.3rem">Name</div>' +
+      '<input id="bb-name" class="inp" value="' + _hpEsc(u.name || '') + '" placeholder="Anzeigename" style="margin-bottom:.7rem" />' +
+      '<div class="section-label" style="margin-bottom:.3rem">Rolle</div>' +
+      (istIch
+        ? '<div style="font-size:.8rem;color:var(--text3);margin-bottom:.7rem">Deine eigene Rolle kannst du nicht ändern (sonst sperrst du dich aus).</div>'
+        : '<select id="bb-rolle" class="inp" style="margin-bottom:.3rem" onchange="benutzerRolleVorschlag(this.value)">' +
+            rollen.map(r => '<option value="' + r[0] + '"' + (r[0] === rolle ? ' selected' : '') + '>' + r[1] + '</option>').join('') +
+          '</select><div style="font-size:.72rem;color:var(--text3);margin-bottom:.7rem">Beim Wechseln der Rolle werden die Menüs passend vorausgewählt – danach frei anpassbar.</div>') +
+      '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:.35rem">' +
+        '<div class="section-label">Sichtbare Menüs</div>' +
+        '<div style="display:flex;gap:.3rem">' +
+          '<button class="btn-secondary" style="font-size:.72rem;padding:.2rem .5rem" onclick="benutzerAlleMenues(true)">Alle</button>' +
+          '<button class="btn-secondary" style="font-size:.72rem;padding:.2rem .5rem" onclick="benutzerAlleMenues(false)">Keine</button>' +
+        '</div></div>' +
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:.35rem;margin-bottom:.9rem">' + cbs + '</div>' +
+      '<button id="bb-save" class="btn-primary" style="width:100%" onclick="benutzerSpeichern(\'' + _hpEsc(uid) + '\')">💾 Speichern</button>' +
+      '<div style="font-size:.72rem;color:var(--text3);text-align:center;margin-top:.5rem">Die Änderung wirkt beim Benutzer sofort, ohne Neustart.</div>' +
+    '</div>';
+  ov.addEventListener('click', e => { if(e.target === ov) ov.remove(); });
+  document.body.appendChild(ov);
+};
+
+// Rollen-Vorschlag: feste Listen für die eingeschränkten Rollen, Hirte = alles außer Admin-Menüs
+const _HP_ROLLEN_VORSCHLAG = {
+  milchmesser: ['dashboard','milch'],
+  molkerei:    ['dashboard','milch','statistik'],
+  sennerei:    ['dashboard','sennerei','kaese'],
+};
+window.benutzerRolleVorschlag = function(rolle) {
+  const fest = _HP_ROLLEN_VORSCHLAG[rolle];
+  const hidden = rolle === 'admin' ? [] : (ROLE_HIDDEN_MODULES.hirte || []).concat('benutzer', 'papierkorb');
+  document.querySelectorAll('#bb-overlay .bb-modul-cb').forEach(cb => {
+    if(!cb.disabled) cb.checked = fest ? fest.includes(cb.value) : !hidden.includes(cb.value);
+  });
+};
+
+window.benutzerAlleMenues = function(an) {
+  document.querySelectorAll('#bb-overlay .bb-modul-cb').forEach(cb => { if(!cb.disabled) cb.checked = !!an; });
+};
+
+window.benutzerSpeichern = async function(uid) {
+  const btn = document.getElementById('bb-save');
+  const name = (document.getElementById('bb-name')?.value || '').trim();
+  const rolleEl = document.getElementById('bb-rolle');
+  const module = Array.from(document.querySelectorAll('#bb-overlay .bb-modul-cb')).filter(cb => cb.checked).map(cb => cb.value);
+  if(!module.includes('dashboard')) module.unshift('dashboard');
+  if(module.length < 2) { alert('Bitte mindestens ein Menü außer „Start“ auswählen.'); return; }
+  const upd = { erlaubteModule: module, geaendertAm: Date.now(), geaendertVon: firebase.auth().currentUser?.uid || '' };
+  if(name) upd.name = name;
+  if(rolleEl) upd.rolle = rolleEl.value;
+  if(btn) { btn.disabled = true; btn.textContent = '⏳ Speichere…'; }
+  try {
+    await firebase.database().ref('benutzer/' + uid).update(upd);
+    Object.assign(window._benutzerDaten[uid] || {}, upd);
+    document.getElementById('bb-overlay')?.remove();
+    window.showSaveToast && showSaveToast('✓ Benutzer gespeichert');
+    window._benutzerGeladenTs = 0;
+    window.loadBenutzerListe && loadBenutzerListe();
+  } catch(e) {
+    alert('Speichern fehlgeschlagen: ' + (e && (e.code || e.message) || e) + (String(e && e.code || e).includes('PERMISSION') ? '\nFirebase-Regeln: Admin braucht Schreibrecht auf benutzer/<uid>.' : ''));
+    if(btn) { btn.disabled = false; btn.textContent = '💾 Speichern'; }
+  }
+};
+
+// ── Live: eigenes Profil beobachten → Menüs/Rolle sofort anpassen ──
+window._hpProfilWatch = function(uid) {
+  try {
+    if(window._hpProfilWatchUid === uid) return;
+    if(window._hpProfilWatchUid) firebase.database().ref('benutzer/' + window._hpProfilWatchUid).off('value');
+    window._hpProfilWatchUid = uid;
+    const sig = d => JSON.stringify([d.rolle || 'hirte', d.erlaubteModule || [], d.name || '']);
+    let letzte = sig(window._currentUser || {});
+    firebase.database().ref('benutzer/' + uid).on('value', snap => {
+      const d = snap.val();
+      if(!d || window._hpProfilWatchUid !== uid) return;
+      try { localStorage.setItem('cache_userProfile_' + uid, JSON.stringify(d)); } catch(e) {}
+      if(d.aktiv === false) return;              // Sperre greift beim nächsten Login
+      const s = sig(d);
+      if(s === letzte) return;
+      letzte = s;
+      window._currentUser = Object.assign({}, window._currentUser || {}, d, { erlaubteModule: d.erlaubteModule || [] });
+      window._currentRole = d.rolle || 'hirte';
+      try { applyRoleToModules(); } catch(e) { console.warn('applyRoleToModules', e); }
+      try { updateUserDisplay(); } catch(e) {}
+      const cv = window.currentView || 'dashboard';
+      const warModul = (window._origAlleModule || []).some(m => m.id === cv);
+      const sichtbar = !warModul || (window.ALLE_MODULE || []).some(m => m.id === cv);
+      if(!sichtbar && typeof window.navigate === 'function') window.navigate('dashboard');
+      else { try { render(); } catch(e) {} }
+      try { renderNav(); } catch(e) {}
+      try { window.renderMehrGrid && window.renderMehrGrid(); } catch(e) {}
+      if(d.geaendertVon !== uid) window.showSaveToast && showSaveToast('Deine Menüs wurden vom Admin angepasst');
+    }, err => console.warn('Profil-Listener:', err && err.message));
+  } catch(e) { console.warn('Profil-Watch:', e); }
 };
   // initApp is now called by initAuth after login
   window.addEventListener('load', function() {
