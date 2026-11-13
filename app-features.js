@@ -968,6 +968,7 @@ window.importSaisonstartExcel = async function(input) {
     //   - Kuh-Erkennung: Ohrmarke -> Bauer + Name -> (Almabrechnung: Nr beim selben Bauern, sonst: Nr)
     //   - Besamung aus der Almabrechnung wird bei Korrektur geaendert statt doppelt angelegt
     const _istAlm = /almabrechnung/i.test(String((ws['A1'] || {}).v || ''));
+    const _namenAbweichend = [];   // v54.67
     const _hatTrocken = /trocken/i.test(String((ws['M4'] || {}).v || ''));
     const _omNorm = s => String(s || '').toUpperCase().replace(/[\s\-\.]/g, '');
 
@@ -1059,7 +1060,31 @@ window.importSaisonstartExcel = async function(input) {
         if(vKaeseRaw  !== '' && vKaeseRaw  != null) bauerData.verkKase   = parseFloat(vKaeseRaw)  || 0;
         if(adresse) bauerData.adresse = adresse;
 
-        const existing = Object.entries(bauern||{}).find(([,b])=>b.name===bauerName);
+        let existing = Object.entries(bauern||{}).find(([,b])=>b.name===bauerName);
+        // v54.67 (LNMachinery): Almabrechnung – Bauer mit kleinem Tippfehler (max. 2 Zeichen) ist derselbe Bauer
+        if(!existing && _istAlm) {
+          const _lev = (a, b) => { const p = Array.from({length: b.length + 1}, (_, i) => i);
+            for(let i = 1; i <= a.length; i++) { let prev = p[0]; p[0] = i;
+              for(let j = 1; j <= b.length; j++) { const tmp = p[j]; p[j] = Math.min(p[j] + 1, p[j - 1] + 1, prev + (a[i - 1] === b[j - 1] ? 0 : 1)); prev = tmp; } }
+            return p[b.length]; };
+          // v54.67 (Prüfung): nur EINDEUTIGE Treffer. Umlaute/Leerzeichen/Bindestriche zählen nie als Unterschied.
+          //   Echte Tippfehler (max. 2 Zeichen) nur bei langen Namen (ab 12 Zeichen) – bei kurzen Namen
+          //   wäre z. B. „Raich Leo“ = „Raich Lea“ ein anderer Bauer → dort nur Warnung, kein Zusammenlegen.
+          const _nn = x => String(x || '').toLowerCase().replace(/ä/g, 'ae').replace(/ö/g, 'oe').replace(/ü/g, 'ue').replace(/ß/g, 'ss').replace(/[\s\-\.]+/g, '');
+          const _bn = _nn(bauerName), _grenze = _bn.length >= 12 ? 2 : 0;
+          const _kand = Object.entries(bauern||{}).filter(([,b]) => b && b.name && _lev(_nn(b.name), _bn) <= _grenze);
+          existing = _kand.length === 1 ? _kand[0] : null;
+          if(!existing && _grenze === 0) {
+            const _aehnlich = Object.values(bauern||{}).filter(b => b && b.name && _lev(_nn(b.name), _bn) <= 2).map(b => b.name);
+            if(_aehnlich.length) _namenAbweichend.push('„' + bauerName + '“ (Almabrechnung) wurde NEU angelegt – ähnlich: „' + _aehnlich.join('“, „') + '“ (App). Falls derselbe Bauer: Namen angleichen und neu einlesen.');
+          }
+          if(existing) {
+            _namenAbweichend.push('„' + existing[1].name + '“ (App) = „' + bauerName + '“ (Almabrechnung)');
+            lastBauer = existing[1].name;           // Kühe unter dem App-Namen weiterführen
+            delete bauerData.name;                  // App-Namen nicht stillschweigend umbenennen
+            if(_sollProBauer[bauerName] != null) { _sollProBauer[lastBauer] = _sollProBauer[bauerName]; delete _sollProBauer[bauerName]; }
+          }
+        }
         if(existing) {
           Object.entries(bauerData).forEach(([f, v]) => { U['bauern/' + existing[0] + '/' + f] = v; });
         } else if(neueBauern[bauerName]) {
@@ -1102,18 +1127,24 @@ window.importSaisonstartExcel = async function(input) {
         gruppe: gruppeString,        // Komma-getrennte Gruppen-Namen für Filter & Anzeige
         updatedAt: ts
       };
-      if(_hatTrocken) kuhData.laktation = istTrocken ? 'trocken' : 'melkend';   // v54.58
+      // v54.67: Laktation – Excel "trocken = JA" setzt trocken; sonst bleibt die Laktation
+      //         bestehender Kühe unverändert (im Sommer trockengestellte Kühe!), neue Kühe: melkend
+      if(_hatTrocken && istTrocken) kuhData.laktation = 'trocken';
       let kuhId;
       if(existingKuh) {
         kuhId = existingKuh[0];
-        Object.entries(kuhData).forEach(([f, v]) => { U['kuehe/' + kuhId + '/' + f] = v; });
+        // v54.67: leere Felder aus der Almabrechnung überschreiben vorhandene Werte NICHT
+        Object.entries(kuhData).forEach(([f, v]) => {
+          if(_istAlm && (v === '' || v == null) && ['ohrmarke', 'notiz', 'gruppe', 'name'].includes(f)) return;
+          U['kuehe/' + kuhId + '/' + f] = v;
+        });
       } else if(neueKuehe[kuhNr]) {
         kuhId = neueKuehe[kuhNr].key;                                    // Kuhnummer doppelt in der Datei
         Object.assign(neueKuehe[kuhNr].data, kuhData);
       } else {
         kuhData.createdAt = ts;
         kuhData.almStatus = 'oben';
-        if(!_hatTrocken) kuhData.laktation = 'melkend';
+        if(!kuhData.laktation) kuhData.laktation = 'melkend';
         kuhId = _neuKey('kuehe');
         neueKuehe[kuhNr] = { key: kuhId, data: kuhData };
         kuhCount++;
@@ -1185,6 +1216,7 @@ window.importSaisonstartExcel = async function(input) {
                     .map(([b, soll]) => '  • ' + b + ': ' + (_istProBauer[b] || 0) + ' statt ' + soll);
                   return abw.length ? '\n\n⚠ ANZAHL KÜHE STIMMT NICHT:\n' + abw.join('\n') + '\nBitte Excel-Datei prüfen!' : '';
                 })() +
+                (_namenAbweichend.length ? '\n\n⚠ BAUER ANDERS GESCHRIEBEN (bitte vereinheitlichen):\n  • ' + _namenAbweichend.join('\n  • ') : '') +
                 (_omUngueltig.length ? '\n\n⚠ OHRMARKE UNGEWÖHNLICH (Kuh-Nr: Ohrmarke):\n  • ' + _omUngueltig.slice(0, 10).join('\n  • ') + (_omUngueltig.length > 10 ? '\n  … und ' + (_omUngueltig.length - 10) + ' weitere' : '') : '');
     if(statusEl) statusEl.innerHTML = '✓ '+bauerCount+' Bauern · '+kuhCount+' Kühe · '+gruppeCount+' Gruppen · '+bsCount+' Besamungen';
     alert(msg);

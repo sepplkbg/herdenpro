@@ -12,6 +12,9 @@
   // ═══ A13: Was ist neu ═══════════════════════════════════════════════════
   // Neueste Version oben. Nur Punkte, die Nutzer merken.
   const CHANGELOG = [
+    { v: 'v54.67', punkte: [
+      'Kühe aus Almabrechnung: Bauer mit kleinem Tippfehler wird erkannt (und gemeldet) statt doppelt angelegt; leere Felder in Excel löschen keine Werte mehr in der App; im Sommer trockengestellte Kühe bleiben trocken'
+    ]},
     { v: 'v54.66', punkte: [
       'Benutzer (Admin): Liste lädt wieder sofort; bei jedem Benutzer steht „Zuletzt online“ (und welche App-Version er hat)'
     ]},
